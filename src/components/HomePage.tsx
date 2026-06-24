@@ -63,24 +63,48 @@ export default function HomePage() {
     }
 
     const result: { title: string; items: Movie[] }[] = []
-    if (allMovies.length > 0) {
-      result.push({ title: t("home.featured"), items: allMovies.slice(0, 20) })
+
+    // Track which movie ids have already been used so sections don't repeat content
+    const usedIds = new Set<string>()
+    const pickUnused = (pool: Movie[], limit: number): Movie[] => {
+      const picked: Movie[] = []
+      for (const m of pool) {
+        if (!usedIds.has(m.id)) {
+          picked.push(m)
+          usedIds.add(m.id)
+          if (picked.length >= limit) break
+        }
+      }
+      return picked
     }
 
-    const recent = [...allMovies].sort((a, b) => b.year - a.year).slice(0, 20)
+    // "Destacadas" — top of the list, avoid genre sections stealing the same items
+    if (allMovies.length > 0) {
+      const featured = pickUnused(allMovies, 20)
+      result.push({ title: t("home.featured"), items: featured })
+    }
+
+    // "Recientes" — sorted by year, different pool
+    const sortedByYear = [...allMovies].sort((a, b) => b.year - a.year)
+    const recent = pickUnused(sortedByYear, 20)
     if (recent.length > 0) {
       result.push({ title: t("home.recent"), items: recent })
     }
 
+    // Genre sections — each genre uses only its own movies (may overlap with above by genre, but not same items)
     for (const genre of [...byGenre.keys()].sort((a, b) => a.localeCompare(b, INTL_LOCALES[lang]))) {
-      const items = byGenre.get(genre) || []
+      const genreMovies = byGenre.get(genre) || []
+      const items = genreMovies.filter((m) => !usedIds.has(m.id)).slice(0, 20)
       if (items.length > 0) {
-        result.push({ title: translateGenre(genre, lang), items: items.slice(0, 20) })
+        for (const m of items) usedIds.add(m.id)
+        result.push({ title: translateGenre(genre, lang), items })
       }
     }
 
-    if (allMovies.length > 0) {
-      result.push({ title: t("common.catalog"), items: allMovies.slice(0, 30) })
+    // "Catálogo" — anything left over
+    const remaining = allMovies.filter((m) => !usedIds.has(m.id)).slice(0, 30)
+    if (remaining.length > 0) {
+      result.push({ title: t("common.catalog"), items: remaining })
     }
     return result
   }, [allMovies, tmdbCategories, dataSource, lang, t])
