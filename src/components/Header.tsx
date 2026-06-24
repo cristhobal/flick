@@ -112,7 +112,7 @@ export default function Header({
         </nav>
 
         <div className="flex flex-1 items-center justify-end gap-2">
-          {/* Desktop animated search — single icon, expands in-place */}
+          {/* Desktop animated search */}
           <div className="relative hidden md:flex items-center">
             <div
               className={`flex items-center overflow-hidden transition-all duration-300 ease-in-out cursor-pointer rounded-lg ${
@@ -156,9 +156,13 @@ export default function Header({
             </div>
           </div>
 
-          {/* Mobile Search + Menu */}
-          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-            <SheetTrigger asChild>
+          {/* Mobile Menu — Vaul Drawer desde la izquierda */}
+          <Drawer
+            open={mobileMenuOpen}
+            onOpenChange={setMobileMenuOpen}
+            direction="left"
+          >
+            <DrawerTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -166,20 +170,16 @@ export default function Header({
               >
                 <Menu className="size-5" />
               </Button>
-            </SheetTrigger>
-            <SheetContent
-              side="left"
-              className="w-72 border-neutral-800 bg-neutral-950 p-0"
-              showCloseButton={false}
-            >
-              <SheetHeader className="border-b border-neutral-800 px-5 py-4">
-                <SheetTitle className="text-left text-xl font-bold tracking-tighter text-white">
+            </DrawerTrigger>
+            <DrawerContent className="w-72 border-r border-neutral-800 bg-neutral-950 p-0 inset-y-0 left-0 h-full rounded-none">
+              <DrawerHeader className="border-b border-neutral-800 px-5 py-4">
+                <DrawerTitle className="text-left text-xl font-bold tracking-tighter text-white">
                   flick
-                </SheetTitle>
-                <SheetDescription className="sr-only">
+                </DrawerTitle>
+                <DrawerDescription className="sr-only">
                   {t("nav.main")}
-                </SheetDescription>
-              </SheetHeader>
+                </DrawerDescription>
+              </DrawerHeader>
 
               {/* Mobile search inside drawer */}
               <div className="border-b border-neutral-800 px-4 py-3">
@@ -217,8 +217,8 @@ export default function Header({
                   </button>
                 ))}
               </nav>
-            </SheetContent>
-          </Sheet>
+            </DrawerContent>
+          </Drawer>
         </div>
       </div>
     </header>
