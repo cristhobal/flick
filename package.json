@@ -16,7 +16,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,astro}\"",
     "typecheck": "astro check"
   },
-  "dependencies": {
+"dependencies": {
     "@astrojs/react": "^5",
     "@fontsource-variable/inter": "^5.2.8",
     "@tailwindcss/vite": "^4",
