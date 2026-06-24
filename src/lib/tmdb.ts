@@ -1,7 +1,6 @@
 import { TMDB_LOCALES, type Lang } from "@/i18n/translations"
 
-const ACCESS_TOKEN =
-  "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJkYzM4NDY3Y2I2YmEyYTVlYWE2ZTk3ODRjZWZjZGJjYyIsIm5iZiI6MTc4MjI0Nzk1OS4yNzIsInN1YiI6IjZhM2FmMjE3YTYzMmUzNDdiNzNjZTJiMSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.f5ry-jA-1B6mtriBrYELdvCpf8UQwU050CWEAb9JcWw"
+const ACCESS_TOKEN = import.meta.env.PUBLIC_TMDB_TOKEN as string
 
 const BASE_URL = "https://api.themoviedb.org/3"
 export const IMG_URL = "https://image.tmdb.org/t/p"
