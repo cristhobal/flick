@@ -13,6 +13,7 @@ interface MovieCarouselProps {
   onPlay?: (movie: Movie) => void
   onDetails?: (movie: Movie) => void
   onFavorite?: (movie: Movie) => void
+  onViewAll?: () => void
 }
 
 export default function MovieCarousel({
@@ -21,6 +22,7 @@ export default function MovieCarousel({
   onPlay,
   onDetails,
   onFavorite,
+  onViewAll,
 }: MovieCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const { t } = useI18n()
@@ -54,8 +56,9 @@ export default function MovieCarousel({
         <Button
           variant="ghost"
           size="xs"
-          disabled={isFavorites}
-          className="text-xs text-neutral-500 transition-all hover:text-white"
+          disabled={isFavorites || !onViewAll}
+          onClick={onViewAll}
+          className="text-xs text-neutral-500 transition-all hover:text-white disabled:opacity-30"
         >
           {t("common.viewAll")}
         </Button>

@@ -22,6 +22,112 @@ type PageView = "home" | "search" | "library" | "player" | "category" | "detail"
 const HERO_ROTATION_MS = 15_000
 
 
+
+// ---- Helper: resolve the "Ver todo" action for each carousel section ----
+interface ViewAllCtx {
+  t: (key: string) => string
+  movies: Movie[]
+  series: Movie[]
+  anime: Movie[]
+  categoryTitles: Record<string, string>
+  setCategoryType: (t: "movie" | "series" | "anime") => void
+  setCategoryGenre: (g: string | null) => void
+  setCurrentPage: (p: string) => void
+  setView: (v: "home" | "search" | "library" | "player" | "category" | "detail") => void
+}
+
+function buildViewAll(
+  category: { title: string; items: Movie[] },
+  ctx: ViewAllCtx
+): (() => void) | undefined {
+  const { t, movies, series, anime, setCategoryType, setCategoryGenre, setCurrentPage, setView } = ctx
+
+  // Favorites — no view all
+  if (category.items.length === 0) return undefined
+
+  const title = category.title
+
+  // Anime section
+  if (title === t("common.anime")) {
+    if (anime.length === 0) return undefined
+    return () => {
+      setCategoryType("anime")
+      setCategoryGenre(null)
+      setCurrentPage("anime")
+      setView("category")
+    }
+  }
+
+  // Series section
+  if (title === t("common.series")) {
+    if (series.length === 0) return undefined
+    return () => {
+      setCategoryType("series")
+      setCategoryGenre(null)
+      setCurrentPage("series")
+      setView("category")
+    }
+  }
+
+  // Genre-specific sections (action, horror, comedy, or any local genre)
+  // Detect by checking if any item carries a genre that matches the section title
+  // We use the first item's genre list as a heuristic, then confirm with the pool
+  const knownGenreKeys: { key: string; genre: string }[] = [
+    { key: "home.action", genre: "Action" },
+    { key: "home.horror",  genre: "Horror" },
+    { key: "home.comedy",  genre: "Comedy" },
+  ]
+
+  for (const { key, genre } of knownGenreKeys) {
+    if (title === t(key)) {
+      // Find the raw genre value used in the movies data
+      const genreInData = category.items
+        .flatMap((m) => m.genre.split(",").map((g) => g.trim()))
+        .find((g) => g.toLowerCase().includes(genre.toLowerCase()))
+      if (!genreInData) return undefined
+      return () => {
+        setCategoryType("movie")
+        setCategoryGenre(genreInData)
+        setCurrentPage("movies")
+        setView("category")
+      }
+    }
+  }
+
+  // Generic movie sections (featured, recent, continue watching, catalog, local genres)
+  // For local genres: the category title matches a translated genre — find the raw genre value
+  if (category.items.every((m) => m.type === "movie" || !m.type)) {
+    // Try to find a common genre from the items that matches the category title
+    const rawGenre = category.items
+      .flatMap((m) => m.genre.split(",").map((g) => g.trim()))
+      .find((g) => {
+        // Check if the translated genre matches the section title
+        return g.toLowerCase() === title.toLowerCase()
+      })
+
+    if (rawGenre) {
+      return () => {
+        setCategoryType("movie")
+        setCategoryGenre(rawGenre)
+        setCurrentPage("movies")
+        setView("category")
+      }
+    }
+
+    // General movie sections (featured, recent, continue watching)
+    if (movies.length > 0) {
+      return () => {
+        setCategoryType("movie")
+        setCategoryGenre(null)
+        setCurrentPage("movies")
+        setView("category")
+      }
+    }
+  }
+
+  return undefined
+}
+
 export default function HomePage() {
   const { lang, t } = useI18n()
   const { dataSource, loading: configLoading } = useConfig()
@@ -36,6 +142,7 @@ export default function HomePage() {
   const [currentPage, setCurrentPage] = useState("home")
   const [view, setView] = useState<PageView>("home")
   const [categoryType, setCategoryType] = useState<"movie" | "series" | "anime">("movie")
+  const [categoryGenre, setCategoryGenre] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<Movie[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
@@ -188,14 +295,17 @@ export default function HomePage() {
       setCurrentPage(page)
     } else if (page === "movies") {
       setCategoryType("movie")
+      setCategoryGenre(null)
       setView("category")
       setCurrentPage("movies")
     } else if (page === "series") {
       setCategoryType("series")
+      setCategoryGenre(null)
       setView("category")
       setCurrentPage("series")
     } else if (page === "anime") {
       setCategoryType("anime")
+      setCategoryGenre(null)
       setView("category")
       setCurrentPage("anime")
     } else {
@@ -360,6 +470,7 @@ export default function HomePage() {
           onClose={() => { setView("home"); setCurrentPage("home") }}
           onPlay={handlePlay}
           onDetails={handleDetails}
+          initialGenre={categoryGenre}
         />
         <MovieDetailsModal
           movie={selectedMovie}
@@ -467,15 +578,23 @@ export default function HomePage() {
           )}
 
           <div className="relative z-20 -mt-16 space-y-10">
-            {categories.map((category) => (
-              <MovieCarousel
-                key={category.title}
-                title={category.title}
-                items={category.items}
-                onPlay={handlePlay}
-                onDetails={handleDetails}
-              />
-            ))}
+            {categories.map((category) => {
+              const onViewAll = buildViewAll(
+                category,
+                { t, movies, series, anime, categoryTitles,
+                  setCategoryType, setCategoryGenre, setCurrentPage, setView }
+              )
+              return (
+                <MovieCarousel
+                  key={category.title}
+                  title={category.title}
+                  items={category.items}
+                  onPlay={handlePlay}
+                  onDetails={handleDetails}
+                  onViewAll={onViewAll}
+                />
+              )
+            })}
           </div>
         </main>
 
