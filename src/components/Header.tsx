@@ -4,13 +4,13 @@ import { useState, useEffect, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet"
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer"
 import {
   Search,
   Menu,
@@ -157,68 +157,84 @@ export default function Header({
           </div>
 
           {/* Mobile Search + Menu */}
-          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-            <SheetTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="text-neutral-400 lg:hidden"
-              >
-                <Menu className="size-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent
-              side="left"
-              className="w-72 border-neutral-800 bg-neutral-950 p-0"
-              showCloseButton={false}
+            <Drawer
+              open={mobileMenuOpen}
+              onOpenChange={setMobileMenuOpen}
+              direction="bottom"
+              dismissible={true}
+              modal={false}
             >
-              <SheetHeader className="border-b border-neutral-800 px-5 py-4">
-                <SheetTitle className="text-left text-xl font-bold tracking-tighter text-white">
-                  flick
-                </SheetTitle>
-                <SheetDescription className="sr-only">
-                  {t("nav.main")}
-                </SheetDescription>
-              </SheetHeader>
+              <DrawerTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-neutral-400 lg:hidden"
+                >
+                  <Menu className="size-5" />
+                </Button>
+              </DrawerTrigger>
+              <DrawerContent>
+                <div className="mx-auto w-full max-w-sm">
+                  <DrawerHeader className="border-b border-neutral-800 px-5 py-4">
+                    <DrawerTitle className="flex items-center justify-between text-left text-xl font-bold tracking-tighter text-white">
+                      <span>flick</span>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-neutral-400 hover:bg-neutral-800"
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <X className="size-5" />
+                      </Button>
+                    </DrawerTitle>
+                    <DrawerDescription className="sr-only">
+                      {t("nav.main")}
+                    </DrawerDescription>
+                  </DrawerHeader>
 
-              {/* Mobile search inside drawer */}
-              <div className="border-b border-neutral-800 px-4 py-3">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-neutral-500" />
-                  <Input
-                    placeholder={t("common.searchShort")}
-                    value={searchQuery}
-                    onChange={(e) => onSearchChange(e.target.value)}
-                    className="h-9 w-full border-neutral-800 bg-neutral-900/50 pl-9 text-sm text-white placeholder:text-neutral-500 focus:border-neutral-600"
-                  />
+                  {/* Mobile search inside drawer */}
+                  <div className="border-b border-neutral-800 px-4 py-3">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-neutral-500" />
+                      <Input
+                        placeholder={t("common.searchShort")}
+                        value={searchQuery}
+                        onChange={(e) => onSearchChange(e.target.value)}
+                        className="h-9 w-full border-neutral-800 bg-neutral-900/50 pl-9 text-sm text-white placeholder:text-neutral-500 focus:border-neutral-600"
+                      />
+                    </div>
+                  </div>
+
+                  <nav className="flex flex-col gap-1 p-3">
+                    {navLinks.map((link) => (
+                      <button
+                        key={link.id}
+                        disabled={link.disabled}
+                        title={link.disabled ? t("common.availableSoon") : undefined}
+                        onClick={() => {
+                          onNavigate?.(link.id)
+                          setMobileMenuOpen(false)
+                        }}
+                        className={`flex items-center gap-3 rounded-xl px-4 py-3.5 text-sm font-medium transition-all ${
+                          link.disabled
+                            ? "cursor-not-allowed text-neutral-600"
+                            : currentPage === link.id
+                              ? "bg-neutral-800/60 text-white"
+                              : "text-neutral-400 hover:bg-neutral-800/40 hover:text-white"
+                        }`}
+                      >
+                        <link.icon className="size-5" />
+                        <span>{link.label}</span>
+                      </button>
+                    ))}
+                  </nav>
+
+                  <div className="p-4">
+                    <div className="h-1 w-12 rounded-full bg-neutral-700 mx-auto" />
+                  </div>
                 </div>
-              </div>
-
-              <nav className="flex flex-col gap-1 p-3">
-                {navLinks.map((link) => (
-                  <button
-                    key={link.id}
-                    disabled={link.disabled}
-                    title={link.disabled ? t("common.availableSoon") : undefined}
-                    onClick={() => {
-                      onNavigate?.(link.id)
-                      setMobileMenuOpen(false)
-                    }}
-                    className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                      link.disabled
-                        ? "cursor-not-allowed text-neutral-600"
-                        : currentPage === link.id
-                          ? "bg-neutral-800 text-white"
-                          : "text-neutral-400 hover:bg-neutral-800/50 hover:text-white"
-                    }`}
-                  >
-                    <link.icon className="size-4" />
-                    {link.label}
-                  </button>
-                ))}
-              </nav>
-            </SheetContent>
-          </Sheet>
+              </DrawerContent>
+            </Drawer>
         </div>
       </div>
     </header>
