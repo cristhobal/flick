@@ -3,13 +3,13 @@
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from "@/components/ui/drawer"
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
 import {
   SlidersHorizontal,
   ArrowUpDown,
@@ -79,8 +79,8 @@ export default function FilterSidebar({
     selectedGenres.length + selectedQualities.length + selectedTypes.length
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} direction="right">
-      <DrawerTrigger asChild>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetTrigger asChild>
         <Button
           variant="outline"
           size="sm"
@@ -94,13 +94,14 @@ export default function FilterSidebar({
             </Badge>
           )}
         </Button>
-      </DrawerTrigger>
-      <DrawerContent
+      </SheetTrigger>
+      <SheetContent
+        side="right"
         className="w-full border-neutral-800 bg-neutral-950 sm:max-w-sm"
       >
-        <DrawerHeader className="border-b border-neutral-800 pb-4">
+        <SheetHeader className="border-b border-neutral-800 pb-4">
           <div className="flex items-center justify-between">
-            <DrawerTitle className="text-lg text-white">{t("filters.title")}</DrawerTitle>
+            <SheetTitle className="text-lg text-white">{t("filters.title")}</SheetTitle>
             <Button
               variant="ghost"
               size="xs"
@@ -110,10 +111,10 @@ export default function FilterSidebar({
               {t("filters.clear")}
             </Button>
           </div>
-          <DrawerDescription className="sr-only">
+          <SheetDescription className="sr-only">
             {t("filters.description")}
-          </DrawerDescription>
-        </DrawerHeader>
+          </SheetDescription>
+        </SheetHeader>
 
         <div className="flex-1 overflow-y-auto">
           <div className="space-y-6 p-4">
@@ -227,102 +228,7 @@ export default function FilterSidebar({
             </div>
           </div>
         </div>
-      </DrawerContent>
-    </Drawer>
-  )
-}
-                      onClick={() => onSortChange(option.id)}
-                    >
-                      <Icon className="size-3" />
-                      {option.label}
-                    </Button>
-                  )
-                })}
-              </div>
-            </div>
-
-            <div className="h-px bg-neutral-800" />
-
-            {/* Type */}
-            <div>
-              <h3 className="mb-3 text-sm font-medium text-white">{t("filters.type")}</h3>
-              <div className="flex flex-wrap gap-2">
-                {types.map((type) => (
-                  <Button
-                    key={type.value}
-                    variant={
-                      selectedTypes.includes(type.value) ? "default" : "outline"
-                    }
-                    size="xs"
-                    className={
-                      selectedTypes.includes(type.value)
-                        ? "border-0 bg-white text-black hover:bg-neutral-200"
-                        : "border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-white"
-                    }
-                    onClick={() => onTypeToggle(type.value)}
-                  >
-                    {type.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            <div className="h-px bg-neutral-800" />
-
-            {/* Genre */}
-            <div>
-              <h3 className="mb-3 text-sm font-medium text-white">{t("filters.genre")}</h3>
-              <div className="flex flex-wrap gap-2">
-                {genres.map((genre) => (
-                  <Button
-                    key={genre}
-                    variant={
-                      selectedGenres.includes(genre) ? "default" : "outline"
-                    }
-                    size="xs"
-                    className={
-                      selectedGenres.includes(genre)
-                        ? "border-0 bg-white text-black hover:bg-neutral-200"
-                        : "border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-white"
-                    }
-                    onClick={() => onGenreToggle(genre)}
-                  >
-                    {translateGenre(genre, lang)}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            <div className="h-px bg-neutral-800" />
-
-            {/* Quality */}
-            <div>
-              <h3 className="mb-3 text-sm font-medium text-white">{t("filters.quality")}</h3>
-              <div className="flex flex-wrap gap-2">
-                {qualities.map((quality) => (
-                  <Button
-                    key={quality}
-                    variant={
-                      selectedQualities.includes(quality)
-                        ? "default"
-                        : "outline"
-                    }
-                    size="xs"
-                    className={
-                      selectedQualities.includes(quality)
-                        ? "border-0 bg-white text-black hover:bg-neutral-200"
-                        : "border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-white"
-                    }
-                    onClick={() => onQualityToggle(quality)}
-                  >
-                    {quality}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </DrawerContent>
-    </Drawer>
+      </SheetContent>
+    </Sheet>
   )
 }
