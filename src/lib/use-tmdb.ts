@@ -374,9 +374,27 @@ export function useTMDB(): TMDbState {
       }
 
       // Carousel items: take first N from each master list
-      const carouselMovie = masterMovie.slice(0, 40)
+      const carouselMovie = masterMovie.slice(0, 60)
       const carouselSeries = masterSeries.slice(0, 30)
       const carouselAnime = masterAnime.slice(0, 30)
+
+      // Build genre-specific pools first
+      const actionPool = carouselMovie.filter((m) => actionRaw.some((item) => item.id === m.tmdbId))
+      const horrorPool = carouselMovie.filter((m) => horrorRaw.some((item) => item.id === m.tmdbId))
+      const comedyPool = carouselMovie.filter((m) => comedyRaw.some((item) => item.id === m.tmdbId))
+
+      // General pool: movies not claimed by any genre pool
+      const genrePoolIds = new Set([
+        ...actionPool.map((m) => m.tmdbId),
+        ...horrorPool.map((m) => m.tmdbId),
+        ...comedyPool.map((m) => m.tmdbId),
+      ])
+      const generalPool = carouselMovie.filter((m) => !genrePoolIds.has(m.tmdbId))
+
+      // Each section gets a non-overlapping slice from the general pool
+      const contViendoPool = generalPool.slice(0, 12)
+      const destacadasPool = generalPool.slice(12, 28)
+      const recientesPool = [...carouselMovie].sort((a, b) => b.year - a.year).slice(0, 12)
 
       const [
         contViendo,
@@ -388,14 +406,14 @@ export function useTMDB(): TMDbState {
         horrorCat,
         comedyCat,
       ] = await Promise.all([
-        enrichBatch(carouselMovie.slice(0, 12), "movie"),
-        enrichBatch(carouselMovie.slice(0, 16), "movie"),
-        enrichBatch([...carouselMovie].sort((a, b) => b.year - a.year).slice(0, 12), "movie"),
+        enrichBatch(contViendoPool, "movie"),
+        enrichBatch(destacadasPool, "movie"),
+        enrichBatch(recientesPool, "movie"),
         enrichBatch(carouselAnime.slice(0, 12), "anime"),
         enrichBatch(carouselSeries.slice(0, 12), "series"),
-        enrichBatch(carouselMovie.filter((m) => actionRaw.some((item) => item.id === m.tmdbId)).slice(0, 10), "movie"),
-        enrichBatch(carouselMovie.filter((m) => horrorRaw.some((item) => item.id === m.tmdbId)).slice(0, 8), "movie"),
-        enrichBatch(carouselMovie.filter((m) => comedyRaw.some((item) => item.id === m.tmdbId)).slice(0, 8), "movie"),
+        enrichBatch(actionPool.slice(0, 10), "movie"),
+        enrichBatch(horrorPool.slice(0, 8), "movie"),
+        enrichBatch(comedyPool.slice(0, 8), "movie"),
       ])
 
       const cats: Category[] = [
