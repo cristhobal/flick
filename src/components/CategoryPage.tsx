@@ -18,6 +18,7 @@ interface CategoryPageProps {
   onPlay?: (movie: Movie) => void
   onDetails?: (movie: Movie) => void
   onFavorite?: (movie: Movie) => void
+  initialGenre?: string | null
 }
 
 
@@ -29,6 +30,7 @@ export default function CategoryPage({
   onPlay,
   onDetails,
   onFavorite,
+  initialGenre = null,
 }: CategoryPageProps) {
   const [search, setSearch] = useState("")
   const { lang, t } = useI18n()
@@ -37,7 +39,7 @@ export default function CategoryPage({
     { id: "rating", label: t("category.rating") },
     { id: "alpha", label: t("category.alpha") },
   ]
-  const [activeGenre, setActiveGenre] = useState<string | null>(null)
+  const [activeGenre, setActiveGenre] = useState<string | null>(initialGenre ?? null)
   const [sortBy, setSortBy] = useState("recent")
 
   const Icon = type === "movie" ? Film : type === "series" ? Tv : Clapperboard
