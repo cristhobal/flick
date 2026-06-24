@@ -69,7 +69,7 @@ function DrawerContent({
           "data-[vaul-drawer-direction=left]:w-3/4",
           "data-[vaul-drawer-direction=right]:w-3/4",
           "data-[vaul-drawer-direction=top]:mb-24",
-          "data-[vaul-drawer-direction=left]:max-h-[80vh]",
+
           "data-[vaul-drawer-direction=right]:max-h-[80vh]",
           "data-[vaul-drawer-direction=top]:max-h-[80vh]",
           "data-open:animate-in data-open:slide-in-from-bottom-10",
