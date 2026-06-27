@@ -22,12 +22,24 @@ import { displayLanguage, type Lang } from "@/i18n/translations"
 
 const QUALITIES = ["4K", "1080p", "4K HDR", "1080p HDR", "720p"]
 const MAX_PAGES = 10 // fetch up to 10 pages per endpoint
+const DETAIL_CONCURRENCY = 8
 
-function runtimeStr(minutes: number | null): string {
-  if (!minutes) return "—"
+function runtimeStr(minutes: number | null | undefined): string {
+  if (!minutes || minutes <= 0) return "-"
   const h = Math.floor(minutes / 60)
   const m = minutes % 60
+  if (h <= 0) return `${m}m`
+  if (m <= 0) return `${h}h`
   return `${h}h ${m}m`
+}
+
+function detailRuntime(detail: TMDbMovieDetail | null): number | null {
+  if (!detail) return null
+  if (detail.runtime && detail.runtime > 0) return detail.runtime
+  const episodeRuntime = detail.episode_run_time?.find((minutes) => minutes > 0)
+  if (episodeRuntime) return episodeRuntime
+  const lastEpisodeRuntime = detail.last_episode_to_air?.runtime
+  return lastEpisodeRuntime && lastEpisodeRuntime > 0 ? lastEpisodeRuntime : null
 }
 
 function pickQuality(): string {
@@ -73,13 +85,15 @@ function toMovie(
   const longDesc = detail?.overview
     ? detail.overview
     : item.overview || desc
+  const runtimeMinutes = detailRuntime(detail)
 
   return {
     id: `${type}-${item.id}-${index}`,
     tmdbId: item.id,
     title,
     year: isNaN(year) ? 2024 : year,
-    duration: detail ? runtimeStr(detail.runtime) : "—",
+    duration: runtimeStr(runtimeMinutes),
+    durationSeconds: runtimeMinutes ? runtimeMinutes * 60 : undefined,
     quality: pickQuality(),
     rating: Math.round((item.vote_average || 0) * 10) / 10,
     contentRating: pickContentRating(),
@@ -133,6 +147,23 @@ async function fetchPages(
   return all
 }
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  mapper: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++
+      results[index] = await mapper(items[index], index)
+    }
+  })
+  await Promise.all(workers)
+  return results
+}
+
 export interface TMDbState {
   hero: Movie | null
   categories: Category[]
@@ -181,6 +212,54 @@ export function useTMDB(): TMDbState {
           .filter(Boolean)
           .slice(0, 2)
           .join(", ") || "General"
+
+      const detailCache = new Map<string, Promise<TMDbMovieDetail | null>>()
+      const tmdbTypeFor = (type: Movie["type"]) =>
+        type === "series" || type === "anime" ? "tv" : "movie"
+      const getCachedDetail = (id: number, type: Movie["type"]) => {
+        const tmdbType = tmdbTypeFor(type)
+        const key = `${tmdbType}-${id}`
+        if (!detailCache.has(key)) {
+          detailCache.set(
+            key,
+            fetchDetail(id, tmdbType, lang).catch(() => null)
+          )
+        }
+        return detailCache.get(key)!
+      }
+      const rebuildMovie = (
+        movie: Movie,
+        detail: TMDbMovieDetail | null,
+        type: Movie["type"],
+        index: number,
+        trailerUrl?: string
+      ) =>
+        toMovie(
+          {
+            id: movie.tmdbId,
+            title: movie.title,
+            name: movie.title,
+            poster_path: movie.posterPath,
+            backdrop_path: movie.backdropPath,
+            overview: movie.description,
+            vote_average: movie.rating,
+            release_date: String(movie.year),
+            first_air_date: String(movie.year),
+            genre_ids: [],
+            original_language: "",
+            popularity: 0,
+            media_type: tmdbTypeFor(type),
+          },
+          detail,
+          movie.genre,
+          type,
+          index,
+          trailerUrl,
+          translate("movie.unknown"),
+          translate("movie.fallback"),
+          translate("common.general"),
+          lang
+        )
 
       // ---- Fetch ALL pages in parallel ----
       const [
@@ -265,11 +344,6 @@ export function useTMDB(): TMDbState {
       const masterMovie = dedupe(allMoviesRaw)
       const masterSeries = dedupe(allSeriesRaw)
       const masterAnime = dedupe(allAnimeRaw)
-      const masterAll = dedupe([
-        ...masterMovie,
-        ...masterSeries,
-        ...masterAnime,
-      ])
 
       // ---- Hero (first trending with backdrop) ----
       let heroItem: TMDbMovie | null = null
@@ -322,56 +396,30 @@ export function useTMDB(): TMDbState {
       ): Promise<Movie[]> => {
         const results: Movie[] = []
         for (const movie of items) {
-          let detail: TMDbMovieDetail | null = null
+          let detail: TMDbMovieDetail | null
           let trailerUrl: string | undefined
           try {
-            const t = type === "series" || type === "anime" ? "tv" : "movie"
-            const result = await fetchDetailWithVideos(movie.tmdbId, t as "movie" | "tv", lang)
+            const result = await fetchDetailWithVideos(movie.tmdbId, tmdbTypeFor(type), lang)
             detail = result.detail
             trailerUrl = result.trailerUrl || undefined
+            detailCache.set(`${tmdbTypeFor(type)}-${movie.tmdbId}`, Promise.resolve(detail))
           } catch {
-            try {
-              const t = type === "series" || type === "anime" ? "tv" : "movie"
-              detail = await fetchDetail(movie.tmdbId, t as "movie" | "tv", lang)
-            } catch {
-              // ok
-            }
+            detail = await getCachedDetail(movie.tmdbId, type)
           }
           if (detail || trailerUrl) {
-            results.push(
-              toMovie(
-                {
-                  id: movie.tmdbId,
-                  title: movie.title,
-                  name: movie.title,
-                  poster_path: movie.posterPath,
-                  backdrop_path: movie.backdropPath,
-                  overview: movie.description,
-                  vote_average: movie.rating,
-                  release_date: String(movie.year),
-                  first_air_date: String(movie.year),
-                  genre_ids: [],
-                  original_language: "",
-                  popularity: 0,
-                  media_type: type === "series" || type === "anime" ? "tv" : "movie",
-                },
-                detail,
-                movie.genre,
-                type,
-                0,
-                trailerUrl,
-                translate("movie.unknown"),
-                translate("movie.fallback"),
-                translate("common.general"),
-                lang
-              )
-            )
+            results.push(rebuildMovie(movie, detail, type, 0, trailerUrl))
           } else {
             results.push(movie)
           }
         }
         return results
       }
+
+      const enrichListWithDetails = (items: Movie[], type: Movie["type"]) =>
+        mapWithConcurrency(items, DETAIL_CONCURRENCY, async (movie, index) => {
+          const detail = await getCachedDetail(movie.tmdbId, type)
+          return detail ? rebuildMovie(movie, detail, type, index, movie.trailerUrl) : movie
+        })
 
       // Carousel items: take first N from each master list
       const carouselMovie = masterMovie.slice(0, 60)
@@ -428,12 +476,23 @@ export function useTMDB(): TMDbState {
         { title: translate("nav.favorites"), items: [] },
       ]
 
+      const [enrichedMovies, enrichedSeries, enrichedAnime] = await Promise.all([
+        enrichListWithDetails(masterMovie, "movie"),
+        enrichListWithDetails(masterSeries, "series"),
+        enrichListWithDetails(masterAnime, "anime"),
+      ])
+      const enrichedAll = dedupe([
+        ...enrichedMovies,
+        ...enrichedSeries,
+        ...enrichedAnime,
+      ])
+
       if (generation !== fetchGeneration.current) return
       setCategories(cats)
-      setAllMovies(masterAll)
-      setMovies(masterMovie)
-      setSeries(masterSeries)
-      setAnimeList(masterAnime)
+      setAllMovies(enrichedAll)
+      setMovies(enrichedMovies)
+      setSeries(enrichedSeries)
+      setAnimeList(enrichedAnime)
     } catch (err) {
       if (generation !== fetchGeneration.current) return
       setError(
