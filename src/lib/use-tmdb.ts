@@ -24,6 +24,7 @@ const QUALITIES = ["4K", "1080p", "4K HDR", "1080p HDR", "720p"]
 const MAX_PAGES = 10 // fetch up to 10 pages per endpoint
 const DETAIL_CONCURRENCY = 8
 const HERO_STORAGE_KEY = "flick-tmdb-last-hero"
+const HERO_INDEX_STORAGE_KEY = "flick-tmdb-hero-index"
 
 function runtimeStr(minutes: number | null | undefined): string {
   if (!minutes || minutes <= 0) return "-"
@@ -173,23 +174,31 @@ function pickHeroItem(items: TMDbMovie[]): TMDbMovie | null {
   if (items.length === 0) return null
 
   let lastHeroId: string | null = null
+  let lastHeroIndex = -1
   if (typeof window !== "undefined") {
     try {
       lastHeroId = window.localStorage.getItem(HERO_STORAGE_KEY)
+      lastHeroIndex = Number(window.localStorage.getItem(HERO_INDEX_STORAGE_KEY) ?? "-1")
     } catch {
       lastHeroId = null
+      lastHeroIndex = -1
     }
   }
 
-  const alternatives = lastHeroId
-    ? items.filter((item) => heroStorageId(item) !== lastHeroId)
-    : items
-  const pool = alternatives.length > 0 ? alternatives : items
-  const selected = pool[Math.floor(Math.random() * pool.length)]
+  const sorted = [...items].sort((a, b) => heroStorageId(a).localeCompare(heroStorageId(b)))
+  const currentIndex = Number.isFinite(lastHeroIndex)
+    ? lastHeroIndex
+    : sorted.findIndex((item) => heroStorageId(item) === lastHeroId)
+  let nextIndex = (currentIndex + 1) % sorted.length
+  if (sorted.length > 1 && lastHeroId && heroStorageId(sorted[nextIndex]) === lastHeroId) {
+    nextIndex = (nextIndex + 1) % sorted.length
+  }
+  const selected = sorted[nextIndex]
 
   if (typeof window !== "undefined") {
     try {
       window.localStorage.setItem(HERO_STORAGE_KEY, heroStorageId(selected))
+      window.localStorage.setItem(HERO_INDEX_STORAGE_KEY, String(nextIndex))
     } catch {
       // Storage can be unavailable in private or restricted contexts.
     }

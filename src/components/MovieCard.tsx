@@ -183,9 +183,9 @@ export default function MovieCard({
 
             <div className="absolute right-0 bottom-0 left-0 h-1/2 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
-            <div className="absolute top-2 right-2 left-2 z-10 flex items-center gap-1.5 transition-transform duration-300 group-hover/card:scale-90">
+            <div className="absolute top-2 right-2 left-2 z-10 flex min-w-0 items-center gap-1.5 transition-transform duration-300 group-hover/card:scale-90">
               <span
-                className="block min-w-0 max-w-[62%] overflow-hidden rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-ellipsis whitespace-nowrap text-neutral-300 backdrop-blur-sm"
+                className="block min-w-0 max-w-[min(8.5rem,58%)] flex-1 truncate rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-neutral-300 backdrop-blur-sm"
                 title={genreLabel}
               >
                 {genreLabel}

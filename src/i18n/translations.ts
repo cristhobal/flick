@@ -243,6 +243,14 @@ export function isLang(value: unknown): value is Lang {
 
 export function detectLanguage(): Lang {
   if (typeof navigator === "undefined") return "en"
+  try {
+    const stored = localStorage.getItem("flick-lang")?.split("-")[0]?.toLowerCase()
+    if (isLang(stored)) return stored
+  } catch {
+    // Storage can be unavailable in private or restricted contexts.
+  }
+  const documentLang = document.documentElement.lang?.split("-")[0]?.toLowerCase()
+  if (isLang(documentLang)) return documentLang
   const browser = navigator.language?.split("-")[0]?.toLowerCase()
   return isLang(browser) ? browser : "en"
 }
@@ -323,13 +331,30 @@ function genreKey(value: string): string {
     .trim()
 }
 
+function currentGenreLang(lang: Lang): Lang {
+  if (typeof document !== "undefined") {
+    const documentLang = document.documentElement.lang?.split("-")[0]?.toLowerCase()
+    if (isLang(documentLang)) return documentLang
+  }
+  if (typeof localStorage !== "undefined") {
+    try {
+      const stored = localStorage.getItem("flick-lang")?.split("-")[0]?.toLowerCase()
+      if (isLang(stored)) return stored
+    } catch {
+      // Storage can be unavailable in private or restricted contexts.
+    }
+  }
+  return lang
+}
+
 export function translateGenre(value: string | null | undefined, lang: Lang): string {
-  return (value || t("common.general", lang))
+  const displayLang = currentGenreLang(lang)
+  return (value || t("common.general", displayLang))
     .split(",")
     .map((part) => {
       const clean = part.trim()
       const canonical = GENRE_ALIASES[genreKey(clean)]
-      return canonical ? GENRE_LABELS[canonical][lang] : clean
+      return canonical ? GENRE_LABELS[canonical][displayLang] : clean
     })
     .join(", ")
 }

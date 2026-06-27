@@ -221,11 +221,24 @@ export default function HomePage() {
     [allMovies, dataSource]
   )
 
+  const tmdbHeroCandidates = useMemo(
+    () => dataSource === "tmdb"
+      ? allMovies.filter((item) => item.backdropPath || item.posterPath)
+      : [],
+    [allMovies, dataSource]
+  )
+
   const chooseDifferentMovie = useCallback((currentId: string | null) => {
     const alternatives = heroCandidates.filter((movie) => movie.id !== currentId)
     const pool = alternatives.length > 0 ? alternatives : heroCandidates
     return pool[Math.floor(Math.random() * pool.length)].id
   }, [heroCandidates])
+
+  const chooseDifferentTmdbHero = useCallback((currentId: string | null) => {
+    const alternatives = tmdbHeroCandidates.filter((movie) => movie.id !== currentId)
+    const pool = alternatives.length > 0 ? alternatives : tmdbHeroCandidates
+    return pool[Math.floor(Math.random() * pool.length)]?.id || null
+  }, [tmdbHeroCandidates])
 
   // Elige una pelicula aleatoria siempre que la lista de candidatos cargue (recarga incluida)
   useEffect(() => {
@@ -239,6 +252,17 @@ export default function HomePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataSource, heroCandidates.length === 0])
 
+  useEffect(() => {
+    if (dataSource !== "tmdb") return
+    if (tmdbHeroCandidates.length === 0) {
+      setHeroMovieId(tmdbHero?.id || null)
+      return
+    }
+    setHeroMovieId((currentId) => chooseDifferentTmdbHero(currentId || tmdbHero?.id || null))
+  // Solo cambiar cuando TMDB termina de cargar nuevos candidatos o cambia el hero base.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataSource, tmdbHeroCandidates.length, tmdbHero?.id])
+
   // Rotar el hero cada HERO_ROTATION_MS mientras se esta en la vista home
   useEffect(() => {
     if (dataSource === "tmdb" || view !== "home" || heroCandidates.length < 2) return
@@ -248,9 +272,19 @@ export default function HomePage() {
     return () => window.clearInterval(rotationTimer)
   }, [heroCandidates, view, dataSource, chooseDifferentMovie])
 
+  useEffect(() => {
+    if (dataSource !== "tmdb" || view !== "home" || tmdbHeroCandidates.length < 2) return
+    const rotationTimer = window.setInterval(() => {
+      setHeroMovieId((currentId) => chooseDifferentTmdbHero(currentId || tmdbHero?.id || null))
+    }, HERO_ROTATION_MS)
+    return () => window.clearInterval(rotationTimer)
+  }, [tmdbHeroCandidates, view, dataSource, chooseDifferentTmdbHero, tmdbHero?.id])
+
   const hero = useMemo(
-    () => dataSource === "tmdb" ? tmdbHero : (heroCandidates.find((movie) => movie.id === heroMovieId) || null),
-    [heroCandidates, heroMovieId, tmdbHero, dataSource]
+    () => dataSource === "tmdb"
+      ? (tmdbHeroCandidates.find((movie) => movie.id === heroMovieId) || tmdbHero)
+      : (heroCandidates.find((movie) => movie.id === heroMovieId) || null),
+    [heroCandidates, heroMovieId, tmdbHero, tmdbHeroCandidates, dataSource]
   )
 
   useEffect(() => {

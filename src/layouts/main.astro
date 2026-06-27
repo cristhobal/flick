@@ -62,8 +62,10 @@ import { TooltipProvider } from "@/components/ui/tooltip"
     <script is:inline>
       (function() {
         try {
-          var lang = (navigator.language || "").split("-")[0].toLowerCase()
-          if (!["en", "es", "fr", "hi", "zh"].includes(lang)) lang = "en"
+          var supported = ["en", "es", "fr", "hi", "zh"]
+          var stored = (localStorage.getItem("flick-lang") || "").split("-")[0].toLowerCase()
+          var lang = supported.includes(stored) ? stored : (navigator.language || "").split("-")[0].toLowerCase()
+          if (!supported.includes(lang)) lang = "en"
           localStorage.setItem("flick-lang", lang)
           document.documentElement.lang = lang
           document.cookie = "flick-lang=" + lang + "; path=/; max-age=31536000; samesite=lax"
