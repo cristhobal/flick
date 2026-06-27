@@ -310,6 +310,14 @@ export function translateGenre(value: string | null | undefined, lang: Lang): st
     })
     .join(", ")
 }
+
+export function translateGenres(value: string | null | undefined, lang: Lang): string[] {
+  return (value || t("common.general", lang))
+    .split(",")
+    .map((part) => translateGenre(part.trim(), lang))
+    .filter(Boolean)
+}
+
 const LANGUAGE_CODES: Record<string, string> = {
   español: "es", spanish: "es", espagnol: "es", "स्पेनिश": "es", "西班牙语": "es",
   inglés: "en", english: "en", anglais: "en", "अंग्रेज़ी": "en", "英语": "en",

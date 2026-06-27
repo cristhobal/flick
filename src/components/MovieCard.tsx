@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Play, Plus, ChevronDown, Star } from "lucide-react"
 import type { Movie } from "@/lib/data"
 import { useI18n } from "@/i18n/I18nProvider"
-import { translateGenre } from "@/i18n/translations"
+import { translateGenre, translateGenres } from "@/i18n/translations"
 import {
   posterUrl,
   backdropUrl,
@@ -145,8 +145,7 @@ export default function MovieCard({
     : ""
   const hasRuntime = Boolean(movie.duration && movie.duration !== "-")
   const runtimeLabel = hasRuntime ? movie.duration : episodeInfo || "-"
-  const firstGenre = movie.genre.split(",")[0]?.trim() || movie.genre
-  const genreLabel = translateGenre(firstGenre, lang)
+  const genreLabel = translateGenres(movie.genre, lang).join(", ")
 
   return (
     <>
@@ -186,7 +185,7 @@ export default function MovieCard({
 
             <div className="absolute top-2 right-2 left-2 z-10 flex items-center gap-1.5 transition-transform duration-300 group-hover/card:scale-90">
               <span
-                className="min-w-0 flex-1 truncate rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-neutral-300 backdrop-blur-sm"
+                className="block min-w-0 max-w-[62%] overflow-hidden rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-ellipsis whitespace-nowrap text-neutral-300 backdrop-blur-sm"
                 title={genreLabel}
               >
                 {genreLabel}
