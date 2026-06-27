@@ -145,6 +145,7 @@ export default function MovieCard({
     : ""
   const hasRuntime = Boolean(movie.duration && movie.duration !== "-")
   const runtimeLabel = hasRuntime ? movie.duration : episodeInfo || "-"
+  const genreLabel = translateGenre(movie.genre, lang)
 
   return (
     <>
@@ -187,7 +188,7 @@ export default function MovieCard({
                 variant="secondary"
                 className="block max-w-full truncate border-0 bg-black/60 text-[10px] text-neutral-300 backdrop-blur-sm"
               >
-                {translateGenre(movie.genre, lang)}
+                {genreLabel}
               </Badge>
             </div>
 
