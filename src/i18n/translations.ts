@@ -58,6 +58,10 @@ const en: Dictionary = {
   "genre.action": "Action", "genre.horror": "Horror", "genre.comedy": "Comedy", "genre.drama": "Drama",
   "genre.scifi": "Science Fiction", "genre.thriller": "Thriller", "genre.adventure": "Adventure",
   "genre.fantasy": "Fantasy", "genre.documentary": "Documentary", "genre.crime": "Crime",
+  "genre.animation": "Animation", "genre.family": "Family", "genre.mystery": "Mystery", "genre.romance": "Romance",
+  "genre.history": "History", "genre.music": "Music", "genre.war": "War", "genre.western": "Western",
+  "genre.reality": "Reality", "genre.soap": "Soap", "genre.talk": "Talk", "genre.news": "News",
+  "genre.kids": "Kids", "genre.politics": "War & Politics",
 }
 
 const es: Dictionary = {
@@ -100,6 +104,10 @@ const es: Dictionary = {
   "genre.action": "Acción", "genre.horror": "Terror", "genre.comedy": "Comedia", "genre.drama": "Drama",
   "genre.scifi": "Ciencia ficción", "genre.thriller": "Suspenso", "genre.adventure": "Aventura",
   "genre.fantasy": "Fantasía", "genre.documentary": "Documental", "genre.crime": "Crimen",
+  "genre.animation": "Animaci\u00f3n", "genre.family": "Familia", "genre.mystery": "Misterio", "genre.romance": "Romance",
+  "genre.history": "Historia", "genre.music": "M\u00fasica", "genre.war": "B\u00e9lica", "genre.western": "Western",
+  "genre.reality": "Reality", "genre.soap": "Telenovela", "genre.talk": "Entrevistas", "genre.news": "Noticias",
+  "genre.kids": "Infantil", "genre.politics": "B\u00e9lica y pol\u00edtica",
 }
 
 const fr: Dictionary = {
@@ -256,6 +264,30 @@ const GENRE_KEYS: Record<string, string> = {
   "fantasía": "genre.fantasy", fantasy: "genre.fantasy", fantastique: "genre.fantasy", "फैंटेसी": "genre.fantasy", "奇幻": "genre.fantasy",
   documental: "genre.documentary", documentary: "genre.documentary", documentaire: "genre.documentary", "डॉक्यूमेंट्री": "genre.documentary", "纪录片": "genre.documentary",
   crimen: "genre.crime", crime: "genre.crime", "अपराध": "genre.crime", "犯罪": "genre.crime",
+  accion: "genre.action",
+  "ciencia ficcion": "genre.scifi", "sci-fi": "genre.scifi",
+  suspense: "genre.thriller", misterio: "genre.mystery", mystery: "genre.mystery",
+  animacion: "genre.animation", animation: "genre.animation", anime: "genre.animation",
+  familia: "genre.family", family: "genre.family",
+  romance: "genre.romance",
+  historia: "genre.history", history: "genre.history",
+  musica: "genre.music", music: "genre.music",
+  belica: "genre.war", guerra: "genre.war", war: "genre.war",
+  western: "genre.western",
+  reality: "genre.reality",
+  telenovela: "genre.soap", soap: "genre.soap",
+  entrevistas: "genre.talk", talk: "genre.talk",
+  noticias: "genre.news", news: "genre.news",
+  infantil: "genre.kids", kids: "genre.kids",
+  "war & politics": "genre.politics", "belica y politica": "genre.politics",
+}
+
+function genreKey(value: string): string {
+  return value
+    .trim()
+    .toLocaleLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
 }
 
 export function translateGenre(value: string | null | undefined, lang: Lang): string {
@@ -263,7 +295,7 @@ export function translateGenre(value: string | null | undefined, lang: Lang): st
     .split(",")
     .map((part) => {
       const clean = part.trim()
-      const key = GENRE_KEYS[clean.toLocaleLowerCase()]
+      const key = GENRE_KEYS[genreKey(clean)] || GENRE_KEYS[clean.toLocaleLowerCase()]
       return key ? t(key, lang) : clean
     })
     .join(", ")
