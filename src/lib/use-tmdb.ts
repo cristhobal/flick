@@ -18,7 +18,7 @@ import {
 } from "@/lib/tmdb"
 import { useConfig } from "@/lib/use-config"
 import { useI18n } from "@/i18n/I18nProvider"
-import { displayLanguage, translateGenre, type Lang } from "@/i18n/translations"
+import { displayLanguage, type Lang } from "@/i18n/translations"
 
 const QUALITIES = ["4K", "1080p", "4K HDR", "1080p HDR", "720p"]
 const MAX_PAGES = 10 // fetch up to 10 pages per endpoint
@@ -98,7 +98,7 @@ function toMovie(
     quality: pickQuality(),
     rating: Math.round((item.vote_average || 0) * 10) / 10,
     contentRating: pickContentRating(),
-    genre: translateGenre(genreNames || generalLabel, lang),
+    genre: genreNames || generalLabel,
     language: pickLanguages(detail, lang),
     subtitles: [displayLanguage("es", lang), displayLanguage("en", lang)],
     description: desc,
