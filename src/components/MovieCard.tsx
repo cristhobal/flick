@@ -185,12 +185,12 @@ export default function MovieCard({
 
             <div className="absolute top-2 right-2 left-2 z-10 flex min-w-0 items-start gap-2 transition-transform duration-300 group-hover/card:scale-90">
               <span
-                className="min-w-0 flex-1 overflow-hidden rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-ellipsis whitespace-nowrap text-neutral-300 backdrop-blur-sm"
+                className="min-w-0 max-w-[62%] overflow-hidden rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-ellipsis whitespace-nowrap text-neutral-300 backdrop-blur-sm"
                 title={genreLabel}
               >
                 {genreLabel}
               </span>
-              <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium whitespace-nowrap text-white backdrop-blur-sm">
+              <span className="ml-auto shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium whitespace-nowrap text-white backdrop-blur-sm">
                 {movie.quality}
               </span>
             </div>
