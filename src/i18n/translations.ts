@@ -266,7 +266,7 @@ const GENRE_KEYS: Record<string, string> = {
   crimen: "genre.crime", crime: "genre.crime", "अपराध": "genre.crime", "犯罪": "genre.crime",
   accion: "genre.action",
   "ciencia ficcion": "genre.scifi", "sci-fi": "genre.scifi",
-  suspense: "genre.thriller", misterio: "genre.mystery", mystery: "genre.mystery",
+  suspense: "genre.thriller", supense: "genre.thriller", misterio: "genre.mystery", mystery: "genre.mystery",
   animacion: "genre.animation", animation: "genre.animation", anime: "genre.animation",
   familia: "genre.family", family: "genre.family",
   romance: "genre.romance",
