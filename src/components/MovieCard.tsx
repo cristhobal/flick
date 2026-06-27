@@ -145,7 +145,8 @@ export default function MovieCard({
     : ""
   const hasRuntime = Boolean(movie.duration && movie.duration !== "-")
   const runtimeLabel = hasRuntime ? movie.duration : episodeInfo || "-"
-  const genreLabel = translateGenre(movie.genre, lang)
+  const firstGenre = movie.genre.split(",")[0]?.trim() || movie.genre
+  const genreLabel = translateGenre(firstGenre, lang)
 
   return (
     <>
@@ -183,16 +184,16 @@ export default function MovieCard({
 
             <div className="absolute right-0 bottom-0 left-0 h-1/2 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
-            <div className="absolute top-2 right-2 left-2 z-10 flex min-w-0 items-start gap-2 transition-transform duration-300 group-hover/card:scale-90">
+            <div className="absolute top-2 right-2 left-2 z-10 flex items-center gap-1.5 transition-transform duration-300 group-hover/card:scale-90">
               <span
-                className="min-w-0 max-w-[62%] overflow-hidden rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-ellipsis whitespace-nowrap text-neutral-300 backdrop-blur-sm"
+                className="min-w-0 flex-1 truncate rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-neutral-300 backdrop-blur-sm"
                 title={genreLabel}
               >
                 {genreLabel}
               </span>
-              <span className="ml-auto shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium whitespace-nowrap text-white backdrop-blur-sm">
+              <Badge className="shrink-0 border-0 bg-white/10 text-[10px] text-white backdrop-blur-sm">
                 {movie.quality}
-              </span>
+              </Badge>
             </div>
 
             <div className="absolute right-0 bottom-0 left-0 flex min-h-24 flex-col justify-end p-3">
