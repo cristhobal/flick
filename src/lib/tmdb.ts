@@ -1,4 +1,4 @@
-import { TMDB_LOCALES, type Lang } from "@/i18n/translations"
+import { TMDB_LOCALES, translateGenre, type Lang } from "@/i18n/translations"
 
 const ACCESS_TOKEN = import.meta.env.PUBLIC_TMDB_TOKEN as string
 
@@ -36,6 +36,15 @@ function videoLanguages(lang: Lang) {
   const primary = locale(lang).split("-")[0]
   return encodeURIComponent([...new Set([primary, "en", "null"])].join(","))
 }
+function normalizeGenreName(name: string, lang: Lang) {
+  return translateGenre(name, lang)
+}
+function normalizeGenreList(genres: Genre[], lang: Lang): Genre[] {
+  return genres.map((genre) => ({
+    ...genre,
+    name: normalizeGenreName(genre.name, lang),
+  }))
+}
 
 export async function fetchGenres(lang: Lang = "en"): Promise<Genre[]> {
   const cached = GENRE_CACHE.get(lang)
@@ -45,8 +54,8 @@ export async function fetchGenres(lang: Lang = "en"): Promise<Genre[]> {
     apiFetch<TMDbGenreResponse>(`/genre/movie/list?language=${language}`),
     apiFetch<TMDbGenreResponse>(`/genre/tv/list?language=${language}`),
   ])
-  const movieGenres = movieRes.genres || []
-  const tvGenres = tvRes.genres || []
+  const movieGenres = normalizeGenreList(movieRes.genres || [], lang)
+  const tvGenres = normalizeGenreList(tvRes.genres || [], lang)
   const merged = [...movieGenres, ...tvGenres.filter((g) => !movieGenres.some((m) => m.id === g.id))]
   GENRE_CACHE.set(lang, merged)
   return merged
@@ -99,7 +108,7 @@ export async function fetchDetailWithVideos(id: number, type: "movie" | "tv" = "
 export async function mapGenres(ids: number[] = [], lang: Lang = "en") {
   const genres = await fetchGenres(lang)
   const map: Record<number, string> = {}
-  for (const genre of genres) map[genre.id] = genre.name
+  for (const genre of genres) map[genre.id] = normalizeGenreName(genre.name, lang)
   return (Array.isArray(ids) ? ids : []).map((id) => map[id]).filter(Boolean).slice(0, 2).join(", ")
 }
 

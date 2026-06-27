@@ -266,6 +266,7 @@ type CanonicalGenre =
   | "adventure" | "fantasy" | "documentary" | "crime" | "animation"
   | "family" | "mystery" | "romance" | "history" | "music" | "war"
   | "western" | "reality" | "soap" | "talk" | "news" | "kids" | "politics"
+  | "action_adventure" | "scifi_fantasy"
 
 const GENRE_LABELS: Record<CanonicalGenre, Record<Lang, string>> = {
   action: { en: "Action", es: "Acci\u00f3n", fr: "Action", hi: "\u090f\u0915\u094d\u0936\u0928", zh: "\u52a8\u4f5c" },
@@ -292,13 +293,17 @@ const GENRE_LABELS: Record<CanonicalGenre, Record<Lang, string>> = {
   news: { en: "News", es: "Noticias", fr: "Actualit\u00e9s", hi: "\u0938\u092e\u093e\u091a\u093e\u0930", zh: "\u65b0\u95fb" },
   kids: { en: "Kids", es: "Infantil", fr: "Enfants", hi: "\u092c\u091a\u094d\u091a\u0947", zh: "\u513f\u7ae5" },
   politics: { en: "War & Politics", es: "B\u00e9lica y pol\u00edtica", fr: "Guerre et politique", hi: "\u092f\u0941\u0926\u094d\u0927 \u0914\u0930 \u0930\u093e\u091c\u0928\u0940\u0924\u093f", zh: "\u6218\u4e89\u4e0e\u653f\u6cbb" },
+  action_adventure: { en: "Action & Adventure", es: "Acci\u00f3n y aventura", fr: "Action et aventure", hi: "\u090f\u0915\u094d\u0936\u0928 \u0914\u0930 \u0930\u094b\u092e\u093e\u0902\u091a", zh: "\u52a8\u4f5c\u4e0e\u5192\u9669" },
+  scifi_fantasy: { en: "Sci-Fi & Fantasy", es: "Ciencia ficci\u00f3n y fantas\u00eda", fr: "Science-fiction et fantastique", hi: "\u0935\u093f\u091c\u094d\u091e\u093e\u0928 \u0915\u0925\u093e \u0914\u0930 \u092b\u0948\u0902\u091f\u0947\u0938\u0940", zh: "\u79d1\u5e7b\u4e0e\u5947\u5e7b" },
 }
 const GENRE_ALIASES: Record<string, CanonicalGenre> = {
   action: "action", accion: "action",
+  "action and adventure": "action_adventure", "accion y aventura": "action_adventure", "action adventure": "action_adventure",
   horror: "horror", terror: "horror",
   comedy: "comedy", comedia: "comedy", comedie: "comedy",
   drama: "drama", drame: "drama",
   "science fiction": "scifi", "science-fiction": "scifi", "ciencia ficcion": "scifi", "sci fi": "scifi", "sci-fi": "scifi",
+  "science fiction and fantasy": "scifi_fantasy", "sci fi and fantasy": "scifi_fantasy", "sci fi fantasy": "scifi_fantasy", "ciencia ficcion y fantasia": "scifi_fantasy",
   thriller: "thriller", suspense: "thriller", supense: "thriller", suspenso: "thriller",
   adventure: "adventure", aventura: "adventure", aventure: "adventure",
   fantasy: "fantasy", fantasia: "fantasy", fantastique: "fantasy",
@@ -312,7 +317,7 @@ const GENRE_ALIASES: Record<string, CanonicalGenre> = {
   music: "music", musica: "music",
   war: "war", guerra: "war", belica: "war",
   western: "western",
-  reality: "reality",
+  reality: "reality", telerrealidad: "reality",
   soap: "soap", telenovela: "soap",
   talk: "talk", entrevistas: "talk",
   news: "news", noticias: "news",
