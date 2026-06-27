@@ -266,7 +266,7 @@ const GENRE_KEYS: Record<string, string> = {
   crimen: "genre.crime", crime: "genre.crime", "अपराध": "genre.crime", "犯罪": "genre.crime",
   accion: "genre.action",
   "ciencia ficcion": "genre.scifi", "sci-fi": "genre.scifi",
-  suspense: "genre.thriller", supense: "genre.thriller", misterio: "genre.mystery", mystery: "genre.mystery",
+  suspense: "genre.thriller", supense: "genre.thriller", Suspense: "genre.thriller", misterio: "genre.mystery", mystery: "genre.mystery", Misterio: "genre.mystery",
   animacion: "genre.animation", animation: "genre.animation", anime: "genre.animation",
   familia: "genre.family", family: "genre.family",
   romance: "genre.romance",
@@ -283,12 +283,11 @@ const GENRE_KEYS: Record<string, string> = {
 }
 
 function genreKey(value: string): string {
-  const key = value
+  return value
     .trim()
     .toLocaleLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-  return key.replace(/^supense$/, "suspense")
 }
 
 export function translateGenre(value: string | null | undefined, lang: Lang): string {
@@ -296,11 +295,8 @@ export function translateGenre(value: string | null | undefined, lang: Lang): st
     .split(",")
     .map((part) => {
       const clean = part.trim()
-      const normalized = genreKey(clean)
-      const key = GENRE_KEYS[normalized] || GENRE_KEYS[clean.toLocaleLowerCase()]
-      if (key) return t(key, lang)
-      if (lang === "es" && normalized.includes("suspense")) return t("genre.thriller", lang)
-      return clean
+      const key = GENRE_KEYS[genreKey(clean)] || GENRE_KEYS[clean.toLocaleLowerCase()]
+      return key ? t(key, lang) : clean
     })
     .join(", ")
 }
