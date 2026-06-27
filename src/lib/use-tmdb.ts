@@ -345,16 +345,19 @@ export function useTMDB(): TMDbState {
       const masterSeries = dedupe(allSeriesRaw)
       const masterAnime = dedupe(allAnimeRaw)
 
-      // ---- Hero (first trending with backdrop) ----
-      let heroItem: TMDbMovie | null = null
-      for (const m of trendingAllRaw) {
-        if (m.backdrop_path) {
-          heroItem = m
-          break
-        }
-      }
-      if (!heroItem && trendingAllRaw.length > 0)
-        heroItem = trendingAllRaw[0]
+      // ---- Hero (random trending item with backdrop) ----
+      const heroPool = trendingAllRaw.filter(
+        (item) =>
+          item.backdrop_path &&
+          (item.media_type === "movie" || item.media_type === "tv")
+      )
+      const fallbackHeroPool = trendingAllRaw.filter(
+        (item) => item.media_type === "movie" || item.media_type === "tv"
+      )
+      const heroCandidates = heroPool.length > 0 ? heroPool : fallbackHeroPool
+      const heroItem = heroCandidates.length > 0
+        ? heroCandidates[Math.floor(Math.random() * heroCandidates.length)]
+        : null
 
       let heroMovie: Movie | null = null
       if (heroItem) {
