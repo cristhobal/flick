@@ -221,33 +221,32 @@ export default function HomePage() {
     [allMovies, dataSource]
   )
 
+  const chooseDifferentMovie = useCallback((currentId: string | null) => {
+    const alternatives = heroCandidates.filter((movie) => movie.id !== currentId)
+    const pool = alternatives.length > 0 ? alternatives : heroCandidates
+    return pool[Math.floor(Math.random() * pool.length)].id
+  }, [heroCandidates])
+
+  // Elige una pelicula aleatoria siempre que la lista de candidatos cargue (recarga incluida)
   useEffect(() => {
     if (dataSource === "tmdb") return
     if (heroCandidates.length === 0) {
       setHeroMovieId(null)
       return
     }
+    setHeroMovieId(chooseDifferentMovie(null))
+  // Solo re-ejecutar cuando pasan de 0 candidatos a tener al menos 1, no en cada re-render
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataSource, heroCandidates.length === 0])
 
-    const chooseDifferentMovie = (currentId: string | null) => {
-      const alternatives = heroCandidates.filter((movie) => movie.id !== currentId)
-      const pool = alternatives.length > 0 ? alternatives : heroCandidates
-      return pool[Math.floor(Math.random() * pool.length)].id
-    }
-
-    setHeroMovieId((currentId) =>
-      currentId && heroCandidates.some((movie) => movie.id === currentId)
-        ? currentId
-        : chooseDifferentMovie(null)
-    )
-
-    if (view !== "home" || heroCandidates.length < 2) return
-
+  // Rotar el hero cada HERO_ROTATION_MS mientras se esta en la vista home
+  useEffect(() => {
+    if (dataSource === "tmdb" || view !== "home" || heroCandidates.length < 2) return
     const rotationTimer = window.setInterval(() => {
       setHeroMovieId((currentId) => chooseDifferentMovie(currentId))
     }, HERO_ROTATION_MS)
-
     return () => window.clearInterval(rotationTimer)
-  }, [heroCandidates, view, dataSource])
+  }, [heroCandidates, view, dataSource, chooseDifferentMovie])
 
   const hero = useMemo(
     () => dataSource === "tmdb" ? tmdbHero : (heroCandidates.find((movie) => movie.id === heroMovieId) || null),
