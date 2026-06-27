@@ -253,33 +253,63 @@ export function t(key: string, lang: Lang, vars?: Record<string, string | number
   return text.replace(/\{(\w+)\}/g, (_, name) => String(vars[name] ?? `{${name}}`))
 }
 
-const GENRE_KEYS: Record<string, string> = {
-  "acción": "genre.action", action: "genre.action", "एक्शन": "genre.action", "动作": "genre.action",
-  terror: "genre.horror", horror: "genre.horror", horreur: "genre.horror", "हॉरर": "genre.horror", "恐怖": "genre.horror",
-  comedia: "genre.comedy", comedy: "genre.comedy", "comédie": "genre.comedy", "कॉमेडी": "genre.comedy", "喜剧": "genre.comedy",
-  drama: "genre.drama", drame: "genre.drama", "ड्रामा": "genre.drama", "剧情": "genre.drama",
-  "ciencia ficción": "genre.scifi", "science fiction": "genre.scifi", "science-fiction": "genre.scifi", "विज्ञान कथा": "genre.scifi", "科幻": "genre.scifi",
-  suspenso: "genre.thriller", thriller: "genre.thriller", "थ्रिलर": "genre.thriller", "惊悚": "genre.thriller",
-  aventura: "genre.adventure", adventure: "genre.adventure", aventure: "genre.adventure", "रोमांच": "genre.adventure", "冒险": "genre.adventure",
-  "fantasía": "genre.fantasy", fantasy: "genre.fantasy", fantastique: "genre.fantasy", "फैंटेसी": "genre.fantasy", "奇幻": "genre.fantasy",
-  documental: "genre.documentary", documentary: "genre.documentary", documentaire: "genre.documentary", "डॉक्यूमेंट्री": "genre.documentary", "纪录片": "genre.documentary",
-  crimen: "genre.crime", crime: "genre.crime", "अपराध": "genre.crime", "犯罪": "genre.crime",
-  accion: "genre.action",
-  "ciencia ficcion": "genre.scifi", "sci-fi": "genre.scifi",
-  suspense: "genre.thriller", supense: "genre.thriller", Suspense: "genre.thriller", misterio: "genre.mystery", mystery: "genre.mystery", Misterio: "genre.mystery",
-  animacion: "genre.animation", animation: "genre.animation", anime: "genre.animation",
-  familia: "genre.family", family: "genre.family",
-  romance: "genre.romance",
-  historia: "genre.history", history: "genre.history",
-  musica: "genre.music", music: "genre.music",
-  belica: "genre.war", guerra: "genre.war", war: "genre.war",
-  western: "genre.western",
-  reality: "genre.reality",
-  telenovela: "genre.soap", soap: "genre.soap",
-  entrevistas: "genre.talk", talk: "genre.talk",
-  noticias: "genre.news", news: "genre.news",
-  infantil: "genre.kids", kids: "genre.kids",
-  "war & politics": "genre.politics", "belica y politica": "genre.politics",
+type CanonicalGenre =
+  | "action" | "horror" | "comedy" | "drama" | "scifi" | "thriller"
+  | "adventure" | "fantasy" | "documentary" | "crime" | "animation"
+  | "family" | "mystery" | "romance" | "history" | "music" | "war"
+  | "western" | "reality" | "soap" | "talk" | "news" | "kids" | "politics"
+
+const GENRE_LABELS: Record<CanonicalGenre, Record<Lang, string>> = {
+  action: { en: "Action", es: "Acci\u00f3n", fr: "Action", hi: "\u090f\u0915\u094d\u0936\u0928", zh: "\u52a8\u4f5c" },
+  horror: { en: "Horror", es: "Terror", fr: "Horreur", hi: "\u0939\u0949\u0930\u0930", zh: "\u6050\u6016" },
+  comedy: { en: "Comedy", es: "Comedia", fr: "Com\u00e9die", hi: "\u0915\u0949\u092e\u0947\u0921\u0940", zh: "\u559c\u5267" },
+  drama: { en: "Drama", es: "Drama", fr: "Drame", hi: "\u0921\u094d\u0930\u093e\u092e\u093e", zh: "\u5267\u60c5" },
+  scifi: { en: "Science Fiction", es: "Ciencia ficci\u00f3n", fr: "Science-fiction", hi: "\u0935\u093f\u091c\u094d\u091e\u093e\u0928 \u0915\u0925\u093e", zh: "\u79d1\u5e7b" },
+  thriller: { en: "Thriller", es: "Suspenso", fr: "Thriller", hi: "\u0925\u094d\u0930\u093f\u0932\u0930", zh: "\u60ca\u609a" },
+  adventure: { en: "Adventure", es: "Aventura", fr: "Aventure", hi: "\u0930\u094b\u092e\u093e\u0902\u091a", zh: "\u5192\u9669" },
+  fantasy: { en: "Fantasy", es: "Fantas\u00eda", fr: "Fantastique", hi: "\u092b\u0948\u0902\u091f\u0947\u0938\u0940", zh: "\u5947\u5e7b" },
+  documentary: { en: "Documentary", es: "Documental", fr: "Documentaire", hi: "\u0921\u0949\u0915\u094d\u092f\u0942\u092e\u0947\u0902\u091f\u094d\u0930\u0940", zh: "\u7eaa\u5f55\u7247" },
+  crime: { en: "Crime", es: "Crimen", fr: "Crime", hi: "\u0905\u092a\u0930\u093e\u0927", zh: "\u72af\u7f6a" },
+  animation: { en: "Animation", es: "Animaci\u00f3n", fr: "Animation", hi: "\u090f\u0928\u0940\u092e\u0947\u0936\u0928", zh: "\u52a8\u753b" },
+  family: { en: "Family", es: "Familia", fr: "Famille", hi: "\u092a\u0930\u093f\u0935\u093e\u0930", zh: "\u5bb6\u5ead" },
+  mystery: { en: "Mystery", es: "Misterio", fr: "Myst\u00e8re", hi: "\u0930\u0939\u0938\u094d\u092f", zh: "\u60ac\u7591" },
+  romance: { en: "Romance", es: "Romance", fr: "Romance", hi: "\u0930\u094b\u092e\u093e\u0902\u0938", zh: "\u7231\u60c5" },
+  history: { en: "History", es: "Historia", fr: "Histoire", hi: "\u0907\u0924\u093f\u0939\u093e\u0938", zh: "\u5386\u53f2" },
+  music: { en: "Music", es: "M\u00fasica", fr: "Musique", hi: "\u0938\u0902\u0917\u0940\u0924", zh: "\u97f3\u4e50" },
+  war: { en: "War", es: "B\u00e9lica", fr: "Guerre", hi: "\u092f\u0941\u0926\u094d\u0927", zh: "\u6218\u4e89" },
+  western: { en: "Western", es: "Western", fr: "Western", hi: "\u0935\u0947\u0938\u094d\u091f\u0930\u094d\u0928", zh: "\u897f\u90e8" },
+  reality: { en: "Reality", es: "Reality", fr: "T\u00e9l\u00e9r\u00e9alit\u00e9", hi: "\u0930\u093f\u092f\u0932\u093f\u091f\u0940", zh: "\u771f\u4eba\u79c0" },
+  soap: { en: "Soap", es: "Telenovela", fr: "Feuilleton", hi: "\u0938\u094b\u092a", zh: "\u80a5\u7682\u5267" },
+  talk: { en: "Talk", es: "Entrevistas", fr: "Talk-show", hi: "\u0935\u093e\u0930\u094d\u0924\u093e", zh: "\u8131\u53e3\u79c0" },
+  news: { en: "News", es: "Noticias", fr: "Actualit\u00e9s", hi: "\u0938\u092e\u093e\u091a\u093e\u0930", zh: "\u65b0\u95fb" },
+  kids: { en: "Kids", es: "Infantil", fr: "Enfants", hi: "\u092c\u091a\u094d\u091a\u0947", zh: "\u513f\u7ae5" },
+  politics: { en: "War & Politics", es: "B\u00e9lica y pol\u00edtica", fr: "Guerre et politique", hi: "\u092f\u0941\u0926\u094d\u0927 \u0914\u0930 \u0930\u093e\u091c\u0928\u0940\u0924\u093f", zh: "\u6218\u4e89\u4e0e\u653f\u6cbb" },
+}
+const GENRE_ALIASES: Record<string, CanonicalGenre> = {
+  action: "action", accion: "action",
+  horror: "horror", terror: "horror",
+  comedy: "comedy", comedia: "comedy", comedie: "comedy",
+  drama: "drama", drame: "drama",
+  "science fiction": "scifi", "science-fiction": "scifi", "ciencia ficcion": "scifi", "sci fi": "scifi", "sci-fi": "scifi",
+  thriller: "thriller", suspense: "thriller", supense: "thriller", suspenso: "thriller",
+  adventure: "adventure", aventura: "adventure", aventure: "adventure",
+  fantasy: "fantasy", fantasia: "fantasy", fantastique: "fantasy",
+  documentary: "documentary", documental: "documentary", documentaire: "documentary",
+  crime: "crime", crimen: "crime",
+  animation: "animation", animacion: "animation", anime: "animation",
+  family: "family", familia: "family",
+  mystery: "mystery", misterio: "mystery",
+  romance: "romance",
+  history: "history", historia: "history",
+  music: "music", musica: "music",
+  war: "war", guerra: "war", belica: "war",
+  western: "western",
+  reality: "reality",
+  soap: "soap", telenovela: "soap",
+  talk: "talk", entrevistas: "talk",
+  news: "news", noticias: "news",
+  kids: "kids", infantil: "kids",
+  "war and politics": "politics", "war politics": "politics", "belica y politica": "politics",
 }
 
 function genreKey(value: string): string {
@@ -288,6 +318,9 @@ function genreKey(value: string): string {
     .toLocaleLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
 }
 
 export function translateGenre(value: string | null | undefined, lang: Lang): string {
@@ -295,18 +328,8 @@ export function translateGenre(value: string | null | undefined, lang: Lang): st
     .split(",")
     .map((part) => {
       const clean = part.trim()
-      // Three-pass lookup: NFD-normalized lowercase, plain lowercase, original casing
-      const key =
-        GENRE_KEYS[genreKey(clean)] ??
-        GENRE_KEYS[clean.toLocaleLowerCase()] ??
-        GENRE_KEYS[clean]
-      if (key) return t(key, lang)
-      // Last resort: check if the raw value matches any translation key directly
-      // (handles cases like "Suspense" that should map to genre.thriller)
-      const directKey = Object.keys(GENRE_KEYS).find(
-        (k) => genreKey(k) === genreKey(clean)
-      )
-      return directKey ? t(GENRE_KEYS[directKey], lang) : clean
+      const canonical = GENRE_ALIASES[genreKey(clean)]
+      return canonical ? GENRE_LABELS[canonical][lang] : clean
     })
     .join(", ")
 }
@@ -317,7 +340,6 @@ export function translateGenres(value: string | null | undefined, lang: Lang): s
     .map((part) => translateGenre(part.trim(), lang))
     .filter(Boolean)
 }
-
 const LANGUAGE_CODES: Record<string, string> = {
   español: "es", spanish: "es", espagnol: "es", "स्पेनिश": "es", "西班牙语": "es",
   inglés: "en", english: "en", anglais: "en", "अंग्रेज़ी": "en", "英语": "en",

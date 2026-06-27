@@ -48,16 +48,7 @@ function enrich(m: LocalMovieFromJSON): Movie {
     durationSeconds: m.durationSeconds,
     quality: m.quality,
     rating: m.rating,
-    genre: m.genre
-      .split(',')
-      .map((g) => {
-        // Normalize known anglicisms stored in the data
-        const normalized: Record<string, string> = {
-          suspense: 'Suspenso', supense: 'Suspenso',
-        }
-        return normalized[g.trim().toLowerCase()] ?? g.trim()
-      })
-      .join(', '),
+    genre: m.genre,
     language: m.language.length > 0 ? m.language : ["Español"],
     subtitles: m.subtitles.length > 0 ? m.subtitles : [],
     description: m.description,
