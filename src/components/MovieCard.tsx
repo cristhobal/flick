@@ -138,13 +138,13 @@ export default function MovieCard({
 
   const imgSrc = posterUrl(movie.posterPath, "w342")
   const bgSrc = backdropUrl(movie.backdropPath, "w780")
-  const isSeries = movie.type === "series" || movie.type === "anime"
   const canPlay = isPlayableMovie(movie)
   const episodeCount = movie.episodes || movie.seriesEpisodes?.length || 0
   const episodeInfo = episodeCount
     ? `${episodeCount} ${t("common.episodes")}`
     : ""
-  const runtimeLabel = isSeries && episodeInfo ? episodeInfo : movie.duration
+  const hasRuntime = Boolean(movie.duration && movie.duration !== "-")
+  const runtimeLabel = hasRuntime ? movie.duration : episodeInfo || "-"
 
   return (
     <>
@@ -320,7 +320,7 @@ export default function MovieCard({
                   </span>
                 )}
                 <span className="rounded border border-white/10 px-2 py-1">
-                  {isSeries ? episodeInfo || runtimeLabel : movie.duration}
+                  {runtimeLabel}
                 </span>
                 <span className="rounded border border-white/10 px-2 py-1">
                   {movie.type === "movie" ? t("common.movies") : movie.type === "series" ? t("common.series") : t("common.anime")}

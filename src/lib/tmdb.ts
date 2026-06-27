@@ -13,7 +13,8 @@ export interface TMDbMovie {
 }
 export interface TMDbMovieDetail {
   id: number; title?: string; name?: string; poster_path: string | null; backdrop_path: string | null
-  overview: string; vote_average: number; release_date?: string; first_air_date?: string; runtime: number | null
+  overview: string; vote_average: number; release_date?: string; first_air_date?: string; runtime?: number | null
+  episode_run_time?: number[]; last_episode_to_air?: { runtime?: number | null } | null
   genres?: { id: number; name: string }[]; spoken_languages?: { iso_639_1: string; english_name: string }[]
   production_countries: { iso_3166_1: string; name: string }[]; number_of_seasons?: number
   number_of_episodes?: number; status: string; popularity: number; tagline: string; vote_count: number
