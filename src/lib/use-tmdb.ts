@@ -23,6 +23,7 @@ import { displayLanguage, translateGenre, type Lang } from "@/i18n/translations"
 const QUALITIES = ["4K", "1080p", "4K HDR", "1080p HDR", "720p"]
 const MAX_PAGES = 10 // fetch up to 10 pages per endpoint
 const DETAIL_CONCURRENCY = 8
+const HERO_STORAGE_KEY = "flick-tmdb-last-hero"
 
 function runtimeStr(minutes: number | null | undefined): string {
   if (!minutes || minutes <= 0) return "-"
@@ -162,6 +163,39 @@ async function mapWithConcurrency<T, R>(
   })
   await Promise.all(workers)
   return results
+}
+
+function heroStorageId(item: TMDbMovie): string {
+  return `${item.media_type || "movie"}-${item.id}`
+}
+
+function pickHeroItem(items: TMDbMovie[]): TMDbMovie | null {
+  if (items.length === 0) return null
+
+  let lastHeroId: string | null = null
+  if (typeof window !== "undefined") {
+    try {
+      lastHeroId = window.localStorage.getItem(HERO_STORAGE_KEY)
+    } catch {
+      lastHeroId = null
+    }
+  }
+
+  const alternatives = lastHeroId
+    ? items.filter((item) => heroStorageId(item) !== lastHeroId)
+    : items
+  const pool = alternatives.length > 0 ? alternatives : items
+  const selected = pool[Math.floor(Math.random() * pool.length)]
+
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(HERO_STORAGE_KEY, heroStorageId(selected))
+    } catch {
+      // Storage can be unavailable in private or restricted contexts.
+    }
+  }
+
+  return selected
 }
 
 export interface TMDbState {
@@ -346,18 +380,30 @@ export function useTMDB(): TMDbState {
       const masterAnime = dedupe(allAnimeRaw)
 
       // ---- Hero (random trending item with backdrop) ----
-      const heroPool = trendingAllRaw.filter(
+      const heroRaw = [
+        ...trendingAllRaw,
+        ...trendingMoviesRaw.map((item) => ({ ...item, media_type: item.media_type || "movie" })),
+        ...popularMoviesRaw.map((item) => ({ ...item, media_type: item.media_type || "movie" })),
+        ...popularTvRaw.map((item) => ({ ...item, media_type: item.media_type || "tv" })),
+        ...animeRaw.map((item) => ({ ...item, media_type: item.media_type || "tv" })),
+      ]
+      const heroIds = new Set<string>()
+      const heroRawUnique = heroRaw.filter((item) => {
+        const id = heroStorageId(item)
+        if (heroIds.has(id)) return false
+        heroIds.add(id)
+        return true
+      })
+      const heroPool = heroRawUnique.filter(
         (item) =>
           item.backdrop_path &&
           (item.media_type === "movie" || item.media_type === "tv")
       )
-      const fallbackHeroPool = trendingAllRaw.filter(
+      const fallbackHeroPool = heroRawUnique.filter(
         (item) => item.media_type === "movie" || item.media_type === "tv"
       )
       const heroCandidates = heroPool.length > 0 ? heroPool : fallbackHeroPool
-      const heroItem = heroCandidates.length > 0
-        ? heroCandidates[Math.floor(Math.random() * heroCandidates.length)]
-        : null
+      const heroItem = pickHeroItem(heroCandidates)
 
       let heroMovie: Movie | null = null
       if (heroItem) {

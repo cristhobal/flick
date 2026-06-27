@@ -295,8 +295,18 @@ export function translateGenre(value: string | null | undefined, lang: Lang): st
     .split(",")
     .map((part) => {
       const clean = part.trim()
-      const key = GENRE_KEYS[genreKey(clean)] || GENRE_KEYS[clean.toLocaleLowerCase()]
-      return key ? t(key, lang) : clean
+      // Three-pass lookup: NFD-normalized lowercase, plain lowercase, original casing
+      const key =
+        GENRE_KEYS[genreKey(clean)] ??
+        GENRE_KEYS[clean.toLocaleLowerCase()] ??
+        GENRE_KEYS[clean]
+      if (key) return t(key, lang)
+      // Last resort: check if the raw value matches any translation key directly
+      // (handles cases like "Suspense" that should map to genre.thriller)
+      const directKey = Object.keys(GENRE_KEYS).find(
+        (k) => genreKey(k) === genreKey(clean)
+      )
+      return directKey ? t(GENRE_KEYS[directKey], lang) : clean
     })
     .join(", ")
 }
