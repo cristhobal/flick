@@ -283,11 +283,12 @@ const GENRE_KEYS: Record<string, string> = {
 }
 
 function genreKey(value: string): string {
-  return value
+  const key = value
     .trim()
     .toLocaleLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+  return key.replace(/^supense$/, "suspense")
 }
 
 export function translateGenre(value: string | null | undefined, lang: Lang): string {
@@ -295,8 +296,11 @@ export function translateGenre(value: string | null | undefined, lang: Lang): st
     .split(",")
     .map((part) => {
       const clean = part.trim()
-      const key = GENRE_KEYS[genreKey(clean)] || GENRE_KEYS[clean.toLocaleLowerCase()]
-      return key ? t(key, lang) : clean
+      const normalized = genreKey(clean)
+      const key = GENRE_KEYS[normalized] || GENRE_KEYS[clean.toLocaleLowerCase()]
+      if (key) return t(key, lang)
+      if (lang === "es" && normalized.includes("suspense")) return t("genre.thriller", lang)
+      return clean
     })
     .join(", ")
 }
