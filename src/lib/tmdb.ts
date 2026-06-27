@@ -24,10 +24,19 @@ interface TMDbGenreResponse { genres: Genre[] }
 const GENRE_CACHE = new Map<Lang, Genre[]>()
 
 async function apiFetch<T>(endpoint: string): Promise<T> {
+  const token = ACCESS_TOKEN?.trim()
+  if (!token || token === "undefined" || token === "null") {
+    throw new Error("TMDB token missing: PUBLIC_TMDB_TOKEN is not available in this build.")
+  }
   const res = await fetch(`${BASE_URL}${endpoint}`, {
-    headers: { Authorization: `Bearer ${ACCESS_TOKEN}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
   })
-  if (!res.ok) throw new Error(`TMDB error ${res.status}: ${res.statusText}`)
+  if (!res.ok) {
+    const detail = res.status === 401
+      ? "Check that PUBLIC_TMDB_TOKEN is a TMDB v4 Read Access Token and redeploy."
+      : res.statusText
+    throw new Error(`TMDB error ${res.status}: ${detail}`)
+  }
   return res.json()
 }
 
