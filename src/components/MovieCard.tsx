@@ -183,12 +183,14 @@ export default function MovieCard({
 
             <div className="absolute right-0 bottom-0 left-0 h-1/2 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
-            <div className="absolute top-2 right-16 left-2 z-10 min-w-0 transition-transform duration-300 group-hover/card:scale-90">
+            <div className="absolute top-2 right-20 left-2 z-10 min-w-0 overflow-hidden transition-transform duration-300 group-hover/card:scale-90">
               <Badge
                 variant="secondary"
-                className="block max-w-full truncate border-0 bg-black/60 text-[10px] text-neutral-300 backdrop-blur-sm"
+                className="!w-full !max-w-full !shrink !justify-start border-0 bg-black/60 text-[10px] text-neutral-300 backdrop-blur-sm"
               >
-                {genreLabel}
+                <span className="block min-w-0 overflow-hidden truncate text-ellipsis whitespace-nowrap">
+                  {genreLabel}
+                </span>
               </Badge>
             </div>
 
