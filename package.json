@@ -51,5 +51,8 @@
     "prettier-plugin-tailwindcss": "^0.8.0",
     "typescript": "~6",
     "typescript-eslint": "^8"
+  },
+  "overrides": {
+    "vite": "^7.3.5"
   }
 }
