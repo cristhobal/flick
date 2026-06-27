@@ -1,8 +1,6 @@
 import { TMDB_LOCALES, translateGenre, type Lang } from "@/i18n/translations"
 
-const TMDB_CREDENTIAL =
-  (import.meta.env.PUBLIC_TMDB_TOKEN as string | undefined)
-  || (import.meta.env.PUBLIC_TMDB_API_KEY as string | undefined)
+const ACCESS_TOKEN = import.meta.env.PUBLIC_TMDB_TOKEN as string
 
 const BASE_URL = "https://api.themoviedb.org/3"
 export const IMG_URL = "https://image.tmdb.org/t/p"
@@ -26,18 +24,9 @@ interface TMDbGenreResponse { genres: Genre[] }
 const GENRE_CACHE = new Map<Lang, Genre[]>()
 
 async function apiFetch<T>(endpoint: string): Promise<T> {
-  const credential = TMDB_CREDENTIAL?.trim()
-  if (!credential) {
-    throw new Error("TMDB credential missing. Define PUBLIC_TMDB_TOKEN or PUBLIC_TMDB_API_KEY.")
-  }
-  const url = new URL(`${BASE_URL}${endpoint}`)
-  const headers: HeadersInit = { "Content-Type": "application/json" }
-  if (credential.startsWith("eyJ")) {
-    headers.Authorization = `Bearer ${credential}`
-  } else {
-    url.searchParams.set("api_key", credential)
-  }
-  const res = await fetch(url, { headers })
+  const res = await fetch(`${BASE_URL}${endpoint}`, {
+    headers: { Authorization: `Bearer ${ACCESS_TOKEN}`, "Content-Type": "application/json" },
+  })
   if (!res.ok) throw new Error(`TMDB error ${res.status}: ${res.statusText}`)
   return res.json()
 }
