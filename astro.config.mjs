@@ -299,11 +299,16 @@ function localMediaPlugin() {
 
       if (url === "/api/config") {
         let dataSource = "local"
-        try {
-          const envContent = readFileSync(join(import.meta.dirname, ".env"), "utf-8")
-          const match = envContent.match(/^DATA_SOURCE\s*=\s*(\S+)/m)
-          if (match) dataSource = match[1]
-        } catch {}
+        for (const envFile of [".env.local", ".env"]) {
+          try {
+            const envContent = readFileSync(join(import.meta.dirname, envFile), "utf-8")
+            const match = envContent.match(/^(PUBLIC_DATA_SOURCE|DATA_SOURCE)\s*=\s*(\S+)/m)
+            if (match) {
+              dataSource = match[2]
+              break
+            }
+          } catch {}
+        }
         res.writeHead(200, { "Content-Type": "application/json" })
         res.end(JSON.stringify({ dataSource }))
         return
