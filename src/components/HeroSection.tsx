@@ -41,6 +41,7 @@ export default function HeroSection({
     ? { ...movie, trailerUrl: resolvedTrailerUrl }
     : movie
   const canPlay = isPlayableMovie(playableMovie)
+  const contentAnimation = phase === "enter" ? "hero-content-enter" : "hero-content-exit"
 
   useEffect(() => {
     setResolvedTrailerUrl(movie.trailerUrl)
@@ -107,14 +108,14 @@ export default function HeroSection({
           flex + justify-center lo centra en el espacio restante. */}
       <div className="absolute inset-0 z-10 flex flex-col justify-center pt-16 pb-[10vh]">
         <div className="w-full max-w-[1920px] px-4 sm:px-6 lg:px-8">
-          <div className={`flex flex-col gap-4 ${phase === "enter" ? "hero-content-enter" : ""}`}>
+          <div className="flex flex-col gap-4">
             {/* Title */}
-            <h1 className="animate-fade-up stagger-2 max-w-4xl pb-2 text-4xl leading-[1.08] font-bold tracking-tight text-balance text-white drop-shadow-lg sm:text-5xl lg:text-6xl xl:text-7xl">
+            <h1 className={`${contentAnimation} hero-stagger-title max-w-4xl pb-2 text-4xl leading-[1.08] font-bold tracking-tight text-balance text-white drop-shadow-lg sm:text-5xl lg:text-6xl xl:text-7xl`}>
               {movie.title}
             </h1>
 
             {/* Meta info */}
-            <div className="animate-fade-up stagger-3 flex flex-wrap items-center gap-3 text-sm text-neutral-400">
+            <div className={`${contentAnimation} hero-stagger-meta flex flex-wrap items-center gap-3 text-sm text-neutral-400`}>
               <span className="text-white/80">{movie.year}</span>
               <span className="h-4 w-px bg-neutral-700" />
               <span>{resolvedDuration && resolvedDuration !== "-" ? resolvedDuration : t("common.noAvailable")}</span>
@@ -130,12 +131,12 @@ export default function HeroSection({
             </div>
 
             {/* Description */}
-            <p className="animate-fade-up stagger-4 line-clamp-3 max-w-2xl text-sm leading-relaxed text-neutral-400 sm:text-base">
+            <p className={`${contentAnimation} hero-stagger-description line-clamp-3 max-w-2xl text-sm leading-relaxed text-neutral-400 sm:text-base`}>
               {movie.description}
             </p>
 
             {/* Actions */}
-            <div className="animate-fade-up stagger-5 mt-2 flex flex-wrap items-center gap-3">
+            <div className={`${contentAnimation} hero-stagger-actions mt-2 flex flex-wrap items-center gap-3`}>
               {canPlay && (
                 <Button
                   size="lg"

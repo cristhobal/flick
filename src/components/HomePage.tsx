@@ -19,6 +19,9 @@ type PageView = "home" | "search" | "library" | "player" | "category" | "detail"
 
 const HERO_ROTATION_MS = 15_000
 const HERO_EXIT_MS = 720
+const HERO_YEAR = new Date().getFullYear()
+const HERO_MIN_RATING = 7
+const HERO_POPULAR_POOL_SIZE = 30
 
 interface ViewAllCtx {
   t: (key: string) => string
@@ -157,7 +160,15 @@ export default function HomePage() {
   }, [t])
 
   const tmdbHeroCandidates = useMemo(
-    () => allMovies.filter((item) => (item.backdropPath || item.posterPath) && hasHeroSynopsis(item)),
+    () => allMovies
+      .filter((item) =>
+        item.year === HERO_YEAR &&
+        item.rating >= HERO_MIN_RATING &&
+        (item.backdropPath || item.posterPath) &&
+        hasHeroSynopsis(item)
+      )
+      .sort((a, b) => b.rating - a.rating || b.year - a.year)
+      .slice(0, HERO_POPULAR_POOL_SIZE),
     [allMovies, hasHeroSynopsis]
   )
 
@@ -169,7 +180,7 @@ export default function HomePage() {
 
   useEffect(() => {
     if (tmdbHeroCandidates.length === 0) {
-      setHeroMovieId(tmdbHero?.id || null)
+      setHeroMovieId(null)
       return
     }
     setHeroMovieId((currentId) => chooseDifferentTmdbHero(currentId || tmdbHero?.id || null))
@@ -189,11 +200,15 @@ export default function HomePage() {
     if (selected && tmdbHero?.tmdbId === selected.tmdbId && tmdbHero.duration !== "-") {
       return { ...selected, duration: tmdbHero.duration, durationSeconds: tmdbHero.durationSeconds, trailerUrl: selected.trailerUrl || tmdbHero.trailerUrl }
     }
-    return selected || (hasHeroSynopsis(tmdbHero) ? tmdbHero : null)
+    return selected || null
   }, [heroMovieId, tmdbHero, tmdbHeroCandidates, hasHeroSynopsis])
 
   useEffect(() => {
-    if (!hero) return
+    if (!hero) {
+      setVisibleHero(null)
+      setExitingHero(null)
+      return
+    }
     setVisibleHero((current) => {
       if (!current) return hero
       if (current.id === hero.id) return current
