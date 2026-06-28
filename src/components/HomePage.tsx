@@ -10,20 +10,16 @@ import LibraryPage from "@/components/LibraryPage"
 import PlayerPage from "@/components/PlayerPage"
 import CategoryPage from "@/components/CategoryPage"
 import MovieDetailPage from "@/components/MovieDetailPage"
-import { useLocalMovies } from "@/lib/use-local-movies"
 import { useTMDB } from "@/lib/use-tmdb"
-import { useConfig } from "@/lib/use-config"
 import { getPlayableMovie, type Movie } from "@/lib/data"
+import { contentPath, parseContentRoute, samePath, watchPath } from "@/lib/routes"
 import { useI18n } from "@/i18n/I18nProvider"
-import { INTL_LOCALES, translateGenre } from "@/i18n/translations"
 
 type PageView = "home" | "search" | "library" | "player" | "category" | "detail"
 
 const HERO_ROTATION_MS = 15_000
+const HERO_EXIT_MS = 720
 
-
-
-// ---- Helper: resolve the "Ver todo" action for each carousel section ----
 interface ViewAllCtx {
   t: (key: string) => string
   movies: Movie[]
@@ -33,7 +29,7 @@ interface ViewAllCtx {
   setCategoryType: (t: "movie" | "series" | "anime") => void
   setCategoryGenre: (g: string | null) => void
   setCurrentPage: (p: string) => void
-  setView: (v: "home" | "search" | "library" | "player" | "category" | "detail") => void
+  setView: (v: PageView) => void
 }
 
 function buildViewAll(
@@ -42,12 +38,10 @@ function buildViewAll(
 ): (() => void) | undefined {
   const { t, movies, series, anime, setCategoryType, setCategoryGenre, setCurrentPage, setView } = ctx
 
-  // Favorites — no view all
   if (category.items.length === 0) return undefined
 
   const title = category.title
 
-  // Anime section
   if (title === t("common.anime")) {
     if (anime.length === 0) return undefined
     return () => {
@@ -58,7 +52,6 @@ function buildViewAll(
     }
   }
 
-  // Series section
   if (title === t("common.series")) {
     if (series.length === 0) return undefined
     return () => {
@@ -69,18 +62,32 @@ function buildViewAll(
     }
   }
 
-  // Genre-specific sections (action, horror, comedy, or any local genre)
-  // Detect by checking if any item carries a genre that matches the section title
-  // We use the first item's genre list as a heuristic, then confirm with the pool
+  const hasAnime = category.items.some((m) => m.type === "anime")
+  const hasSeries = category.items.some((m) => m.type === "series")
+  const hasMovies = category.items.some((m) => m.type === "movie")
+  const dominantType: "movie" | "series" | "anime" = hasAnime ? "anime" : hasSeries ? "series" : "movie"
+
+  const matchedGenre = category.items
+    .flatMap((m) => m.genre.split(",").map((g) => g.trim()).filter(Boolean))
+    .find((g) => g.toLowerCase() === title.toLowerCase())
+
+  if (matchedGenre) {
+    return () => {
+      setCategoryType(dominantType)
+      setCategoryGenre(matchedGenre)
+      setCurrentPage(dominantType === "movie" ? "movies" : dominantType === "series" ? "series" : "anime")
+      setView("category")
+    }
+  }
+
   const knownGenreKeys: { key: string; genre: string }[] = [
     { key: "home.action", genre: "Action" },
-    { key: "home.horror",  genre: "Horror" },
-    { key: "home.comedy",  genre: "Comedy" },
+    { key: "home.horror", genre: "Horror" },
+    { key: "home.comedy", genre: "Comedy" },
   ]
 
   for (const { key, genre } of knownGenreKeys) {
     if (title === t(key)) {
-      // Find the raw genre value used in the movies data
       const genreInData = category.items
         .flatMap((m) => m.genre.split(",").map((g) => g.trim()))
         .find((g) => g.toLowerCase().includes(genre.toLowerCase()))
@@ -94,34 +101,12 @@ function buildViewAll(
     }
   }
 
-  // Generic movie sections (featured, recent, continue watching, catalog, local genres)
-  // For local genres: the category title matches a translated genre — find the raw genre value
-  if (category.items.every((m) => m.type === "movie" || !m.type)) {
-    // Try to find a common genre from the items that matches the category title
-    const rawGenre = category.items
-      .flatMap((m) => m.genre.split(",").map((g) => g.trim()))
-      .find((g) => {
-        // Check if the translated genre matches the section title
-        return g.toLowerCase() === title.toLowerCase()
-      })
-
-    if (rawGenre) {
-      return () => {
-        setCategoryType("movie")
-        setCategoryGenre(rawGenre)
-        setCurrentPage("movies")
-        setView("category")
-      }
-    }
-
-    // General movie sections (featured, recent, continue watching)
-    if (movies.length > 0) {
-      return () => {
-        setCategoryType("movie")
-        setCategoryGenre(null)
-        setCurrentPage("movies")
-        setView("category")
-      }
+  if (hasMovies && movies.length > 0) {
+    return () => {
+      setCategoryType("movie")
+      setCategoryGenre(null)
+      setCurrentPage("movies")
+      setView("category")
     }
   }
 
@@ -129,15 +114,9 @@ function buildViewAll(
 }
 
 export default function HomePage() {
-  const { lang, t } = useI18n()
-  const { dataSource, loading: configLoading } = useConfig()
-  const local = useLocalMovies()
+  const { t } = useI18n()
   const tmdb = useTMDB()
-
-  const { allMovies, loading, error, hero: tmdbHero, categories: tmdbCategories } =
-    dataSource === "tmdb"
-      ? { ...tmdb, hero: tmdb.hero, categories: tmdb.categories }
-      : { ...local, hero: null, categories: [] }
+  const { allMovies, loading, error, hero: tmdbHero, categories } = tmdb
 
   const [currentPage, setCurrentPage] = useState("home")
   const [view, setView] = useState<PageView>("home")
@@ -149,90 +128,38 @@ export default function HomePage() {
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [filterOpen, setFilterOpen] = useState(false)
-
   const [selectedGenres, setSelectedGenres] = useState<string[]>([])
   const [selectedQualities, setSelectedQualities] = useState<string[]>([])
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
   const [sortBy, setSortBy] = useState("recent")
   const [heroMovieId, setHeroMovieId] = useState<string | null>(null)
+  const [visibleHero, setVisibleHero] = useState<Movie | null>(null)
+  const [exitingHero, setExitingHero] = useState<Movie | null>(null)
 
-  const categories = useMemo(() => {
-    if (dataSource === "tmdb") return tmdbCategories
+  const setPath = useCallback((path: string, replace = false) => {
+    if (typeof window === "undefined" || samePath(path)) return
+    const method = replace ? "replaceState" : "pushState"
+    window.history[method](null, "", path)
+  }, [])
 
-    const byGenre = new Map<string, Movie[]>()
+  const goHome = useCallback((replace = false) => {
+    setView("home")
+    setCurrentPage("home")
+    setSelectedMovie(null)
+    setPath("/", replace)
+    window.scrollTo({ top: 0, behavior: "instant" })
+  }, [setPath])
 
-    for (const movie of allMovies) {
-      for (const genre of movie.genre.split(",").map((item) => item.trim()).filter(Boolean)) {
-        const items = byGenre.get(genre) || []
-        items.push(movie)
-        byGenre.set(genre, items)
-      }
-    }
-
-    const result: { title: string; items: Movie[] }[] = []
-
-    // Track which movie ids have already been used so sections don't repeat content
-    const usedIds = new Set<string>()
-    const pickUnused = (pool: Movie[], limit: number): Movie[] => {
-      const picked: Movie[] = []
-      for (const m of pool) {
-        if (!usedIds.has(m.id)) {
-          picked.push(m)
-          usedIds.add(m.id)
-          if (picked.length >= limit) break
-        }
-      }
-      return picked
-    }
-
-    // "Destacadas" — top of the list, avoid genre sections stealing the same items
-    if (allMovies.length > 0) {
-      const featured = pickUnused(allMovies, 20)
-      result.push({ title: t("home.featured"), items: featured })
-    }
-
-    // "Recientes" — sorted by year, different pool
-    const sortedByYear = [...allMovies].sort((a, b) => b.year - a.year)
-    const recent = pickUnused(sortedByYear, 20)
-    if (recent.length > 0) {
-      result.push({ title: t("home.recent"), items: recent })
-    }
-
-    // Genre sections — each genre uses only its own movies (may overlap with above by genre, but not same items)
-    for (const genre of [...byGenre.keys()].sort((a, b) => a.localeCompare(b, INTL_LOCALES[lang]))) {
-      const genreMovies = byGenre.get(genre) || []
-      const items = genreMovies.filter((m) => !usedIds.has(m.id)).slice(0, 20)
-      if (items.length > 0) {
-        for (const m of items) usedIds.add(m.id)
-        result.push({ title: translateGenre(genre, lang), items })
-      }
-    }
-
-    // "Catálogo" — anything left over
-    const remaining = allMovies.filter((m) => !usedIds.has(m.id)).slice(0, 30)
-    if (remaining.length > 0) {
-      result.push({ title: t("common.catalog"), items: remaining })
-    }
-    return result
-  }, [allMovies, tmdbCategories, dataSource, lang, t])
-
-  const heroCandidates = useMemo(
-    () => dataSource === "tmdb" ? [] : allMovies.filter((item) => item.type === "movie"),
-    [allMovies, dataSource]
-  )
+  const hasHeroSynopsis = useCallback((item: Movie | null | undefined) => {
+    const description = (item?.description || item?.longDescription || "").trim()
+    if (description.length < 24) return false
+    return description !== t("movie.fallback")
+  }, [t])
 
   const tmdbHeroCandidates = useMemo(
-    () => dataSource === "tmdb"
-      ? allMovies.filter((item) => item.backdropPath || item.posterPath)
-      : [],
-    [allMovies, dataSource]
+    () => allMovies.filter((item) => (item.backdropPath || item.posterPath) && hasHeroSynopsis(item)),
+    [allMovies, hasHeroSynopsis]
   )
-
-  const chooseDifferentMovie = useCallback((currentId: string | null) => {
-    const alternatives = heroCandidates.filter((movie) => movie.id !== currentId)
-    const pool = alternatives.length > 0 ? alternatives : heroCandidates
-    return pool[Math.floor(Math.random() * pool.length)].id
-  }, [heroCandidates])
 
   const chooseDifferentTmdbHero = useCallback((currentId: string | null) => {
     const alternatives = tmdbHeroCandidates.filter((movie) => movie.id !== currentId)
@@ -240,52 +167,43 @@ export default function HomePage() {
     return pool[Math.floor(Math.random() * pool.length)]?.id || null
   }, [tmdbHeroCandidates])
 
-  // Elige una pelicula aleatoria siempre que la lista de candidatos cargue (recarga incluida)
   useEffect(() => {
-    if (dataSource === "tmdb") return
-    if (heroCandidates.length === 0) {
-      setHeroMovieId(null)
-      return
-    }
-    setHeroMovieId(chooseDifferentMovie(null))
-  // Solo re-ejecutar cuando pasan de 0 candidatos a tener al menos 1, no en cada re-render
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataSource, heroCandidates.length === 0])
-
-  useEffect(() => {
-    if (dataSource !== "tmdb") return
     if (tmdbHeroCandidates.length === 0) {
       setHeroMovieId(tmdbHero?.id || null)
       return
     }
     setHeroMovieId((currentId) => chooseDifferentTmdbHero(currentId || tmdbHero?.id || null))
-  // Solo cambiar cuando TMDB termina de cargar nuevos candidatos o cambia el hero base.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataSource, tmdbHeroCandidates.length, tmdbHero?.id])
-
-  // Rotar el hero cada HERO_ROTATION_MS mientras se esta en la vista home
-  useEffect(() => {
-    if (dataSource === "tmdb" || view !== "home" || heroCandidates.length < 2) return
-    const rotationTimer = window.setInterval(() => {
-      setHeroMovieId((currentId) => chooseDifferentMovie(currentId))
-    }, HERO_ROTATION_MS)
-    return () => window.clearInterval(rotationTimer)
-  }, [heroCandidates, view, dataSource, chooseDifferentMovie])
+  }, [tmdbHeroCandidates.length, tmdbHero?.id])
 
   useEffect(() => {
-    if (dataSource !== "tmdb" || view !== "home" || tmdbHeroCandidates.length < 2) return
+    if (view !== "home" || tmdbHeroCandidates.length < 2) return
     const rotationTimer = window.setInterval(() => {
       setHeroMovieId((currentId) => chooseDifferentTmdbHero(currentId || tmdbHero?.id || null))
     }, HERO_ROTATION_MS)
     return () => window.clearInterval(rotationTimer)
-  }, [tmdbHeroCandidates, view, dataSource, chooseDifferentTmdbHero, tmdbHero?.id])
+  }, [tmdbHeroCandidates, view, chooseDifferentTmdbHero, tmdbHero?.id])
 
-  const hero = useMemo(
-    () => dataSource === "tmdb"
-      ? (tmdbHeroCandidates.find((movie) => movie.id === heroMovieId) || tmdbHero)
-      : (heroCandidates.find((movie) => movie.id === heroMovieId) || null),
-    [heroCandidates, heroMovieId, tmdbHero, tmdbHeroCandidates, dataSource]
-  )
+  const hero = useMemo(() => {
+    const selected = tmdbHeroCandidates.find((movie) => movie.id === heroMovieId)
+    if (selected && tmdbHero?.tmdbId === selected.tmdbId && tmdbHero.duration !== "-") {
+      return { ...selected, duration: tmdbHero.duration, durationSeconds: tmdbHero.durationSeconds, trailerUrl: selected.trailerUrl || tmdbHero.trailerUrl }
+    }
+    return selected || (hasHeroSynopsis(tmdbHero) ? tmdbHero : null)
+  }, [heroMovieId, tmdbHero, tmdbHeroCandidates, hasHeroSynopsis])
+
+  useEffect(() => {
+    if (!hero) return
+    setVisibleHero((current) => {
+      if (!current) return hero
+      if (current.id === hero.id) return current
+      setExitingHero(current)
+      window.setTimeout(() => {
+        setExitingHero((previous) => previous?.id === current.id ? null : previous)
+      }, HERO_EXIT_MS)
+      return hero
+    })
+  }, [hero])
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -296,76 +214,93 @@ export default function HomePage() {
 
     if (view !== "search") setView("search")
     setSearchLoading(true)
+    tmdb.search(searchQuery).then((results) => {
+      setSearchResults(results)
+      setSearchLoading(false)
+    })
+  }, [searchQuery, tmdb.search])
 
-    if (dataSource === "tmdb") {
-      tmdb.search(searchQuery).then((results) => {
-        setSearchResults(results)
-        setSearchLoading(false)
-      })
-      return
+  useEffect(() => {
+    const applyRoute = () => {
+      const route = parseContentRoute(window.location.pathname)
+      if (!route) {
+        if (window.location.pathname === "/") {
+          setView("home")
+          setCurrentPage("home")
+        }
+        return
+      }
+
+      const baseItem = allMovies.find((movie) => movie.tmdbId === route.tmdbId && movie.type === route.type)
+      const item = route.season && route.episode
+        ? baseItem?.seriesEpisodes?.find((episode) =>
+            episode.seasonNumber === route.season && episode.episodeNumber === route.episode
+          ) || baseItem
+        : baseItem
+      if (!item) return
+      setSelectedMovie(item)
+      setView(route.view === "watch" ? "player" : "detail")
+      setCurrentPage(route.type === "movie" ? "movies" : route.type)
+      window.scrollTo({ top: 0, behavior: "instant" })
     }
 
-    const query = searchQuery.toLowerCase()
-    setSearchResults(
-      allMovies.filter(
-        (movie) =>
-          movie.title.toLowerCase().includes(query) ||
-          movie.genre.toLowerCase().includes(query) ||
-          movie.year.toString().includes(query)
-      )
-    )
-    setSearchLoading(false)
-  }, [searchQuery, allMovies, dataSource, tmdb.search])
+    applyRoute()
+    window.addEventListener("popstate", applyRoute)
+    return () => window.removeEventListener("popstate", applyRoute)
+  }, [allMovies])
 
   const handleNavigate = useCallback((page: string) => {
-    if (page === "favorites") return
-
     if (page === "home") {
-      setView("home")
-      setCurrentPage("home")
+      goHome()
     } else if (page === "library") {
       setView("library")
       setCurrentPage(page)
+      setPath("/library")
     } else if (page === "movies") {
       setCategoryType("movie")
       setCategoryGenre(null)
       setView("category")
       setCurrentPage("movies")
+      setPath("/movies")
     } else if (page === "series") {
       setCategoryType("series")
       setCategoryGenre(null)
       setView("category")
       setCurrentPage("series")
+      setPath("/series")
     } else if (page === "anime") {
       setCategoryType("anime")
       setCategoryGenre(null)
       setView("category")
       setCurrentPage("anime")
+      setPath("/anime")
     } else {
       setCurrentPage(page)
     }
-  }, [])
+  }, [goHome, setPath])
 
   const handlePlay = useCallback((movie: Movie) => {
     const playable = getPlayableMovie(movie)
     if (!playable) return
-
     setSelectedMovie(playable)
     setView("player")
-  }, [])
+    setPath(watchPath(playable))
+    window.scrollTo({ top: 0, behavior: "instant" })
+  }, [setPath])
 
   const handleDetails = useCallback((movie: Movie) => {
     setSelectedMovie(movie)
     setView("detail")
+    setPath(contentPath(movie))
     window.scrollTo({ top: 0, behavior: "instant" })
-  }, [])
+  }, [setPath])
 
   const handleMovieClick = useCallback((movie: Movie) => {
     setSelectedMovie(movie)
     setView("detail")
+    setPath(contentPath(movie))
     window.scrollTo({ top: 0, behavior: "instant" })
-  }, [])
-
+  }, [setPath])
 
   const handleFilterReset = useCallback(() => {
     setSelectedGenres([])
@@ -375,81 +310,48 @@ export default function HomePage() {
   }, [])
 
   const handleGenreToggle = useCallback((genre: string) => {
-    setSelectedGenres((previous) =>
-      previous.includes(genre)
-        ? previous.filter((item) => item !== genre)
-        : [...previous, genre]
-    )
+    setSelectedGenres((previous) => previous.includes(genre) ? previous.filter((item) => item !== genre) : [...previous, genre])
   }, [])
 
   const handleQualityToggle = useCallback((quality: string) => {
-    setSelectedQualities((previous) =>
-      previous.includes(quality)
-        ? previous.filter((item) => item !== quality)
-        : [...previous, quality]
-    )
+    setSelectedQualities((previous) => previous.includes(quality) ? previous.filter((item) => item !== quality) : [...previous, quality])
   }, [])
 
   const handleTypeToggle = useCallback((type: string) => {
-    setSelectedTypes((previous) =>
-      previous.includes(type)
-        ? previous.filter((item) => item !== type)
-        : [...previous, type]
-    )
+    setSelectedTypes((previous) => previous.includes(type) ? previous.filter((item) => item !== type) : [...previous, type])
   }, [])
 
-  const movies = useMemo(
-    () => dataSource === "tmdb" ? tmdb.movies : allMovies.filter((item) => item.type === "movie"),
-    [allMovies, tmdb.movies, dataSource]
-  )
-  const series = useMemo(
-    () => dataSource === "tmdb" ? tmdb.series : allMovies.filter((item) => item.type === "series"),
-    [allMovies, tmdb.series, dataSource]
-  )
-  const anime = useMemo(
-    () => dataSource === "tmdb" ? tmdb.anime : allMovies.filter((item) => item.type === "anime"),
-    [allMovies, tmdb.anime, dataSource]
-  )
-
+  const movies = tmdb.movies
+  const series = tmdb.series
+  const anime = tmdb.anime
   const moviesByType = useMemo(() => ({ movies, series, anime }), [movies, series, anime])
 
   const selectedSeries = useMemo(() => {
     if (!selectedMovie) return undefined
     if (selectedMovie.seriesEpisodes) return selectedMovie
     if (!selectedMovie.seriesTitle) return undefined
-    return allMovies.find(
-      (item) => item.title === selectedMovie.seriesTitle && item.seriesEpisodes
-    )
+    return allMovies.find((item) => item.title === selectedMovie.seriesTitle && item.seriesEpisodes)
   }, [selectedMovie, allMovies])
 
-  const episodeList = useMemo(
-    () => selectedSeries?.seriesEpisodes || [],
-    [selectedSeries]
-  )
+  const episodeList = useMemo(() => selectedSeries?.seriesEpisodes || [], [selectedSeries])
 
   const relatedMovies = useMemo(() => {
     if (!selectedMovie) return []
-
     const reference = selectedSeries || selectedMovie
-    const referenceGenres = new Set(
-      reference.genre.split(",").map((genre) => genre.trim()).filter(Boolean)
-    )
+    const referenceGenres = new Set(reference.genre.split(",").map((genre) => genre.trim()).filter(Boolean))
 
     if (reference.type === "movie") {
-      return allMovies.filter(
-        (item) =>
-          item.type === "movie" &&
-          item.id !== reference.id &&
-          item.genre.split(",").some((genre) => referenceGenres.has(genre.trim()))
+      return allMovies.filter((item) =>
+        item.type === "movie" &&
+        item.id !== reference.id &&
+        item.genre.split(",").some((genre) => referenceGenres.has(genre.trim()))
       ).slice(0, 10)
     }
 
-    return allMovies.filter(
-      (item) =>
-        item.id !== reference.id &&
-        item.type === reference.type &&
-        Boolean(item.seriesEpisodes) &&
-        item.genre.split(",").some((genre) => referenceGenres.has(genre.trim()))
+    return allMovies.filter((item) =>
+      item.id !== reference.id &&
+      item.type === reference.type &&
+      item.genre.split(",").some((genre) => referenceGenres.has(genre.trim()))
     ).slice(0, 10)
   }, [selectedMovie, selectedSeries, allMovies])
 
@@ -471,7 +373,7 @@ export default function HomePage() {
         <MovieDetailPage
           movie={selectedMovie}
           related={relatedMovies}
-          onBack={() => { setView("home"); window.scrollTo({ top: 0, behavior: "instant" }) }}
+          onBack={() => goHome()}
           onPlay={handlePlay}
           onMovieClick={handleMovieClick}
         />
@@ -486,7 +388,7 @@ export default function HomePage() {
           movie={selectedMovie}
           related={relatedMovies}
           episodes={episodeList}
-          onBack={() => setView("home")}
+          onBack={() => goHome()}
           onPlayMovie={handlePlay}
         />
       </PageTransition>
@@ -500,17 +402,12 @@ export default function HomePage() {
           type={categoryType}
           title={categoryTitles[categoryType]}
           items={categoryItems}
-          onClose={() => { setView("home"); setCurrentPage("home") }}
+          onClose={() => goHome()}
           onPlay={handlePlay}
           onDetails={handleDetails}
           initialGenre={categoryGenre}
         />
-        <MovieDetailsModal
-          movie={selectedMovie}
-          open={detailsOpen}
-          onOpenChange={setDetailsOpen}
-          onPlay={handlePlay}
-        />
+        <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} />
       </PageTransition>
     )
   }
@@ -524,9 +421,9 @@ export default function HomePage() {
           results={searchResults}
           isLoading={searchLoading}
           onClose={() => {
-            setView("home")
             setSearchQuery("")
             setSearchResults([])
+            goHome()
           }}
           onPlay={handlePlay}
           onDetails={handleDetails}
@@ -542,12 +439,7 @@ export default function HomePage() {
           filterOpen={filterOpen}
           onFilterOpenChange={setFilterOpen}
         />
-        <MovieDetailsModal
-          movie={selectedMovie}
-          open={detailsOpen}
-          onOpenChange={setDetailsOpen}
-          onPlay={handlePlay}
-        />
+        <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} />
       </PageTransition>
     )
   }
@@ -565,8 +457,7 @@ export default function HomePage() {
         />
         <LibraryPage
           onClose={() => {
-            setView("home")
-            setCurrentPage("home")
+            goHome()
           }}
           movies={moviesByType.movies}
           series={moviesByType.series}
@@ -575,17 +466,12 @@ export default function HomePage() {
           onPlay={handlePlay}
           onDetails={handleDetails}
         />
-        <MovieDetailsModal
-          movie={selectedMovie}
-          open={detailsOpen}
-          onOpenChange={setDetailsOpen}
-          onPlay={handlePlay}
-        />
+        <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} />
       </PageTransition>
     )
   }
 
-  if (loading || configLoading) return <LoadingScreen />
+  if (loading) return <LoadingScreen />
   if (error) return <ErrorScreen message={error} />
 
   return (
@@ -601,21 +487,32 @@ export default function HomePage() {
         />
 
         <main className="pb-16">
-          {hero && (
-            <HeroSection
-              key={hero.id}
-              movie={hero}
-              onPlay={handlePlay}
-              onDetails={handleDetails}
-            />
+          {visibleHero && (
+            <div className="relative min-h-[90vh] overflow-hidden bg-black sm:min-h-screen">
+              {exitingHero && (
+                <HeroSection
+                  key={`exit-${exitingHero.id}`}
+                  movie={exitingHero}
+                  onPlay={handlePlay}
+                  onDetails={handleDetails}
+                  phase="exit"
+                />
+              )}
+              <HeroSection
+                key={`enter-${visibleHero.id}`}
+                movie={visibleHero}
+                onPlay={handlePlay}
+                onDetails={handleDetails}
+                phase="enter"
+              />
+            </div>
           )}
 
           <div className="relative z-20 -mt-16 space-y-10">
             {categories.map((category) => {
               const onViewAll = buildViewAll(
                 category,
-                { t, movies, series, anime, categoryTitles,
-                  setCategoryType, setCategoryGenre, setCurrentPage, setView }
+                { t, movies, series, anime, categoryTitles, setCategoryType, setCategoryGenre, setCurrentPage, setView }
               )
               return (
                 <MovieCarousel
@@ -631,12 +528,7 @@ export default function HomePage() {
           </div>
         </main>
 
-        <MovieDetailsModal
-          movie={selectedMovie}
-          open={detailsOpen}
-          onOpenChange={setDetailsOpen}
-          onPlay={handlePlay}
-        />
+        <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} />
       </div>
     </PageTransition>
   )

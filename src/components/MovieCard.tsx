@@ -13,6 +13,7 @@ import {
   getGenreGradient,
   isPlayableMovie,
 } from "@/lib/data"
+import { fetchDetailWithVideos } from "@/lib/tmdb"
 
 
 const PREVIEW_OPEN_EVENT = "flick:movie-preview-open"
@@ -32,9 +33,11 @@ export default function MovieCard({
   index = 0,
 }: MovieCardProps) {
   const [showExpanded, setShowExpanded] = useState(false)
+  const [isHoveringCard, setIsHoveringCard] = useState(false)
   const { lang, t } = useI18n()
   const [showSynopsis, setShowSynopsis] = useState(false)
   const [synopsisAnim, setSynopsisAnim] = useState<"idle" | "entering" | "closing">("idle")
+  const [resolvedTrailerUrl, setResolvedTrailerUrl] = useState<string | null | undefined>(movie.trailerUrl)
   const [pos, setPos] = useState({ left: 0, top: 0 })
   const showTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -45,6 +48,26 @@ export default function MovieCard({
   const cancelHide = useCallback(() => {
     clearTimeout(hideTimerRef.current)
   }, [])
+
+  useEffect(() => {
+    setResolvedTrailerUrl(movie.trailerUrl)
+  }, [movie.id, movie.trailerUrl])
+
+  useEffect(() => {
+    if ((!isHoveringCard && !showExpanded) || resolvedTrailerUrl !== undefined || !movie.tmdbId) return
+    let cancelled = false
+    const tmdbType = movie.type === "series" || movie.type === "anime" ? "tv" : "movie"
+    fetchDetailWithVideos(movie.tmdbId, tmdbType, lang)
+      .then((result) => {
+        if (!cancelled) setResolvedTrailerUrl(result.trailerUrl || null)
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedTrailerUrl(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isHoveringCard, showExpanded, resolvedTrailerUrl, movie.tmdbId, movie.type, lang])
 
   useEffect(() => {
     const closeOtherPreview = (event: Event) => {
@@ -90,6 +113,7 @@ export default function MovieCard({
   }, [])
 
   const handleCardEnter = () => {
+    setIsHoveringCard(true)
     clearTimeout(hideTimerRef.current)
     window.dispatchEvent(
       new CustomEvent<string>(PREVIEW_OPEN_EVENT, { detail: previewIdRef.current })
@@ -118,6 +142,7 @@ export default function MovieCard({
   }
 
   const handleCardLeave = () => {
+    setIsHoveringCard(false)
     clearTimeout(showTimerRef.current)
     showTimerRef.current = undefined
     scheduleHide(280)
@@ -138,13 +163,21 @@ export default function MovieCard({
 
   const imgSrc = posterUrl(movie.posterPath, "w342")
   const bgSrc = backdropUrl(movie.backdropPath, "w780")
-  const canPlay = isPlayableMovie(movie)
+  const playableMovie = resolvedTrailerUrl
+    ? { ...movie, trailerUrl: resolvedTrailerUrl }
+    : movie
+  const canPlay = isPlayableMovie(playableMovie)
+  const seasonCount = Math.max(movie.seasons || 0, movie.totalSeasons || 0, movie.seasonList?.length || 0)
   const episodeCount = movie.episodes || movie.seriesEpisodes?.length || 0
   const episodeInfo = episodeCount
     ? `${episodeCount} ${t("common.episodes")}`
     : ""
+  const seasonInfo =
+    (movie.type === "series" || movie.type === "anime") && seasonCount > 0
+      ? `${seasonCount} ${seasonCount === 1 ? t("common.season") : t("common.seasons")}`
+      : ""
   const hasRuntime = Boolean(movie.duration && movie.duration !== "-")
-  const runtimeLabel = hasRuntime ? movie.duration : episodeInfo || "-"
+  const runtimeLabel = seasonInfo || (hasRuntime ? movie.duration : episodeInfo || "-")
   const genreLabel = translateGenres(movie.genre, lang).join(", ")
 
   return (
@@ -158,7 +191,7 @@ export default function MovieCard({
       >
         {/* Original poster card — no scale on wrapper */}
         <div
-          className="relative cursor-pointer overflow-hidden rounded-xl bg-neutral-900 shadow-lg ring-1 ring-white/5 transition-all duration-300 ease-out hover:shadow-2xl hover:ring-white/20 active:shadow-md"
+          className="relative cursor-pointer overflow-hidden rounded-xl bg-neutral-900 shadow-lg transition-all duration-300 ease-out hover:shadow-2xl active:shadow-md"
           onClick={handleClick}
         >
           <div className="relative aspect-[2/3] w-full overflow-hidden bg-neutral-900">
@@ -183,20 +216,22 @@ export default function MovieCard({
 
             <div className="absolute right-0 bottom-0 left-0 h-1/2 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
-            <div className="absolute top-2 right-2 left-2 z-10 flex min-w-0 items-center gap-1.5 transition-transform duration-300 group-hover/card:scale-90">
+            <div className="absolute top-2 right-2 left-2 z-10 flex min-w-0 items-center justify-between gap-1.5 transition-transform duration-300 group-hover/card:scale-90">
               <span
-                className="block min-w-0 max-w-[min(8.5rem,58%)] flex-1 truncate rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-neutral-300 backdrop-blur-sm"
+                className="min-w-0 truncate rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-neutral-300 backdrop-blur-sm"
                 title={genreLabel}
               >
                 {genreLabel}
               </span>
-              <Badge className="shrink-0 border-0 bg-white/10 text-[10px] text-white backdrop-blur-sm">
-                {movie.quality}
-              </Badge>
+              {movie.quality && (
+                <Badge className="shrink-0 border-0 bg-white/10 text-[10px] text-white backdrop-blur-sm">
+                  {movie.quality}
+                </Badge>
+              )}
             </div>
 
             <div className="absolute right-0 bottom-0 left-0 flex min-h-24 flex-col justify-end p-3">
-              <p className="line-clamp-2 min-h-9 text-sm font-medium leading-[1.125rem] text-white drop-shadow-lg transition-transform duration-300 group-hover/card:translate-y-[-2px]">
+              <p className="line-clamp-2 text-sm font-medium leading-[1.125rem] text-white drop-shadow-lg transition-transform duration-300 group-hover/card:translate-y-[-2px]">
                 {movie.title}
               </p>
               <div className="mt-2 flex min-w-0 items-center justify-between gap-2 text-[11px] text-neutral-300 transition-opacity duration-300 group-hover/card:opacity-80">
@@ -266,7 +301,7 @@ export default function MovieCard({
                     className="h-9 flex-1 rounded-lg bg-white text-xs font-semibold text-black hover:bg-neutral-200"
                     onClick={(e) => {
                       e.stopPropagation()
-                      onPlay?.(movie)
+                      onPlay?.(playableMovie)
                     }}
                   >
                     <Play className="size-4 fill-black" />

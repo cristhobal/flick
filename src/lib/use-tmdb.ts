@@ -7,22 +7,30 @@ import {
   fetchTopRated,
   discoverByGenre,
   fetchAnime,
+  fetchAnimeByGenre,
+  fetchAnimeTopRated,
+  fetchTvTopRated,
+  fetchTvTrending,
   fetchTrendingAll,
   fetchDetail,
   fetchDetailWithVideos,
+  fetchTvEpisodeGroupSeasons,
   mapGenres,
   fetchGenres,
   searchMulti,
   type TMDbMovie,
   type TMDbMovieDetail,
 } from "@/lib/tmdb"
-import { useConfig } from "@/lib/use-config"
 import { useI18n } from "@/i18n/I18nProvider"
 import { displayLanguage, translateGenre, type Lang } from "@/i18n/translations"
 
 const QUALITIES = ["4K", "1080p", "4K HDR", "1080p HDR", "720p"]
-const MAX_PAGES = 10 // fetch up to 10 pages per endpoint
-const DETAIL_CONCURRENCY = 8
+const MAX_PAGES = 2
+const DETAIL_CONCURRENCY = 4
+const FETCH_CONCURRENCY = 4  // max parallel endpoint fetches to avoid rate limiting
+const PAGES_PER_ENDPOINT = 1
+const INITIAL_PAGES = 1
+const MAX_DETAIL_ITEMS_PER_TYPE = 40
 const HERO_STORAGE_KEY = "flick-tmdb-last-hero"
 const HERO_INDEX_STORAGE_KEY = "flick-tmdb-hero-index"
 
@@ -128,15 +136,21 @@ function dedupe(items: Movie[]): Movie[] {
   })
 }
 
-// fetch multiple pages from a paginated fetcher
+// fetch multiple pages from a paginated fetcher — stops at maxPages or when TMDB says no more
 async function fetchPages(
-  fetcher: (page: number) => Promise<TMDbMovie[]>,
+  fetcher: (page: number) => Promise<{ items: TMDbMovie[]; totalPages: number }>,
   maxPages: number
 ): Promise<TMDbMovie[]> {
   const all: TMDbMovie[] = []
   const seen = new Set<number>()
   for (let page = 1; page <= maxPages; page++) {
-    const items = await fetcher(page)
+    let result: { items: TMDbMovie[]; totalPages: number }
+    try {
+      result = await fetcher(page)
+    } catch {
+      break // on error (including persistent 429), stop gracefully
+    }
+    const { items, totalPages } = result
     if (!items || items.length === 0) break
     for (const item of items) {
       if (!seen.has(item.id)) {
@@ -144,10 +158,26 @@ async function fetchPages(
         all.push(item)
       }
     }
-    // if page had fewer than 20 items, we've reached the end
-    if (items.length < 20) break
+    if (items.length < 20 || page >= totalPages) break
   }
   return all
+}
+
+// Run an array of async tasks with max concurrency
+async function runWithConcurrency<T>(
+  tasks: (() => Promise<T>)[],
+  concurrency: number
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length)
+  let nextIndex = 0
+  const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, async () => {
+    while (nextIndex < tasks.length) {
+      const index = nextIndex++
+      results[index] = await tasks[index]()
+    }
+  })
+  await Promise.all(workers)
+  return results
 }
 
 async function mapWithConcurrency<T, R>(
@@ -232,14 +262,9 @@ export function useTMDB(): TMDbState {
   const fetched = useRef<Lang | null>(null)
   const fetchGeneration = useRef(0)
 
-  const { dataSource } = useConfig()
   const { lang, t: translate } = useI18n()
 
   const fetchAll = useCallback(async () => {
-    if (dataSource !== "tmdb") {
-      setLoading(false)
-      return
-    }
     if (fetched.current === lang) return
     fetched.current = lang
     const generation = ++fetchGeneration.current
@@ -254,7 +279,6 @@ export function useTMDB(): TMDbState {
         (Array.isArray(ids) ? ids : [])
           .map((id) => genreMap[id])
           .filter(Boolean)
-          .slice(0, 2)
           .join(", ") || "General"
 
       const detailCache = new Map<string, Promise<TMDbMovieDetail | null>>()
@@ -305,28 +329,249 @@ export function useTMDB(): TMDbState {
           lang
         )
 
-      // ---- Fetch ALL pages in parallel ----
-      const [
-        popularMoviesRaw,
-        trendingMoviesRaw,
-        topRatedMoviesRaw,
-        popularTvRaw,
-        animeRaw,
-        actionRaw,
-        horrorRaw,
-        comedyRaw,
-        trendingAllRaw,
-      ] = await Promise.all([
-        fetchPages((p) => fetchPopular("movie", p, lang), MAX_PAGES),
-        fetchPages((p) => fetchTrending("movie", p, lang), MAX_PAGES),
-        fetchPages((p) => fetchTopRated("movie", p, lang), MAX_PAGES),
-        fetchPages((p) => fetchPopular("tv", p, lang), MAX_PAGES),
-        fetchPages((p) => fetchAnime(p, lang), MAX_PAGES),
-        fetchPages((p) => discoverByGenre(28, "movie", p, lang), 5),
-        fetchPages((p) => discoverByGenre(27, "movie", p, lang), 5),
-        fetchPages((p) => discoverByGenre(35, "movie", p, lang), 5),
-        fetchPages((p) => fetchTrendingAll(p, lang), 5),
-      ])
+      const enrichMovie = async (movie: Movie, type: Movie["type"], index: number) => {
+        const detail = await getCachedDetail(movie.tmdbId, type)
+        const rebuilt = detail ? rebuildMovie(movie, detail, type, index, movie.trailerUrl) : movie
+        if (!detail || (type !== "series" && type !== "anime")) return rebuilt
+
+        const detailSeasonCount = detail.number_of_seasons || rebuilt.seasons || 0
+        const groupedSeasons = await fetchTvEpisodeGroupSeasons(
+          movie.tmdbId,
+          detail.number_of_episodes || rebuilt.episodes || 0,
+          detailSeasonCount,
+          lang,
+          Object.fromEntries(
+            (detail.seasons || [])
+              .filter((season) => season.season_number > 0 && season.name)
+              .map((season) => [season.season_number, season.name])
+          )
+        )
+        if (groupedSeasons.length === 0) return rebuilt
+
+        return {
+          ...rebuilt,
+          seasons: Math.max(rebuilt.seasons || 0, groupedSeasons.length),
+          totalSeasons: Math.max(rebuilt.totalSeasons || 0, groupedSeasons.length),
+          seasonList: groupedSeasons.map((season) => ({
+            season: season.season,
+            title: season.title,
+            episodes: [],
+          })),
+        }
+      }
+
+      const publishInitialContent = async () => {
+        const initialTasks = [
+          () => fetchPages((p) => fetchPopular("movie", p, lang), INITIAL_PAGES),
+          () => fetchPages((p) => fetchTrending("movie", p, lang), INITIAL_PAGES),
+          () => fetchPages((p) => fetchTopRated("movie", p, lang), INITIAL_PAGES),
+          () => fetchPages((p) => fetchPopular("tv", p, lang), INITIAL_PAGES),
+          () => fetchPages((p) => fetchTvTrending(p, lang), INITIAL_PAGES),
+          () => fetchPages((p) => fetchTvTopRated(p, lang), INITIAL_PAGES),
+          () => fetchPages((p) => fetchAnime(p, lang), INITIAL_PAGES),
+          () => fetchPages((p) => fetchAnimeByGenre(p, lang), INITIAL_PAGES),
+          () => fetchPages((p) => fetchAnimeTopRated(p, lang), INITIAL_PAGES),
+          () => fetchPages((p) => fetchTrendingAll(p, lang), INITIAL_PAGES),
+        ]
+        const [
+          popularMoviesRaw,
+          trendingMoviesRaw,
+          topRatedMoviesRaw,
+          popularTvRaw,
+          trendingTvRaw,
+          topRatedTvRaw,
+          animeKeywordRaw,
+          animeGenreRaw,
+          animeTopRatedRaw,
+          trendingAllRaw,
+        ] = await runWithConcurrency(initialTasks, FETCH_CONCURRENCY)
+
+        const animeIds = new Set<number>()
+        const animeRaw: TMDbMovie[] = []
+        for (const item of [...animeKeywordRaw, ...animeGenreRaw, ...animeTopRatedRaw]) {
+          if (!animeIds.has(item.id)) {
+            animeIds.add(item.id)
+            animeRaw.push({ ...item, media_type: "tv" })
+          }
+        }
+
+        const toBasicMovie = (items: TMDbMovie[], type: Movie["type"]): Movie[] =>
+          items.map((item, i) =>
+            toMovie(item, null, resolveGenre(item.genre_ids || []), type, i, undefined, translate("movie.unknown"), translate("movie.fallback"), translate("common.general"), lang)
+          )
+
+        const movieIds = new Set<number>()
+        const seriesIds = new Set<number>()
+        const movieRaw: TMDbMovie[] = []
+        const seriesRaw: TMDbMovie[] = []
+        const addMovies = (items: TMDbMovie[]) => {
+          for (const item of items) {
+            if (!movieIds.has(item.id)) {
+              movieIds.add(item.id)
+              movieRaw.push({ ...item, media_type: item.media_type || "movie" })
+            }
+          }
+        }
+        const addSeries = (items: TMDbMovie[]) => {
+          for (const item of items) {
+            if (!seriesIds.has(item.id)) {
+              seriesIds.add(item.id)
+              seriesRaw.push({ ...item, media_type: "tv" })
+            }
+          }
+        }
+
+        addMovies(popularMoviesRaw)
+        addMovies(trendingMoviesRaw)
+        addMovies(topRatedMoviesRaw)
+        addSeries(popularTvRaw)
+        addSeries(trendingTvRaw)
+        addSeries(topRatedTvRaw)
+
+        const masterMovie = dedupe(toBasicMovie(movieRaw, "movie"))
+        const masterSeries = dedupe(toBasicMovie(seriesRaw.filter((item) => !animeIds.has(item.id)), "series"))
+        const masterAnime = dedupe(toBasicMovie(animeRaw, "anime"))
+
+        const heroRaw = [
+          ...trendingAllRaw,
+          ...trendingMoviesRaw.map((item) => ({ ...item, media_type: item.media_type || "movie" })),
+          ...popularMoviesRaw.map((item) => ({ ...item, media_type: item.media_type || "movie" })),
+          ...popularTvRaw.map((item) => ({ ...item, media_type: item.media_type || "tv" })),
+          ...animeRaw.map((item) => ({ ...item, media_type: item.media_type || "tv" })),
+        ]
+        const heroCandidates = heroRaw.filter(
+          (item) =>
+            item.backdrop_path &&
+            (item.media_type === "movie" || item.media_type === "tv")
+        )
+        const heroItem = pickHeroItem(heroCandidates.length > 0 ? heroCandidates : heroRaw)
+        const heroMovie = heroItem
+          ? toMovie(
+              heroItem,
+              null,
+              resolveGenre(heroItem.genre_ids || []),
+              (heroItem.media_type === "tv" ? "series" : "movie") as Movie["type"],
+              0,
+              undefined,
+              translate("movie.unknown"),
+              translate("movie.fallback"),
+              translate("common.general"),
+              lang
+            )
+          : null
+
+        if (generation !== fetchGeneration.current) return false
+        setHero(heroMovie)
+        setCategories([
+          { title: translate("home.continue"), items: masterMovie.slice(0, 20) },
+          { title: translate("home.featuredMovies"), items: masterMovie.slice(20, 40) },
+          { title: translate("home.recent"), items: [...masterMovie].sort((a, b) => b.year - a.year).slice(0, 20) },
+          { title: translate("common.anime"), items: masterAnime.slice(0, 20) },
+          { title: translate("common.series"), items: masterSeries.slice(0, 20) },
+        ])
+        setMovies(masterMovie)
+        setSeries(masterSeries)
+        setAnimeList(masterAnime)
+        setAllMovies(dedupe([...masterMovie, ...masterSeries, ...masterAnime]))
+        setLoading(false)
+
+        void (async () => {
+          const [initialMovies, initialSeries, initialAnime] = await Promise.all([
+            mapWithConcurrency(masterMovie.slice(0, MAX_DETAIL_ITEMS_PER_TYPE), DETAIL_CONCURRENCY, async (movie, index) => {
+              const detail = await getCachedDetail(movie.tmdbId, "movie")
+              return detail ? rebuildMovie(movie, detail, "movie", index, movie.trailerUrl) : movie
+            }),
+            mapWithConcurrency(masterSeries.slice(0, MAX_DETAIL_ITEMS_PER_TYPE), DETAIL_CONCURRENCY, (movie, index) =>
+              enrichMovie(movie, "series", index)
+            ),
+            mapWithConcurrency(masterAnime.slice(0, MAX_DETAIL_ITEMS_PER_TYPE), DETAIL_CONCURRENCY, (movie, index) =>
+              enrichMovie(movie, "anime", index)
+            ),
+          ])
+
+          if (generation !== fetchGeneration.current) return
+          const enrichedMovies = [...initialMovies, ...masterMovie.slice(MAX_DETAIL_ITEMS_PER_TYPE)]
+          const enrichedSeries = [...initialSeries, ...masterSeries.slice(MAX_DETAIL_ITEMS_PER_TYPE)]
+          const enrichedAnime = [...initialAnime, ...masterAnime.slice(MAX_DETAIL_ITEMS_PER_TYPE)]
+          setCategories([
+            { title: translate("home.continue"), items: enrichedMovies.slice(0, 20) },
+            { title: translate("home.featuredMovies"), items: enrichedMovies.slice(20, 40) },
+            { title: translate("home.recent"), items: [...enrichedMovies].sort((a, b) => b.year - a.year).slice(0, 20) },
+            { title: translate("common.anime"), items: enrichedAnime.slice(0, 20) },
+            { title: translate("common.series"), items: enrichedSeries.slice(0, 20) },
+          ])
+          setMovies(enrichedMovies)
+          setSeries(enrichedSeries)
+          setAnimeList(enrichedAnime)
+          setAllMovies(dedupe([...enrichedMovies, ...enrichedSeries, ...enrichedAnime]))
+        })()
+        return true
+      }
+
+      if (!(await publishInitialContent())) return
+
+      // ---- Fetch all content with controlled concurrency to respect TMDB rate limits ----
+      // Core endpoints (high quality, fetch all real pages)
+      const CORE_PAGES = MAX_PAGES
+      // Genre endpoints (first N pages = top 100×N by popularity — more than enough per genre)
+      const GENRE_PAGES = PAGES_PER_ENDPOINT
+
+      const MOVIE_GENRE_IDS = [28, 12, 16, 35, 80, 99, 18, 10751, 14, 36, 27, 10402, 9648, 10749, 878, 10770, 53, 10752, 37]
+      const TV_GENRE_IDS   = [10759, 16, 35, 80, 99, 18, 10751, 10762, 9648, 10763, 10764, 10765, 10766, 10767, 10768, 37]
+
+      // Build task list — each is a lazy (() => Promise) so we can run them with concurrency control
+      type FetchTask = { key: string; run: () => Promise<TMDbMovie[]> }
+      const tasks: FetchTask[] = [
+        { key: "popularMovies",  run: () => fetchPages((p) => fetchPopular("movie", p, lang), CORE_PAGES) },
+        { key: "trendingMovies", run: () => fetchPages((p) => fetchTrending("movie", p, lang), CORE_PAGES) },
+        { key: "topRatedMovies", run: () => fetchPages((p) => fetchTopRated("movie", p, lang), CORE_PAGES) },
+        { key: "popularTv",      run: () => fetchPages((p) => fetchPopular("tv", p, lang), CORE_PAGES) },
+        { key: "trendingTv",     run: () => fetchPages((p) => fetchTvTrending(p, lang), CORE_PAGES) },
+        { key: "topRatedTv",     run: () => fetchPages((p) => fetchTvTopRated(p, lang), CORE_PAGES) },
+        { key: "animeKeyword",   run: () => fetchPages((p) => fetchAnime(p, lang), CORE_PAGES) },
+        { key: "animeGenre",     run: () => fetchPages((p) => fetchAnimeByGenre(p, lang), CORE_PAGES) },
+        { key: "animeTopRated",  run: () => fetchPages((p) => fetchAnimeTopRated(p, lang), CORE_PAGES) },
+        { key: "trendingAll",    run: () => fetchPages((p) => fetchTrendingAll(p, lang), CORE_PAGES) },
+        ...MOVIE_GENRE_IDS.map((id) => ({
+          key: `movieGenre_${id}`,
+          run: () => fetchPages((p) => discoverByGenre(id, "movie", p, lang), GENRE_PAGES),
+        })),
+        ...TV_GENRE_IDS.map((id) => ({
+          key: `tvGenre_${id}`,
+          run: () => fetchPages((p) => discoverByGenre(id, "tv", p, lang), GENRE_PAGES),
+        })),
+      ]
+
+      // Run all tasks with controlled concurrency
+      const results = await runWithConcurrency(
+        tasks.map((t) => t.run),
+        FETCH_CONCURRENCY
+      )
+
+      const resultMap: Record<string, TMDbMovie[]> = {}
+      for (let i = 0; i < tasks.length; i++) {
+        resultMap[tasks[i].key] = results[i]
+      }
+
+      const popularMoviesRaw  = resultMap["popularMovies"]
+      const trendingMoviesRaw = resultMap["trendingMovies"]
+      const topRatedMoviesRaw = resultMap["topRatedMovies"]
+      const popularTvRaw      = resultMap["popularTv"]
+      const trendingTvRaw     = resultMap["trendingTv"]
+      const topRatedTvRaw     = resultMap["topRatedTv"]
+      const trendingAllRaw    = resultMap["trendingAll"]
+
+      // Merge all anime sources into one deduplicated set
+      const animeIds = new Set<number>()
+      const animeRaw: TMDbMovie[] = []
+      for (const key of ["animeKeyword", "animeGenre", "animeTopRated"]) {
+        for (const item of resultMap[key]) {
+          if (!animeIds.has(item.id)) {
+            animeIds.add(item.id)
+            animeRaw.push({ ...item, media_type: "tv" })
+          }
+        }
+      }
 
       // ---- Build full movie/series/anime lists (without detail enrichment) ----
       const allIds = new Set<number>()
@@ -345,11 +590,16 @@ export function useTMDB(): TMDbState {
       addRaw(trendingMoviesRaw)
       addRaw(topRatedMoviesRaw)
       addRaw(popularTvRaw)
+      addRaw(trendingTvRaw)
+      addRaw(topRatedTvRaw)
       addRaw(animeRaw)
-      addRaw(actionRaw)
-      addRaw(horrorRaw)
-      addRaw(comedyRaw)
       addRaw(trendingAllRaw)
+      // Add all genre discover results
+      for (const key of Object.keys(resultMap)) {
+        if (key.startsWith("movieGenre_") || key.startsWith("tvGenre_")) {
+          addRaw(resultMap[key])
+        }
+      }
 
       // Separate by type
       const movieRaw: TMDbMovie[] = []
@@ -357,11 +607,12 @@ export function useTMDB(): TMDbState {
       const animeRawItems: TMDbMovie[] = []
 
       for (const item of allRaw) {
-        // check if it's in the anime dedicated list
-        const isAnime = animeRaw.some((a) => a.id === item.id)
+        const isAnime = animeIds.has(item.id)
         const isTv =
           item.media_type === "tv" ||
-          popularTvRaw.some((t) => t.id === item.id)
+          popularTvRaw.some((t) => t.id === item.id) ||
+          trendingTvRaw.some((t) => t.id === item.id) ||
+          topRatedTvRaw.some((t) => t.id === item.id)
 
         if (isAnime) {
           animeRawItems.push(item)
@@ -466,7 +717,8 @@ export function useTMDB(): TMDbState {
             detail = await getCachedDetail(movie.tmdbId, type)
           }
           if (detail || trailerUrl) {
-            results.push(rebuildMovie(movie, detail, type, 0, trailerUrl))
+            const rebuilt = rebuildMovie(movie, detail, type, 0, trailerUrl)
+            results.push(type === "movie" ? rebuilt : await enrichMovie(rebuilt, type, 0))
           } else {
             results.push(movie)
           }
@@ -475,33 +727,19 @@ export function useTMDB(): TMDbState {
       }
 
       const enrichListWithDetails = (items: Movie[], type: Movie["type"]) =>
-        mapWithConcurrency(items, DETAIL_CONCURRENCY, async (movie, index) => {
-          const detail = await getCachedDetail(movie.tmdbId, type)
-          return detail ? rebuildMovie(movie, detail, type, index, movie.trailerUrl) : movie
-        })
+        mapWithConcurrency(items.slice(0, MAX_DETAIL_ITEMS_PER_TYPE), DETAIL_CONCURRENCY, (movie, index) =>
+          type === "movie"
+            ? getCachedDetail(movie.tmdbId, type).then((detail) => detail ? rebuildMovie(movie, detail, type, index, movie.trailerUrl) : movie)
+            : enrichMovie(movie, type, index)
+        ).then((enrichedItems) => [
+          ...enrichedItems,
+          ...items.slice(MAX_DETAIL_ITEMS_PER_TYPE),
+        ])
 
-      // Carousel items: take first N from each master list
-      const carouselMovie = masterMovie.slice(0, 60)
-      const carouselSeries = masterSeries.slice(0, 30)
-      const carouselAnime = masterAnime.slice(0, 30)
-
-      // Build genre-specific pools first
-      const actionPool = carouselMovie.filter((m) => actionRaw.some((item) => item.id === m.tmdbId))
-      const horrorPool = carouselMovie.filter((m) => horrorRaw.some((item) => item.id === m.tmdbId))
-      const comedyPool = carouselMovie.filter((m) => comedyRaw.some((item) => item.id === m.tmdbId))
-
-      // General pool: movies not claimed by any genre pool
-      const genrePoolIds = new Set([
-        ...actionPool.map((m) => m.tmdbId),
-        ...horrorPool.map((m) => m.tmdbId),
-        ...comedyPool.map((m) => m.tmdbId),
-      ])
-      const generalPool = carouselMovie.filter((m) => !genrePoolIds.has(m.tmdbId))
-
-      // Each section gets a non-overlapping slice from the general pool
-      const contViendoPool = generalPool.slice(0, 12)
-      const destacadasPool = generalPool.slice(12, 28)
-      const recientesPool = [...carouselMovie].sort((a, b) => b.year - a.year).slice(0, 12)
+      // Use full master lists for carousels — no artificial caps
+      const contViendoPool = masterMovie.slice(0, 20)
+      const destacadasPool = masterMovie.slice(20, 40)
+      const recientesPool = [...masterMovie].sort((a, b) => b.year - a.year).slice(0, 20)
 
       const [
         contViendo,
@@ -509,18 +747,12 @@ export function useTMDB(): TMDbState {
         recientes,
         animeCat,
         seriesCat,
-        actionCat,
-        horrorCat,
-        comedyCat,
       ] = await Promise.all([
         enrichBatch(contViendoPool, "movie"),
         enrichBatch(destacadasPool, "movie"),
         enrichBatch(recientesPool, "movie"),
-        enrichBatch(carouselAnime.slice(0, 12), "anime"),
-        enrichBatch(carouselSeries.slice(0, 12), "series"),
-        enrichBatch(actionPool.slice(0, 10), "movie"),
-        enrichBatch(horrorPool.slice(0, 8), "movie"),
-        enrichBatch(comedyPool.slice(0, 8), "movie"),
+        enrichBatch(masterAnime.slice(0, 20), "anime"),
+        enrichBatch(masterSeries.slice(0, 20), "series"),
       ])
 
       const cats: Category[] = [
@@ -529,10 +761,6 @@ export function useTMDB(): TMDbState {
         { title: translate("home.recent"), items: recientes },
         { title: translate("common.anime"), items: animeCat },
         { title: translate("common.series"), items: seriesCat },
-        { title: translate("home.action"), items: actionCat },
-        { title: translate("home.horror"), items: horrorCat },
-        { title: translate("home.comedy"), items: comedyCat },
-        { title: translate("nav.favorites"), items: [] },
       ]
 
       const [enrichedMovies, enrichedSeries, enrichedAnime] = await Promise.all([
@@ -560,7 +788,7 @@ export function useTMDB(): TMDbState {
     } finally {
       if (generation === fetchGeneration.current) setLoading(false)
     }
-  }, [dataSource, lang, translate])
+  }, [lang, translate])
 
   useEffect(() => {
     fetchAll()
@@ -571,10 +799,19 @@ export function useTMDB(): TMDbState {
     async (query: string): Promise<Movie[]> => {
       if (!query.trim()) return []
       try {
-        const allSearchResults = await fetchPages(
-          (p) => searchMulti(query, p, lang),
-          5
-        )
+        const allSearchResults: TMDbMovie[] = []
+        const seenSearchIds = new Set<number>()
+        for (let page = 1; page <= 5; page++) {
+          const items = await searchMulti(query, page, lang)
+          if (!items || items.length === 0) break
+          for (const item of items) {
+            if (!seenSearchIds.has(item.id)) {
+              seenSearchIds.add(item.id)
+              allSearchResults.push(item)
+            }
+          }
+          if (items.length < 20) break
+        }
         const enriched: Movie[] = []
         for (let i = 0; i < Math.min(allSearchResults.length, 60); i++) {
           const item = allSearchResults[i]
@@ -607,7 +844,34 @@ export function useTMDB(): TMDbState {
             // Keep the basic TMDB item when localized details are unavailable.
           }
           }
-          enriched.push(toMovie(item, detail, g, t, i, trailerUrl, translate("movie.unknown"), translate("movie.fallback"), translate("common.general"), lang))
+          const movie = toMovie(item, detail, g, t, i, trailerUrl, translate("movie.unknown"), translate("movie.fallback"), translate("common.general"), lang)
+          if (detail && t === "series") {
+            const groupedSeasons = await fetchTvEpisodeGroupSeasons(
+              item.id,
+              detail.number_of_episodes || movie.episodes || 0,
+              detail.number_of_seasons || movie.seasons || 0,
+              lang,
+              Object.fromEntries(
+                (detail.seasons || [])
+                  .filter((season) => season.season_number > 0 && season.name)
+                  .map((season) => [season.season_number, season.name])
+              )
+            )
+            if (groupedSeasons.length > 0) {
+              enriched.push({
+                ...movie,
+                seasons: Math.max(movie.seasons || 0, groupedSeasons.length),
+                totalSeasons: Math.max(movie.totalSeasons || 0, groupedSeasons.length),
+                seasonList: groupedSeasons.map((season) => ({
+                  season: season.season,
+                  title: season.title,
+                  episodes: [],
+                })),
+              })
+              continue
+            }
+          }
+          enriched.push(movie)
         }
         return enriched
       } catch {

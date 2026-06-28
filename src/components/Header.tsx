@@ -18,7 +18,6 @@ import {
   Film,
   Tv,
   Clapperboard,
-  Heart,
   Library,
   X,
 } from "lucide-react"
@@ -65,7 +64,6 @@ export default function Header({
     { label: t("nav.movies"), icon: Film, id: "movies", disabled: false },
     ...(hasSeries ? [{ label: t("nav.series"), icon: Tv, id: "series" as const, disabled: false }] : []),
     ...(hasAnime ? [{ label: t("nav.anime"), icon: Clapperboard, id: "anime" as const, disabled: false }] : []),
-    { label: t("nav.favorites"), icon: Heart, id: "favorites", disabled: true },
     { label: t("nav.library"), icon: Library, id: "library", disabled: false },
   ]
 
