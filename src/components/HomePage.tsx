@@ -5,6 +5,7 @@ import Header from "@/components/Header"
 import HeroSection from "@/components/HeroSection"
 import MovieCarousel from "@/components/MovieCarousel"
 import MovieDetailsModal from "@/components/MovieDetailsModal"
+import FlickTextLoader from "@/components/FlickTextLoader"
 import SearchPage from "@/components/SearchPage"
 import LibraryPage from "@/components/LibraryPage"
 import PlayerPage from "@/components/PlayerPage"
@@ -12,16 +13,16 @@ import CategoryPage from "@/components/CategoryPage"
 import MovieDetailPage from "@/components/MovieDetailPage"
 import { useTMDB } from "@/lib/use-tmdb"
 import { getPlayableMovie, type Movie } from "@/lib/data"
-import { contentPath, parseContentRoute, samePath, watchPath } from "@/lib/routes"
+import { categoryPath, contentPath, parseBrowseRoute, parseContentRoute, samePath, sectionPath, slugifyTitle, watchPath } from "@/lib/routes"
 import { useI18n } from "@/i18n/I18nProvider"
+import { translateGenre } from "@/i18n/translations"
 
 type PageView = "home" | "search" | "library" | "player" | "category" | "detail"
 
 const HERO_ROTATION_MS = 15_000
 const HERO_EXIT_MS = 720
-const HERO_YEAR = new Date().getFullYear()
-const HERO_MIN_RATING = 7
-const HERO_POPULAR_POOL_SIZE = 30
+const HERO_MIN_RATING = 6.5
+const HERO_POPULAR_POOL_SIZE = 80
 
 interface ViewAllCtx {
   t: (key: string) => string
@@ -32,6 +33,7 @@ interface ViewAllCtx {
   setCategoryType: (t: "movie" | "series" | "anime") => void
   setCategoryGenre: (g: string | null) => void
   setCurrentPage: (p: string) => void
+  setPath: (path: string) => void
   setView: (v: PageView) => void
 }
 
@@ -39,7 +41,7 @@ function buildViewAll(
   category: { title: string; items: Movie[] },
   ctx: ViewAllCtx
 ): (() => void) | undefined {
-  const { t, movies, series, anime, setCategoryType, setCategoryGenre, setCurrentPage, setView } = ctx
+  const { t, movies, series, anime, setCategoryType, setCategoryGenre, setCurrentPage, setPath, setView } = ctx
 
   if (category.items.length === 0) return undefined
 
@@ -51,6 +53,7 @@ function buildViewAll(
       setCategoryType("anime")
       setCategoryGenre(null)
       setCurrentPage("anime")
+      setPath(sectionPath("anime"))
       setView("category")
     }
   }
@@ -61,6 +64,7 @@ function buildViewAll(
       setCategoryType("series")
       setCategoryGenre(null)
       setCurrentPage("series")
+      setPath(sectionPath("series"))
       setView("category")
     }
   }
@@ -79,6 +83,7 @@ function buildViewAll(
       setCategoryType(dominantType)
       setCategoryGenre(matchedGenre)
       setCurrentPage(dominantType === "movie" ? "movies" : dominantType === "series" ? "series" : "anime")
+      setPath(categoryPath(dominantType, matchedGenre))
       setView("category")
     }
   }
@@ -99,6 +104,7 @@ function buildViewAll(
         setCategoryType("movie")
         setCategoryGenre(genreInData)
         setCurrentPage("movies")
+        setPath(categoryPath("movie", genreInData))
         setView("category")
       }
     }
@@ -109,6 +115,7 @@ function buildViewAll(
       setCategoryType("movie")
       setCategoryGenre(null)
       setCurrentPage("movies")
+      setPath(sectionPath("movie"))
       setView("category")
     }
   }
@@ -117,7 +124,7 @@ function buildViewAll(
 }
 
 export default function HomePage() {
-  const { t } = useI18n()
+  const { lang, t } = useI18n()
   const tmdb = useTMDB()
   const { allMovies, loading, error, hero: tmdbHero, categories } = tmdb
 
@@ -162,12 +169,11 @@ export default function HomePage() {
   const tmdbHeroCandidates = useMemo(
     () => allMovies
       .filter((item) =>
-        item.year === HERO_YEAR &&
         item.rating >= HERO_MIN_RATING &&
         (item.backdropPath || item.posterPath) &&
         hasHeroSynopsis(item)
       )
-      .sort((a, b) => b.rating - a.rating || b.year - a.year)
+      .sort((a, b) => b.year - a.year || b.rating - a.rating)
       .slice(0, HERO_POPULAR_POOL_SIZE),
     [allMovies, hasHeroSynopsis]
   )
@@ -180,12 +186,21 @@ export default function HomePage() {
 
   useEffect(() => {
     if (tmdbHeroCandidates.length === 0) {
-      setHeroMovieId(null)
+      setHeroMovieId((currentId) => currentId)
       return
     }
-    setHeroMovieId((currentId) => chooseDifferentTmdbHero(currentId || tmdbHero?.id || null))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tmdbHeroCandidates.length, tmdbHero?.id])
+    setHeroMovieId((currentId) => {
+      if (currentId && tmdbHeroCandidates.some((movie) => movie.id === currentId)) {
+        return currentId
+      }
+
+      const tmdbHeroCandidate = tmdbHero
+        ? tmdbHeroCandidates.find((movie) => movie.tmdbId === tmdbHero.tmdbId)
+        : undefined
+
+      return chooseDifferentTmdbHero(tmdbHeroCandidate?.id || currentId)
+    })
+  }, [tmdbHeroCandidates, tmdbHero?.tmdbId, chooseDifferentTmdbHero])
 
   useEffect(() => {
     if (view !== "home" || tmdbHeroCandidates.length < 2) return
@@ -235,34 +250,56 @@ export default function HomePage() {
     })
   }, [searchQuery, tmdb.search])
 
+  const genreFromSlug = useCallback((items: Movie[], genreSlug: string | null) => {
+    if (!genreSlug) return null
+    return items
+      .flatMap((item) => item.genre.split(",").map((genre) => genre.trim()).filter(Boolean))
+      .find((genre) => slugifyTitle(genre) === genreSlug) || null
+  }, [])
+
   useEffect(() => {
     const applyRoute = () => {
-      const route = parseContentRoute(window.location.pathname)
-      if (!route) {
+      const contentRoute = parseContentRoute(window.location.pathname)
+      if (contentRoute) {
+        const baseItem = allMovies.find((movie) => movie.tmdbId === contentRoute.tmdbId && movie.type === contentRoute.type)
+        const item = contentRoute.season && contentRoute.episode
+          ? baseItem?.seriesEpisodes?.find((episode) =>
+              episode.seasonNumber === contentRoute.season && episode.episodeNumber === contentRoute.episode
+            ) || baseItem
+          : baseItem
+        if (!item) return
+        setSelectedMovie(item)
+        setView(contentRoute.view === "watch" ? "player" : "detail")
+        setCurrentPage(contentRoute.type === "movie" ? "movies" : contentRoute.type)
+        window.scrollTo({ top: 0, behavior: "instant" })
+        return
+      }
+
+      const browseRoute = parseBrowseRoute(window.location.pathname)
+      if (browseRoute) {
+        const routeItems = browseRoute.type === "movie" ? tmdb.movies : browseRoute.type === "series" ? tmdb.series : tmdb.anime
+        setSelectedMovie(null)
+        setCategoryType(browseRoute.type)
+        setCategoryGenre(genreFromSlug(routeItems, browseRoute.genreSlug))
+        setCurrentPage(browseRoute.type === "movie" ? "movies" : browseRoute.type)
+        setView("category")
+        window.scrollTo({ top: 0, behavior: "instant" })
+        return
+      }
+
+      if (!contentRoute) {
         if (window.location.pathname === "/") {
           setView("home")
           setCurrentPage("home")
         }
         return
       }
-
-      const baseItem = allMovies.find((movie) => movie.tmdbId === route.tmdbId && movie.type === route.type)
-      const item = route.season && route.episode
-        ? baseItem?.seriesEpisodes?.find((episode) =>
-            episode.seasonNumber === route.season && episode.episodeNumber === route.episode
-          ) || baseItem
-        : baseItem
-      if (!item) return
-      setSelectedMovie(item)
-      setView(route.view === "watch" ? "player" : "detail")
-      setCurrentPage(route.type === "movie" ? "movies" : route.type)
-      window.scrollTo({ top: 0, behavior: "instant" })
     }
 
     applyRoute()
     window.addEventListener("popstate", applyRoute)
     return () => window.removeEventListener("popstate", applyRoute)
-  }, [allMovies])
+  }, [allMovies, genreFromSlug, tmdb.anime, tmdb.movies, tmdb.series])
 
   const handleNavigate = useCallback((page: string) => {
     if (page === "home") {
@@ -276,19 +313,19 @@ export default function HomePage() {
       setCategoryGenre(null)
       setView("category")
       setCurrentPage("movies")
-      setPath("/movies")
+      setPath(sectionPath("movie"))
     } else if (page === "series") {
       setCategoryType("series")
       setCategoryGenre(null)
       setView("category")
       setCurrentPage("series")
-      setPath("/series")
+      setPath(sectionPath("series"))
     } else if (page === "anime") {
       setCategoryType("anime")
       setCategoryGenre(null)
       setView("category")
       setCurrentPage("anime")
-      setPath("/anime")
+      setPath(sectionPath("anime"))
     } else {
       setCurrentPage(page)
     }
@@ -340,6 +377,25 @@ export default function HomePage() {
   const series = tmdb.series
   const anime = tmdb.anime
   const moviesByType = useMemo(() => ({ movies, series, anime }), [movies, series, anime])
+  const movieGenreCategories = useMemo(() => {
+    const desiredGenres = ["Horror", "Action", "Family", "Comedy", "Adventure", "Science Fiction"]
+    return desiredGenres
+      .map((genre) => {
+        const title = translateGenre(genre, lang)
+        const items = movies.filter((movie) =>
+          movie.genre
+            .split(",")
+            .map((item) => item.trim().toLowerCase())
+            .includes(title.toLowerCase())
+        )
+        return { title, items: items.slice(0, 20) }
+      })
+      .filter((category) => category.items.length > 0)
+  }, [lang, movies])
+  const homeCategories = useMemo(
+    () => [...categories, ...movieGenreCategories],
+    [categories, movieGenreCategories]
+  )
 
   const selectedSeries = useMemo(() => {
     if (!selectedMovie) return undefined
@@ -501,9 +557,9 @@ export default function HomePage() {
           hasAnime={anime.length > 0}
         />
 
-        <main className="pb-16">
+        <main className="pb-12 sm:pb-16">
           {visibleHero && (
-            <div className="relative min-h-[90vh] overflow-hidden bg-black sm:min-h-screen">
+            <div className="relative min-h-[68svh] overflow-hidden bg-black sm:min-h-[90vh] lg:min-h-screen">
               {exitingHero && (
                 <HeroSection
                   key={`exit-${exitingHero.id}`}
@@ -523,11 +579,11 @@ export default function HomePage() {
             </div>
           )}
 
-          <div className="relative z-20 -mt-16 space-y-10">
-            {categories.map((category) => {
+          <div className="relative z-20 -mt-12 space-y-8 sm:-mt-14 sm:space-y-10">
+            {homeCategories.map((category) => {
               const onViewAll = buildViewAll(
                 category,
-                { t, movies, series, anime, categoryTitles, setCategoryType, setCategoryGenre, setCurrentPage, setView }
+                { t, movies, series, anime, categoryTitles, setCategoryType, setCategoryGenre, setCurrentPage, setPath, setView }
               )
               return (
                 <MovieCarousel
@@ -554,19 +610,26 @@ function PageTransition({ children }: { children: React.ReactNode }) {
 }
 
 function LoadingScreen() {
-  const { t } = useI18n()
+  useEffect(() => {
+    const htmlOverflow = document.documentElement.style.overflow
+    const bodyOverflow = document.body.style.overflow
+    const bodyOverscroll = document.body.style.overscrollBehavior
+
+    document.documentElement.style.overflow = "hidden"
+    document.body.style.overflow = "hidden"
+    document.body.style.overscrollBehavior = "none"
+
+    return () => {
+      document.documentElement.style.overflow = htmlOverflow
+      document.body.style.overflow = bodyOverflow
+      document.body.style.overscrollBehavior = bodyOverscroll
+    }
+  }, [])
+
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-black">
-      <div className="relative size-12">
-        <div className="absolute inset-0 animate-pulse rounded-full border-2 border-white/10 bg-white/5" />
-        <div className="absolute inset-1 animate-pulse rounded-full border border-white/5 bg-white/3" style={{ animationDelay: "0.15s" }} />
-        <div className="absolute inset-[6px] animate-pulse rounded-full bg-white/5" style={{ animationDelay: "0.3s" }} />
-      </div>
-      <div className="flex flex-col items-center gap-3">
-        <p className="text-sm text-neutral-600">{t("common.loading")}</p>
-        <div className="h-1 w-48 overflow-hidden rounded-full bg-neutral-900">
-          <div className="h-full w-1/2 animate-shimmer rounded-full" />
-        </div>
+    <div className="fixed inset-0 z-50 h-[100dvh] max-h-[100dvh] w-full overflow-hidden bg-black text-center overscroll-none touch-none">
+      <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center">
+        <FlickTextLoader />
       </div>
     </div>
   )

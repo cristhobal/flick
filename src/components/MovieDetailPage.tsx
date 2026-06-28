@@ -362,19 +362,19 @@ export default function MovieDetailPage({
   return (
     <div className="min-h-screen bg-black">
       {/* Back button */}
-      <div className="fixed top-0 right-0 left-0 z-40 bg-gradient-to-b from-black/80 to-transparent py-4 pl-4 animate-fade-in sm:pl-6">
+      <div className="fixed top-0 right-0 left-0 z-40 bg-gradient-to-b from-black/80 to-transparent py-3 pl-3 animate-fade-in sm:py-4 sm:pl-4 lg:pl-6">
         <Button
           variant="ghost"
           size="icon"
-          className="text-white transition-all hover:scale-110 hover:bg-white/10 active:scale-95"
+          className="size-9 text-white transition-all hover:scale-110 hover:bg-white/10 active:scale-95 sm:size-10"
           onClick={onBack}
         >
-          <ChevronLeft className="size-6" />
+          <ChevronLeft className="size-5 sm:size-6" />
         </Button>
       </div>
 
       {/* Hero backdrop section */}
-      <section className="relative min-h-[60vh] w-full overflow-hidden sm:min-h-[70vh]">
+      <section className="relative w-full overflow-hidden">
         {bgSrc ? (
           <img
             src={bgSrc}
@@ -382,7 +382,7 @@ export default function MovieDetailPage({
             className={`absolute inset-0 h-full w-full object-cover object-top will-change-transform ${
               imgLoaded ? "opacity-40 animate-ken-burns" : "opacity-0"
             }`}
-            style={{ transition: imgLoaded ? undefined : "opacity 1s ease" }}
+            style={{ minHeight: "320px", transition: imgLoaded ? undefined : "opacity 1s ease" }}
             onLoad={() => setImgLoaded(true)}
           />
         ) : posterSrc ? (
@@ -392,7 +392,7 @@ export default function MovieDetailPage({
             className={`absolute inset-0 h-full w-full object-cover object-top will-change-transform ${
               imgLoaded ? "opacity-30 animate-ken-burns" : "opacity-0"
             }`}
-            style={{ transition: imgLoaded ? undefined : "opacity 1s ease" }}
+            style={{ minHeight: "320px", transition: imgLoaded ? undefined : "opacity 1s ease" }}
             onLoad={() => setImgLoaded(true)}
           />
         ) : (
@@ -404,14 +404,14 @@ export default function MovieDetailPage({
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent" />
         {/* Top gradient — always dark so the back button is always readable */}
         <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/70 to-transparent pointer-events-none" />
-        <div className="absolute top-0 left-0 h-full w-1/2 bg-gradient-to-r from-black/80 to-transparent" />
+        <div className="absolute top-0 left-0 h-full w-full bg-gradient-to-r from-black/80 via-black/30 to-transparent sm:w-3/4 lg:w-1/2" />
 
         {/* Content */}
-        <div className="relative z-10 mx-auto flex h-full min-h-[60vh] max-w-[1920px] items-end pt-16 sm:min-h-[70vh]">
-          <div className="flex w-full gap-6 px-4 pb-16 sm:px-6 sm:pb-20 lg:px-8 lg:pb-24">
-            {/* Poster */}
+        <div className="content-container relative z-10 flex h-full items-end pt-20 sm:pt-24">
+          <div className="flex w-full gap-4 pb-8 sm:gap-6 sm:pb-10 lg:pb-14">
+            {/* Poster — hidden on mobile, visible sm+ */}
             {posterSrc && (
-              <div className="hidden w-48 shrink-0 animate-fade-up stagger-1 sm:block md:w-56">
+              <div className="hidden w-36 shrink-0 animate-fade-up stagger-1 sm:block sm:w-44 md:w-52 lg:w-56">
                 <div className="aspect-[2/3] w-full overflow-hidden rounded-xl shadow-2xl">
                   <img
                     src={posterSrc}
@@ -423,28 +423,28 @@ export default function MovieDetailPage({
             )}
 
             {/* Info */}
-            <div className="flex flex-col justify-end gap-4">
-              <h1 className="max-w-3xl text-3xl font-bold tracking-tight text-white drop-shadow-lg animate-fade-up stagger-2 sm:text-4xl md:text-5xl">
+            <div className="flex min-w-0 flex-1 flex-col justify-end gap-3 sm:gap-4">
+              <h1 className="max-w-full text-2xl font-bold tracking-tight text-white drop-shadow-lg animate-fade-up stagger-2 sm:max-w-3xl sm:text-3xl md:text-4xl lg:text-5xl">
                 {movie.title}
               </h1>
 
-              <div className="flex flex-wrap items-center gap-3 text-sm text-neutral-400 animate-fade-up stagger-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-400 animate-fade-up stagger-3 sm:gap-3 sm:text-sm">
                 <span className="text-white/80">{movie.year}</span>
-                <span className="h-4 w-px bg-neutral-700" />
+                <span className="h-3.5 w-px bg-neutral-700 sm:h-4" />
                 <span>{visibleDuration !== "-" ? visibleDuration : t("common.noAvailable")}</span>
                 {movie.quality && (
                   <>
-                    <span className="h-4 w-px bg-neutral-700" />
+                    <span className="h-3.5 w-px bg-neutral-700 sm:h-4" />
                     <span className="text-neutral-500">{movie.quality}</span>
                   </>
                 )}
-                <span className="h-4 w-px bg-neutral-700" />
+                <span className="h-3.5 w-px bg-neutral-700 sm:h-4" />
                 <span className="text-neutral-500">{translateGenre(movie.genre, lang)}</span>
               </div>
 
-              <div className="flex flex-wrap gap-2 animate-fade-up stagger-4">
+              <div className="flex flex-wrap gap-1.5 animate-fade-up stagger-4 sm:gap-2">
                 {movie.quality && (
-                  <Badge className="border-0 bg-white/10 text-xs text-white backdrop-blur-sm">
+                  <Badge className="border-0 bg-white/10 text-[10px] text-white backdrop-blur-sm sm:text-xs">
                     {movie.quality}
                   </Badge>
                 )}
@@ -452,19 +452,19 @@ export default function MovieDetailPage({
                   <Badge
                     key={l}
                     variant="outline"
-                    className="border-white/10 text-xs text-neutral-300"
+                    className="border-white/10 text-[10px] text-neutral-300 sm:text-xs"
                   >
                     {displayLanguage(l, lang)}
                   </Badge>
                 ))}
               </div>
 
-              <p className="max-w-2xl text-sm leading-relaxed text-neutral-400 animate-fade-up stagger-5 sm:text-base">
+              <p className="line-clamp-3 max-w-full text-xs leading-relaxed text-neutral-400 animate-fade-up stagger-5 sm:max-w-2xl sm:text-sm md:text-base lg:line-clamp-none">
                 {movie.longDescription}
               </p>
 
               {creativeCards.length > 0 && (
-                <div className="hide-scrollbar flex w-full max-w-5xl items-start gap-3 overflow-x-auto pb-1 animate-fade-up stagger-5">
+                <div className="hide-scrollbar flex w-full items-start gap-2 overflow-x-auto pb-1 animate-fade-up stagger-5 sm:gap-3">
                   {creativeCards.map((card) => {
                     const Icon = card.icon
                     return (
@@ -473,19 +473,19 @@ export default function MovieDetailPage({
                           creativeCardRefs.current[card.key] = element
                         }}
                         key={card.key}
-                        className="h-fit w-max min-w-fit shrink-0 rounded-lg border border-white/10 bg-black/35 p-4 backdrop-blur-md"
+                        className="h-fit w-max min-w-fit shrink-0 rounded-lg border border-white/10 bg-black/35 p-3 backdrop-blur-md sm:p-4"
                         style={creativeCardWidth ? { width: creativeCardWidth } : undefined}
                       >
-                        <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-neutral-400">
-                          <Icon className="size-3.5 text-neutral-300" />
+                        <div className="mb-2 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-neutral-400 sm:gap-2 sm:text-xs">
+                          <Icon className="size-3 text-neutral-300 sm:size-3.5" />
                           {card.title}
                         </div>
-                        <div className="flex flex-nowrap gap-2">
+                        <div className="flex flex-nowrap gap-1.5 sm:gap-2">
                           {card.items.map((item) => (
                             <Badge
                               key={item}
                               variant="secondary"
-                              className={`h-auto w-max max-w-none justify-start whitespace-nowrap rounded-lg px-2.5 py-1.5 text-left text-[11px] leading-snug ${card.badgeClassName}`}
+                              className={`h-auto w-max max-w-none justify-start whitespace-nowrap rounded-lg px-2 py-1 text-left text-[10px] leading-snug sm:px-2.5 sm:py-1.5 sm:text-[11px] ${card.badgeClassName}`}
                             >
                               {item}
                             </Badge>
@@ -497,25 +497,25 @@ export default function MovieDetailPage({
                 </div>
               )}
 
-              <div className="flex flex-wrap gap-3 animate-fade-up stagger-6">
+              <div className="flex flex-wrap gap-2 animate-fade-up stagger-6 sm:gap-3">
                 {canPlay && (
                   <Button
-                    size="lg"
-                    className="gap-2 border-0 bg-white text-black transition-all duration-300 hover:scale-105 hover:bg-neutral-200 active:scale-95"
+                    size="default"
+                    className="h-9 gap-2 border-0 bg-white px-4 text-sm text-black transition-all duration-300 hover:scale-105 hover:bg-neutral-200 active:scale-95 sm:h-11 sm:px-6 sm:text-base"
                     onClick={() => onPlay(detailMovie)}
                   >
-                    <Play className="size-5 fill-black" />
+                    <Play className="size-4 fill-black sm:size-5" />
                     {t("common.play")}
                   </Button>
                 )}
                 <Button
-                  size="lg"
+                  size="default"
                   variant="outline"
                   disabled
                   title={t("common.availableSoon")}
-                  className="gap-2 border-white/10 text-neutral-500"
+                  className="hidden h-9 gap-2 border-white/10 text-sm text-neutral-500 sm:flex sm:h-11 sm:text-base"
                 >
-                  <Heart className="size-5" />
+                  <Heart className="size-4 sm:size-5" />
                   {t("common.favoritesSoon")}
                 </Button>
               </div>
@@ -526,7 +526,7 @@ export default function MovieDetailPage({
       </section>
 
       {/* Tags section */}
-      <section className="mx-auto max-w-[1920px] px-4 pb-6 animate-fade-up stagger-7 sm:px-6 lg:px-8">
+      <section className="content-container pb-5 animate-fade-up stagger-7 sm:pb-6">
         <div className="flex flex-wrap gap-2">
           {movie.rating > 0 && (
             <Badge
@@ -546,20 +546,20 @@ export default function MovieDetailPage({
           </Badge>
           <Badge
             variant="secondary"
-            className="border-0 bg-neutral-800 text-xs text-neutral-300"
+            className="max-w-full whitespace-normal border-0 bg-neutral-800 text-left text-xs text-neutral-300"
           >
             {translateGenre(movie.genre, lang)}
           </Badge>
           <Badge
             variant="secondary"
-            className="border-0 bg-neutral-800 text-xs text-neutral-300"
+            className="max-w-full whitespace-normal border-0 bg-neutral-800 text-left text-xs text-neutral-300"
           >
             <Languages className="mr-1 size-3" />
             {movie.language.map((language) => displayLanguage(language, lang)).join(", ")}
           </Badge>
           <Badge
             variant="secondary"
-            className="border-0 bg-neutral-800 text-xs text-neutral-300"
+            className="max-w-full whitespace-normal border-0 bg-neutral-800 text-left text-xs text-neutral-300"
           >
             <Subtitles className="mr-1 size-3" />
             {movie.subtitles.length > 0
@@ -571,7 +571,7 @@ export default function MovieDetailPage({
 
       {/* Episodes */}
       {((activeSeriesEpisodes && activeSeriesEpisodes.length > 0) || tmdbEpisodesLoading) && (
-        <section className="mx-auto max-w-[1920px] px-4 pb-10 animate-fade-up sm:px-6 lg:px-8">
+        <section className="content-container pb-8 animate-fade-up sm:pb-10">
           <div className="mb-4 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <h2 className="text-lg font-semibold text-white">{t("details.episodes")}</h2>
@@ -606,7 +606,7 @@ export default function MovieDetailPage({
               {visibleEpisodes.length} {t("common.episodes")}
             </span>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="responsive-episode-grid">
             {tmdbEpisodesLoading && visibleEpisodes.length === 0
               ? Array.from({ length: 6 }).map((_, index) => (
                   <Card
@@ -691,7 +691,7 @@ export default function MovieDetailPage({
       {/* Cast - carousel con botones */}
       {cast.length > 0 && (
         <section
-          className="group/row mx-auto max-w-[1920px] px-4 pb-10 sm:px-6 lg:px-8"
+          className="content-container group/row pb-8 sm:pb-10"
           style={{
             opacity: castReady ? 1 : 0,
             transform: castReady ? "translateY(0)" : "translateY(14px)",
@@ -750,13 +750,13 @@ export default function MovieDetailPage({
 
       {/* Related */}
       {related.length > 0 && (
-        <section className="mx-auto max-w-[1920px] px-4 pb-10 animate-fade-up sm:px-6 lg:px-8">
-          <h2 className="mb-4 text-lg font-semibold text-white">
+        <section className="content-container pb-8 animate-fade-up sm:pb-10">
+          <h2 className="mb-4 text-base font-semibold text-white sm:text-lg">
             {movie.type === "movie" ? t("details.related") : movie.type === "anime" ? t("details.similarAnime") : t("details.similarSeries")}
           </h2>
-          <div className="hide-scrollbar flex flex-nowrap gap-3 overflow-x-auto pb-2">
+          <div className="hide-scrollbar flex flex-nowrap gap-2 overflow-x-auto pb-2 sm:gap-3">
             {related.map((item, i) => (
-              <div key={item.id} className="w-[140px] shrink-0 sm:w-[160px]">
+              <div key={item.id} className="w-[130px] shrink-0 sm:w-[150px] md:w-[160px]">
                 <MovieCard
                   movie={item}
                   onPlay={onPlay}

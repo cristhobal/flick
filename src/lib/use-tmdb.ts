@@ -31,9 +31,6 @@ const DETAIL_CONCURRENCY = 4
 const FETCH_CONCURRENCY = 4  // max parallel endpoint fetches to avoid rate limiting
 const PAGES_PER_ENDPOINT = 1
 const INITIAL_PAGES = 1
-const MAX_DETAIL_ITEMS_PER_TYPE = 40
-const HERO_STORAGE_KEY = "flick-tmdb-last-hero"
-const HERO_INDEX_STORAGE_KEY = "flick-tmdb-hero-index"
 
 function runtimeStr(minutes: number | null | undefined): string {
   if (!minutes || minutes <= 0) return "-"
@@ -268,39 +265,8 @@ function heroStorageId(item: TMDbMovie): string {
 
 function pickHeroItem(items: TMDbMovie[]): TMDbMovie | null {
   if (items.length === 0) return null
-
-  let lastHeroId: string | null = null
-  let lastHeroIndex = -1
-  if (typeof window !== "undefined") {
-    try {
-      lastHeroId = window.localStorage.getItem(HERO_STORAGE_KEY)
-      lastHeroIndex = Number(window.localStorage.getItem(HERO_INDEX_STORAGE_KEY) ?? "-1")
-    } catch {
-      lastHeroId = null
-      lastHeroIndex = -1
-    }
-  }
-
-  const sorted = [...items].sort((a, b) => heroStorageId(a).localeCompare(heroStorageId(b)))
-  const currentIndex = Number.isFinite(lastHeroIndex)
-    ? lastHeroIndex
-    : sorted.findIndex((item) => heroStorageId(item) === lastHeroId)
-  let nextIndex = (currentIndex + 1) % sorted.length
-  if (sorted.length > 1 && lastHeroId && heroStorageId(sorted[nextIndex]) === lastHeroId) {
-    nextIndex = (nextIndex + 1) % sorted.length
-  }
-  const selected = sorted[nextIndex]
-
-  if (typeof window !== "undefined") {
-    try {
-      window.localStorage.setItem(HERO_STORAGE_KEY, heroStorageId(selected))
-      window.localStorage.setItem(HERO_INDEX_STORAGE_KEY, String(nextIndex))
-    } catch {
-      // Storage can be unavailable in private or restricted contexts.
-    }
-  }
-
-  return selected
+  const topApiResults = items.slice(0, Math.min(items.length, 24))
+  return topApiResults[Math.floor(Math.random() * topApiResults.length)]
 }
 
 export interface TMDbState {
@@ -326,6 +292,7 @@ export function useTMDB(): TMDbState {
   const [error, setError] = useState<string | null>(null)
   const fetched = useRef<Lang | null>(null)
   const fetchGeneration = useRef(0)
+  const stableCategoriesPublished = useRef(false)
 
   const { lang, t: translate } = useI18n()
 
@@ -333,6 +300,7 @@ export function useTMDB(): TMDbState {
     if (fetched.current === lang) return
     fetched.current = lang
     const generation = ++fetchGeneration.current
+    stableCategoriesPublished.current = false
     setLoading(true)
     setError(null)
     try {
@@ -554,43 +522,6 @@ export function useTMDB(): TMDbState {
         setSeries(masterSeries)
         setAnimeList(masterAnime)
         setAllMovies(dedupe([...masterMovie, ...masterSeries, ...masterAnime]))
-        setLoading(false)
-
-        void (async () => {
-          const [initialMovies, initialSeries, initialAnime] = await Promise.all([
-            mapWithConcurrency(masterMovie.slice(0, MAX_DETAIL_ITEMS_PER_TYPE), DETAIL_CONCURRENCY, async (movie, index) => {
-              const detail = await getCachedDetail(movie.tmdbId, "movie")
-              return detail ? rebuildMovie(movie, detail, "movie", index, movie.trailerUrl) : movie
-            }),
-            mapWithConcurrency(masterSeries.slice(0, MAX_DETAIL_ITEMS_PER_TYPE), DETAIL_CONCURRENCY, (movie, index) =>
-              enrichMovie(movie, "series", index)
-            ),
-            mapWithConcurrency(masterAnime.slice(0, MAX_DETAIL_ITEMS_PER_TYPE), DETAIL_CONCURRENCY, (movie, index) =>
-              enrichMovie(movie, "anime", index)
-            ),
-          ])
-
-          if (generation !== fetchGeneration.current) return
-          const enrichedMovies = [...initialMovies, ...masterMovie.slice(MAX_DETAIL_ITEMS_PER_TYPE)]
-          const enrichedSeries = [...initialSeries, ...masterSeries.slice(MAX_DETAIL_ITEMS_PER_TYPE)]
-          const enrichedAnime = [...initialAnime, ...masterAnime.slice(MAX_DETAIL_ITEMS_PER_TYPE)]
-          const enrichedFeatured = featuredMovies.map(
-            (movie) => enrichedMovies.find((item) => item.tmdbId === movie.tmdbId) || movie
-          )
-          const enrichedRecent = recentMovies.map(
-            (movie) => enrichedMovies.find((item) => item.tmdbId === movie.tmdbId) || movie
-          )
-          setCategories([
-            { title: translate("home.featuredMovies"), items: enrichedFeatured.slice(0, 20) },
-            { title: translate("home.recent"), items: enrichedRecent.slice(0, 20) },
-            { title: translate("common.anime"), items: enrichedAnime.slice(0, 20) },
-            { title: translate("common.series"), items: enrichedSeries.slice(0, 20) },
-          ])
-          setMovies(enrichedMovies)
-          setSeries(enrichedSeries)
-          setAnimeList(enrichedAnime)
-          setAllMovies(dedupe([...enrichedMovies, ...enrichedSeries, ...enrichedAnime]))
-        })()
         return true
       }
 
@@ -816,14 +747,11 @@ export function useTMDB(): TMDbState {
       }
 
       const enrichListWithDetails = (items: Movie[], type: Movie["type"]) =>
-        mapWithConcurrency(items.slice(0, MAX_DETAIL_ITEMS_PER_TYPE), DETAIL_CONCURRENCY, (movie, index) =>
+        mapWithConcurrency(items, DETAIL_CONCURRENCY, (movie, index) =>
           type === "movie"
             ? getCachedDetail(movie.tmdbId, type).then((detail) => detail ? rebuildMovie(movie, detail, type, index, movie.trailerUrl) : movie)
             : enrichMovie(movie, type, index)
-        ).then((enrichedItems) => [
-          ...enrichedItems,
-          ...items.slice(MAX_DETAIL_ITEMS_PER_TYPE),
-        ])
+        )
 
       // Use full master lists for carousels — no artificial caps
       const featuredMovieRaw = buildFeaturedRaw({
@@ -880,6 +808,7 @@ export function useTMDB(): TMDbState {
 
       if (generation !== fetchGeneration.current) return
       setCategories(cats)
+      stableCategoriesPublished.current = true
       setAllMovies(enrichedAll)
       setMovies(enrichedMovies)
       setSeries(enrichedSeries)

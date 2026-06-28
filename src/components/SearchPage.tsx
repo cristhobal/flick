@@ -33,7 +33,6 @@ interface SearchPageProps {
   onFilterOpenChange: (open: boolean) => void
 }
 
-
 export default function SearchPage({
   query,
   onQueryChange,
@@ -67,11 +66,11 @@ export default function SearchPage({
     <div className="min-h-screen bg-black">
       {/* Fixed Search Header */}
       <div className="fixed top-0 right-0 left-0 z-40 border-b border-white/5 bg-black/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-[1920px] items-center gap-3 px-4 sm:px-6 lg:px-8">
+        <div className="content-container flex h-14 items-center gap-2 sm:h-16 sm:gap-3">
           <Button
             variant="ghost"
             size="icon-sm"
-            className="text-neutral-400 transition-all hover:scale-110 hover:text-white active:scale-95"
+            className="shrink-0 text-neutral-400 transition-all hover:scale-110 hover:text-white active:scale-95"
             onClick={onClose}
           >
             <ArrowLeft className="size-5" />
@@ -83,7 +82,7 @@ export default function SearchPage({
               placeholder={t("common.searchContent")}
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
-              className="h-10 border-neutral-800 bg-neutral-900/50 pl-10 text-base text-white placeholder:text-neutral-500 transition-all focus:border-neutral-600"
+              className="h-10 border-neutral-800 bg-neutral-900/50 pl-10 text-sm text-white placeholder:text-neutral-500 transition-all focus:border-neutral-600 sm:text-base"
             />
             {query && (
               <button
@@ -111,11 +110,10 @@ export default function SearchPage({
       </div>
 
       {/* Content */}
-      <div className="pt-16">
+      <div className="pt-14 sm:pt-16">
         {isLoading ? (
-          /* Loading skeleton */
-          <div className="mx-auto max-w-[1920px] px-4 pt-8 sm:px-6 lg:px-8">
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+          <div className="content-container pt-6 sm:pt-8">
+            <div className="responsive-card-grid">
               {Array.from({ length: 18 }).map((_, i) => (
                 <div key={i} className="space-y-2">
                   <Skeleton className="aspect-[2/3] w-full rounded-xl bg-neutral-900" />
@@ -126,36 +124,34 @@ export default function SearchPage({
             </div>
           </div>
         ) : query && results.length === 0 ? (
-          /* Empty state */
-          <div className="flex flex-col items-center justify-center px-4 pt-24 animate-fade-in">
-            <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-neutral-900">
-              <Search className="size-6 text-neutral-600" />
+          <div className="flex flex-col items-center justify-center px-4 pt-20 animate-fade-in sm:pt-24">
+            <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-neutral-900 sm:size-16">
+              <Search className="size-5 text-neutral-600 sm:size-6" />
             </div>
-            <h3 className="mb-1 text-lg font-medium text-white">
+            <h3 className="mb-1 text-base font-medium text-white sm:text-lg">
               {t("search.noTitle")}
             </h3>
-            <p className="max-w-sm text-center text-sm text-neutral-500">
+            <p className="max-w-xs text-center text-sm text-neutral-500 sm:max-w-sm">
               {t("search.noDescription", { query })}
             </p>
           </div>
         ) : !query ? (
-          /* Initial explore state */
-          <div className="mx-auto max-w-[1920px] px-4 pt-8 sm:px-6 lg:px-8">
-            <div className="mb-8 flex flex-col items-center justify-center py-12 animate-fade-up">
-              <div className="mb-4 flex size-20 items-center justify-center rounded-full border border-white/10 bg-neutral-900/50">
-                <Search className="size-8 text-neutral-600" />
+          <div className="content-container pt-6 sm:pt-8">
+            <div className="mb-8 flex flex-col items-center justify-center py-8 animate-fade-up sm:py-12">
+              <div className="mb-4 flex size-16 items-center justify-center rounded-full border border-white/10 bg-neutral-900/50 sm:size-20">
+                <Search className="size-6 text-neutral-600 sm:size-8" />
               </div>
-              <h3 className="mb-2 text-xl font-medium text-white">
+              <h3 className="mb-2 text-lg font-medium text-white sm:text-xl">
                 {t("search.exploreTitle")}
               </h3>
-              <p className="max-w-md text-center text-sm text-neutral-500">
+              <p className="max-w-xs text-center text-sm text-neutral-500 sm:max-w-md">
                 {t("search.exploreDescription")}
               </p>
             </div>
 
             {/* Trending suggestions */}
             <div className="mb-6 animate-fade-up stagger-2">
-              <div className="mb-4 flex items-center gap-2">
+              <div className="mb-3 flex items-center gap-2 sm:mb-4">
                 <TrendingUp className="size-4 text-neutral-500" />
                 <h2 className="text-sm font-medium text-neutral-400">
                   {t("search.suggestions")}
@@ -166,7 +162,7 @@ export default function SearchPage({
                   <button
                     key={tag}
                     onClick={() => onQueryChange(tag)}
-                    className="rounded-full border border-neutral-800 bg-neutral-900/50 px-4 py-1.5 text-sm text-neutral-400 transition-all hover:scale-105 hover:border-neutral-700 hover:text-white active:scale-95"
+                    className="rounded-full border border-neutral-800 bg-neutral-900/50 px-3 py-1.5 text-xs text-neutral-400 transition-all hover:scale-105 hover:border-neutral-700 hover:text-white active:scale-95 sm:px-4 sm:text-sm"
                   >
                     {translateGenre(tag, lang)}
                   </button>
@@ -175,7 +171,7 @@ export default function SearchPage({
             </div>
 
             {/* Quick filters */}
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 animate-fade-up stagger-3">
+            <div className="grid grid-cols-1 gap-3 animate-fade-up stagger-3 min-[420px]:grid-cols-2 sm:grid-cols-3 sm:gap-4 md:grid-cols-4">
               {[
                 { label: t("search.mostViewed"), icon: TrendingUp },
                 { label: t("search.justAdded"), icon: Clock },
@@ -183,23 +179,22 @@ export default function SearchPage({
               ].map((item) => (
                 <button
                   key={item.label}
-                  className="flex items-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900/30 p-4 transition-all hover:scale-105 hover:border-neutral-700 hover:bg-neutral-900 active:scale-95"
+                  className="flex items-center gap-2.5 rounded-xl border border-neutral-800 bg-neutral-900/30 p-3 transition-all hover:scale-105 hover:border-neutral-700 hover:bg-neutral-900 active:scale-95 sm:gap-3 sm:p-4"
                 >
-                  <item.icon className="size-5 text-neutral-500" />
-                  <span className="text-sm text-neutral-300">{item.label}</span>
+                  <item.icon className="size-4 shrink-0 text-neutral-500 sm:size-5" />
+                  <span className="text-xs text-neutral-300 sm:text-sm">{item.label}</span>
                 </button>
               ))}
             </div>
           </div>
         ) : (
-          /* Results */
-          <div className="mx-auto max-w-[1920px] px-4 pt-6 sm:px-6 lg:px-8">
-            <div className="mb-6 flex items-center justify-between animate-fade-up">
-              <p className="text-sm text-neutral-500">
+          <div className="content-container pt-5 sm:pt-6">
+            <div className="mb-4 flex items-center justify-between animate-fade-up sm:mb-6">
+              <p className="text-xs text-neutral-500 sm:text-sm">
                 {t("search.resultsFor", { count: results.length, suffix: results.length !== 1 && lang !== "hi" && lang !== "zh" ? "s" : "", query })}
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            <div className="responsive-card-grid">
               {results.map((movie, i) => (
                 <MovieCard
                   key={movie.id}

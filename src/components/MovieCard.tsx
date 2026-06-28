@@ -113,6 +113,8 @@ export default function MovieCard({
   }, [])
 
   const handleCardEnter = () => {
+    // Disable hover preview on touch devices
+    if (window.matchMedia("(hover: none)").matches) return
     setIsHoveringCard(true)
     clearTimeout(hideTimerRef.current)
     window.dispatchEvent(
@@ -124,7 +126,7 @@ export default function MovieCard({
       showTimerRef.current = undefined
       if (cardRef.current) {
         const rect = cardRef.current.getBoundingClientRect()
-        const previewWidth = Math.min(360, window.innerWidth - 24)
+        const previewWidth = Math.min(340, window.innerWidth - 24)
         const viewportPadding = 12
         const gap = 8
         const spaceRight = window.innerWidth - rect.right
@@ -146,6 +148,7 @@ export default function MovieCard({
   }
 
   const handleCardLeave = () => {
+    if (window.matchMedia("(hover: none)").matches) return
     setIsHoveringCard(false)
     clearTimeout(showTimerRef.current)
     showTimerRef.current = undefined
