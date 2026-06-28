@@ -124,13 +124,17 @@ export default function MovieCard({
       showTimerRef.current = undefined
       if (cardRef.current) {
         const rect = cardRef.current.getBoundingClientRect()
-        const previewWidth = 340
+        const previewWidth = Math.min(360, window.innerWidth - 24)
         const viewportPadding = 12
         const gap = 8
         const spaceRight = window.innerWidth - rect.right
-        const left = spaceRight >= previewWidth + gap + viewportPadding
+        const rawLeft = spaceRight >= previewWidth + gap + viewportPadding
           ? rect.right + gap
-          : Math.max(viewportPadding, rect.left - previewWidth - gap)
+          : rect.left - previewWidth - gap
+        const left = Math.min(
+          Math.max(viewportPadding, rawLeft),
+          window.innerWidth - previewWidth - viewportPadding
+        )
         const top = Math.min(
           Math.max(rect.top, viewportPadding),
           window.innerHeight - viewportPadding
