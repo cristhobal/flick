@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect, useCallback } from "react"
+import { useState, useMemo, useEffect, useCallback, useLayoutEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -76,6 +76,8 @@ export default function MovieDetailPage({
   const [tmdbEpisodeGroupSeasons, setTmdbEpisodeGroupSeasons] = useState<{ season: number; title: string; episodes: Movie[] }[]>([])
   const [tmdbEpisodesLoading, setTmdbEpisodesLoading] = useState(false)
   const [castReady, setCastReady] = useState(false)
+  const [creativeCardWidth, setCreativeCardWidth] = useState<number | null>(null)
+  const creativeCardRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   useEffect(() => {
     setSelectedSeason(1)
@@ -312,6 +314,25 @@ export default function MovieDetailPage({
     return cards
   }, [creativeCredits, movie.type, t])
 
+  useLayoutEffect(() => {
+    if (creativeCards.length === 0) {
+      setCreativeCardWidth(null)
+      return
+    }
+
+    let widest = 0
+    for (const card of creativeCards) {
+      const element = creativeCardRefs.current[card.key]
+      if (!element) continue
+      const previousWidth = element.style.width
+      element.style.width = "max-content"
+      widest = Math.max(widest, Math.ceil(element.getBoundingClientRect().width))
+      element.style.width = previousWidth
+    }
+
+    setCreativeCardWidth(widest || null)
+  }, [creativeCards])
+
   return (
     <div className="min-h-screen bg-black">
       {/* Back button */}
@@ -422,8 +443,12 @@ export default function MovieDetailPage({
                     const Icon = card.icon
                     return (
                       <div
+                        ref={(element) => {
+                          creativeCardRefs.current[card.key] = element
+                        }}
                         key={card.key}
                         className="h-fit w-max min-w-fit shrink-0 rounded-lg border border-white/10 bg-black/35 p-4 backdrop-blur-md"
+                        style={creativeCardWidth ? { width: creativeCardWidth } : undefined}
                       >
                         <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-neutral-400">
                           <Icon className="size-3.5 text-neutral-300" />

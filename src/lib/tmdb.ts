@@ -100,6 +100,10 @@ export async function fetchPopular(type: "movie" | "tv" = "movie", page = 1, lan
   const data = await apiFetch<TMDbPageResponse<TMDbMovie>>(`/${type}/popular?language=${locale(lang)}&page=${page}`)
   return toPagedResult(data)
 }
+export async function fetchNowPlaying(page = 1, lang: Lang = "en"): Promise<PagedResult> {
+  const data = await apiFetch<TMDbPageResponse<TMDbMovie>>(`/movie/now_playing?language=${locale(lang)}&page=${page}`)
+  return toPagedResult(data)
+}
 export async function fetchTopRated(type: "movie" | "tv" = "movie", page = 1, lang: Lang = "en"): Promise<PagedResult> {
   const data = await apiFetch<TMDbPageResponse<TMDbMovie>>(`/${type}/top_rated?language=${locale(lang)}&page=${page}`)
   return toPagedResult(data)

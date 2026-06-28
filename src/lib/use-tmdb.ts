@@ -4,6 +4,7 @@ import type { Movie, Category } from "@/lib/data"
 import {
   fetchTrending,
   fetchPopular,
+  fetchNowPlaying,
   fetchTopRated,
   discoverByGenre,
   fetchAnime,
@@ -59,6 +60,61 @@ function pickQuality(): string {
 const CONTENT_RATINGS = ["+7", "+13", "+14", "+16", "+18", "R", "PG-13", "TV-MA", "TV-14"]
 function pickContentRating(): string {
   return CONTENT_RATINGS[Math.floor(Math.random() * CONTENT_RATINGS.length)]
+}
+
+function releaseTime(item: TMDbMovie): number {
+  const date = item.release_date || item.first_air_date || ""
+  const time = Date.parse(date)
+  return Number.isFinite(time) ? time : 0
+}
+
+function byReleaseDateDesc(a: TMDbMovie, b: TMDbMovie): number {
+  return releaseTime(b) - releaseTime(a)
+}
+
+function byApiScoreDesc(a: TMDbMovie, b: TMDbMovie): number {
+  return (b.popularity || 0) - (a.popularity || 0)
+    || (b.vote_average || 0) - (a.vote_average || 0)
+    || releaseTime(b) - releaseTime(a)
+}
+
+function featuredScore(item: TMDbMovie, sourceBoost = 0): number {
+  const daysSinceRelease = Math.max(
+    0,
+    (Date.now() - releaseTime(item)) / 86_400_000
+  )
+  const recencyScore = releaseTime(item) > 0 ? Math.max(0, 1 - daysSinceRelease / 365) : 0
+  const popularityScore = Math.log10((item.popularity || 0) + 1)
+  const ratingScore = (item.vote_average || 0) / 10
+
+  return sourceBoost + popularityScore * 0.45 + ratingScore * 0.3 + recencyScore * 0.25
+}
+
+function buildFeaturedRaw(sources: {
+  trending: TMDbMovie[]
+  popular: TMDbMovie[]
+  topRated: TMDbMovie[]
+  recent: TMDbMovie[]
+}): TMDbMovie[] {
+  const scores = new Map<number, number>()
+  const items = new Map<number, TMDbMovie>()
+
+  const add = (list: TMDbMovie[], boost: number) => {
+    for (const item of list) {
+      items.set(item.id, item)
+      scores.set(item.id, Math.max(scores.get(item.id) || 0, featuredScore(item, boost)))
+    }
+  }
+
+  add(sources.trending, 0.45)
+  add(sources.popular, 0.3)
+  add(sources.topRated, 0.2)
+  add(sources.recent, 0.25)
+
+  return [...items.values()].sort((a, b) =>
+    (scores.get(b.id) || 0) - (scores.get(a.id) || 0)
+      || byApiScoreDesc(a, b)
+  )
 }
 
 function pickLanguages(detail: TMDbMovieDetail | null, lang: Lang): string[] {
@@ -132,6 +188,15 @@ function dedupe(items: Movie[]): Movie[] {
   return items.filter((m) => {
     if (seen.has(m.tmdbId)) return false
     seen.add(m.tmdbId)
+    return true
+  })
+}
+
+function dedupeRaw(items: TMDbMovie[]): TMDbMovie[] {
+  const seen = new Set<number>()
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false
+    seen.add(item.id)
     return true
   })
 }
@@ -363,6 +428,7 @@ export function useTMDB(): TMDbState {
       const publishInitialContent = async () => {
         const initialTasks = [
           () => fetchPages((p) => fetchPopular("movie", p, lang), INITIAL_PAGES),
+          () => fetchPages((p) => fetchNowPlaying(p, lang), INITIAL_PAGES),
           () => fetchPages((p) => fetchTrending("movie", p, lang), INITIAL_PAGES),
           () => fetchPages((p) => fetchTopRated("movie", p, lang), INITIAL_PAGES),
           () => fetchPages((p) => fetchPopular("tv", p, lang), INITIAL_PAGES),
@@ -375,6 +441,7 @@ export function useTMDB(): TMDbState {
         ]
         const [
           popularMoviesRaw,
+          nowPlayingMoviesRaw,
           trendingMoviesRaw,
           topRatedMoviesRaw,
           popularTvRaw,
@@ -422,15 +489,30 @@ export function useTMDB(): TMDbState {
         }
 
         addMovies(popularMoviesRaw)
+        addMovies(nowPlayingMoviesRaw)
         addMovies(trendingMoviesRaw)
         addMovies(topRatedMoviesRaw)
         addSeries(popularTvRaw)
         addSeries(trendingTvRaw)
         addSeries(topRatedTvRaw)
 
+        const featuredMovieRaw = buildFeaturedRaw({
+          trending: trendingMoviesRaw,
+          popular: popularMoviesRaw,
+          topRated: topRatedMoviesRaw,
+          recent: nowPlayingMoviesRaw,
+        })
+        const recentMovieRaw = dedupeRaw(
+          nowPlayingMoviesRaw.length > 0
+            ? nowPlayingMoviesRaw
+            : [...popularMoviesRaw, ...trendingMoviesRaw, ...topRatedMoviesRaw]
+        ).sort(byReleaseDateDesc)
+
         const masterMovie = dedupe(toBasicMovie(movieRaw, "movie"))
         const masterSeries = dedupe(toBasicMovie(seriesRaw.filter((item) => !animeIds.has(item.id)), "series"))
         const masterAnime = dedupe(toBasicMovie(animeRaw, "anime"))
+        const featuredMovies = dedupe(toBasicMovie(featuredMovieRaw, "movie"))
+        const recentMovies = dedupe(toBasicMovie(recentMovieRaw, "movie"))
 
         const heroRaw = [
           ...trendingAllRaw,
@@ -463,9 +545,8 @@ export function useTMDB(): TMDbState {
         if (generation !== fetchGeneration.current) return false
         setHero(heroMovie)
         setCategories([
-          { title: translate("home.continue"), items: masterMovie.slice(0, 20) },
-          { title: translate("home.featuredMovies"), items: masterMovie.slice(20, 40) },
-          { title: translate("home.recent"), items: [...masterMovie].sort((a, b) => b.year - a.year).slice(0, 20) },
+          { title: translate("home.featuredMovies"), items: featuredMovies.slice(0, 20) },
+          { title: translate("home.recent"), items: recentMovies.slice(0, 20) },
           { title: translate("common.anime"), items: masterAnime.slice(0, 20) },
           { title: translate("common.series"), items: masterSeries.slice(0, 20) },
         ])
@@ -493,10 +574,15 @@ export function useTMDB(): TMDbState {
           const enrichedMovies = [...initialMovies, ...masterMovie.slice(MAX_DETAIL_ITEMS_PER_TYPE)]
           const enrichedSeries = [...initialSeries, ...masterSeries.slice(MAX_DETAIL_ITEMS_PER_TYPE)]
           const enrichedAnime = [...initialAnime, ...masterAnime.slice(MAX_DETAIL_ITEMS_PER_TYPE)]
+          const enrichedFeatured = featuredMovies.map(
+            (movie) => enrichedMovies.find((item) => item.tmdbId === movie.tmdbId) || movie
+          )
+          const enrichedRecent = recentMovies.map(
+            (movie) => enrichedMovies.find((item) => item.tmdbId === movie.tmdbId) || movie
+          )
           setCategories([
-            { title: translate("home.continue"), items: enrichedMovies.slice(0, 20) },
-            { title: translate("home.featuredMovies"), items: enrichedMovies.slice(20, 40) },
-            { title: translate("home.recent"), items: [...enrichedMovies].sort((a, b) => b.year - a.year).slice(0, 20) },
+            { title: translate("home.featuredMovies"), items: enrichedFeatured.slice(0, 20) },
+            { title: translate("home.recent"), items: enrichedRecent.slice(0, 20) },
             { title: translate("common.anime"), items: enrichedAnime.slice(0, 20) },
             { title: translate("common.series"), items: enrichedSeries.slice(0, 20) },
           ])
@@ -523,6 +609,7 @@ export function useTMDB(): TMDbState {
       type FetchTask = { key: string; run: () => Promise<TMDbMovie[]> }
       const tasks: FetchTask[] = [
         { key: "popularMovies",  run: () => fetchPages((p) => fetchPopular("movie", p, lang), CORE_PAGES) },
+        { key: "nowPlayingMovies", run: () => fetchPages((p) => fetchNowPlaying(p, lang), CORE_PAGES) },
         { key: "trendingMovies", run: () => fetchPages((p) => fetchTrending("movie", p, lang), CORE_PAGES) },
         { key: "topRatedMovies", run: () => fetchPages((p) => fetchTopRated("movie", p, lang), CORE_PAGES) },
         { key: "popularTv",      run: () => fetchPages((p) => fetchPopular("tv", p, lang), CORE_PAGES) },
@@ -554,6 +641,7 @@ export function useTMDB(): TMDbState {
       }
 
       const popularMoviesRaw  = resultMap["popularMovies"]
+      const nowPlayingMoviesRaw = resultMap["nowPlayingMovies"]
       const trendingMoviesRaw = resultMap["trendingMovies"]
       const topRatedMoviesRaw = resultMap["topRatedMovies"]
       const popularTvRaw      = resultMap["popularTv"]
@@ -587,6 +675,7 @@ export function useTMDB(): TMDbState {
       }
 
       addRaw(popularMoviesRaw)
+      addRaw(nowPlayingMoviesRaw)
       addRaw(trendingMoviesRaw)
       addRaw(topRatedMoviesRaw)
       addRaw(popularTvRaw)
@@ -737,18 +826,34 @@ export function useTMDB(): TMDbState {
         ])
 
       // Use full master lists for carousels — no artificial caps
-      const contViendoPool = masterMovie.slice(0, 20)
-      const destacadasPool = masterMovie.slice(20, 40)
-      const recientesPool = [...masterMovie].sort((a, b) => b.year - a.year).slice(0, 20)
+      const featuredMovieRaw = buildFeaturedRaw({
+        trending: trendingMoviesRaw,
+        popular: popularMoviesRaw,
+        topRated: topRatedMoviesRaw,
+        recent: nowPlayingMoviesRaw,
+      })
+      const recentMovieRaw = dedupeRaw(
+        nowPlayingMoviesRaw.length > 0
+          ? nowPlayingMoviesRaw
+          : [...popularMoviesRaw, ...trendingMoviesRaw, ...topRatedMoviesRaw]
+      ).sort(byReleaseDateDesc)
+      const destacadasPool = dedupe(
+        featuredMovieRaw.map((item, index) =>
+          toMovie(item, null, resolveGenre(item.genre_ids || []), "movie", index, undefined, translate("movie.unknown"), translate("movie.fallback"), translate("common.general"), lang)
+        )
+      ).slice(0, 20)
+      const recientesPool = dedupe(
+        recentMovieRaw.map((item, index) =>
+          toMovie(item, null, resolveGenre(item.genre_ids || []), "movie", index, undefined, translate("movie.unknown"), translate("movie.fallback"), translate("common.general"), lang)
+        )
+      ).slice(0, 20)
 
       const [
-        contViendo,
         destacadas,
         recientes,
         animeCat,
         seriesCat,
       ] = await Promise.all([
-        enrichBatch(contViendoPool, "movie"),
         enrichBatch(destacadasPool, "movie"),
         enrichBatch(recientesPool, "movie"),
         enrichBatch(masterAnime.slice(0, 20), "anime"),
@@ -756,7 +861,6 @@ export function useTMDB(): TMDbState {
       ])
 
       const cats: Category[] = [
-        { title: translate("home.continue"), items: contViendo },
         { title: translate("home.featuredMovies"), items: destacadas },
         { title: translate("home.recent"), items: recientes },
         { title: translate("common.anime"), items: animeCat },
