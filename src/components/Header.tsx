@@ -84,13 +84,13 @@ export default function Header({
         {/* Logo */}
         <button
           onClick={() => onNavigate?.("home")}
-          className="flex min-w-0 shrink-0 items-center gap-1.5"
+          className="flex min-w-0 shrink-0 cursor-pointer items-center"
         >
           <span className="text-xl font-bold tracking-tighter text-white sm:text-2xl">
             flick
           </span>
-          <span className="mx-2 hidden h-5 w-px bg-white/20 sm:block lg:mx-3" />
         </button>
+        <span className="mx-3 hidden h-5 w-px shrink-0 bg-white/20 sm:block" />
 
         {/* Desktop Nav */}
         <nav className="hidden items-center gap-0.5 lg:flex xl:gap-1">
@@ -104,8 +104,8 @@ export default function Header({
                 link.disabled
                   ? "cursor-not-allowed text-neutral-600"
                   : currentPage === link.id
-                    ? "text-white"
-                    : "text-neutral-400 hover:text-white"
+                    ? "cursor-pointer text-white"
+                    : "cursor-pointer text-neutral-400 hover:text-white"
               }`}
             >
               <link.icon className="size-4 shrink-0" />

@@ -1,6 +1,7 @@
 ---
 import "@/styles/global.css"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { Toaster } from "@/components/ui/sonner"
 ---
 
 <html lang="en" class="dark" data-i18n-loading>
@@ -80,5 +81,6 @@ import { TooltipProvider } from "@/components/ui/tooltip"
     <TooltipProvider>
       <slot />
     </TooltipProvider>
+    <Toaster client:load position="bottom-right" />
   </body>
 </html>

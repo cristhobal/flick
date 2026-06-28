@@ -19,6 +19,7 @@ interface CategoryPageProps {
   onPlay?: (movie: Movie) => void
   onDetails?: (movie: Movie) => void
   onFavorite?: (movie: Movie) => void
+  isFavorite?: (movie: Movie) => boolean
   initialGenre?: string | null
 }
 
@@ -30,6 +31,7 @@ export default function CategoryPage({
   onPlay,
   onDetails,
   onFavorite,
+  isFavorite,
   initialGenre = null,
 }: CategoryPageProps) {
   const [search, setSearch] = useState("")
@@ -251,6 +253,7 @@ export default function CategoryPage({
                     onPlay={onPlay}
                     onDetails={onDetails}
                     onFavorite={onFavorite}
+                    isFavorite={isFavorite?.(movie)}
                     index={i}
                   />
                 ))}

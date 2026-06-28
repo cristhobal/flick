@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Play, Plus, ChevronDown, Star } from "lucide-react"
+import { Play, ChevronDown, Star } from "lucide-react"
 import type { Movie } from "@/lib/data"
 import { useI18n } from "@/i18n/I18nProvider"
 import { translateGenre, translateGenres } from "@/i18n/translations"
@@ -23,6 +23,7 @@ interface MovieCardProps {
   onPlay?: (movie: Movie) => void
   onDetails?: (movie: Movie) => void
   onFavorite?: (movie: Movie) => void
+  isFavorite?: boolean
   index?: number
 }
 
@@ -30,6 +31,8 @@ export default function MovieCard({
   movie,
   onPlay,
   onDetails,
+  onFavorite,
+  isFavorite = false,
   index = 0,
 }: MovieCardProps) {
   const [showExpanded, setShowExpanded] = useState(false)
@@ -155,14 +158,13 @@ export default function MovieCard({
     scheduleHide(280)
   }
 
-  const handlePreviewEnter = () => {
+  const handlePreviewInteractiveEnter = () => {
     cancelHide()
   }
 
-  const handlePreviewLeave = () => {
-    scheduleHide(420)
+  const handlePreviewInteractiveLeave = () => {
+    scheduleHide(220)
   }
-
 
   const handleClick = () => {
     onDetails?.(movie)
@@ -184,7 +186,7 @@ export default function MovieCard({
       ? `${seasonCount} ${seasonCount === 1 ? t("common.season") : t("common.seasons")}`
       : ""
   const hasRuntime = Boolean(movie.duration && movie.duration !== "-")
-  const runtimeLabel = seasonInfo || (hasRuntime ? movie.duration : episodeInfo || "-")
+  const runtimeLabel = seasonInfo || (hasRuntime ? movie.duration : episodeInfo || "...")
   const genreLabel = translateGenres(movie.genre, lang).join(", ")
 
   return (
@@ -237,6 +239,19 @@ export default function MovieCard({
               )}
             </div>
 
+            <button
+              type="button"
+              aria-label={isFavorite ? t("favorites.removeAria") : t("favorites.addAria")}
+              aria-pressed={isFavorite}
+              className="absolute top-9 right-2 z-20 flex size-8 items-center justify-center rounded-full text-white/65 transition-all hover:scale-110 hover:text-white active:scale-95"
+              onClick={(event) => {
+                event.stopPropagation()
+                onFavorite?.(movie)
+              }}
+            >
+              <Star className={`size-4 transition-colors ${isFavorite ? "fill-white text-white" : "fill-transparent text-white/70"}`} />
+            </button>
+
             <div className="absolute right-0 bottom-0 left-0 flex min-h-24 flex-col justify-end p-3">
               <p className="line-clamp-2 text-sm font-medium leading-[1.125rem] text-white drop-shadow-lg transition-transform duration-300 group-hover/card:translate-y-[-2px]">
                 {movie.title}
@@ -261,10 +276,8 @@ export default function MovieCard({
       {showExpanded && (
         <>
           <article
-            className="fixed z-50 w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-white/10 bg-neutral-950 shadow-[0_24px_80px_rgba(0,0,0,0.75)] animate-scale-in"
+            className="pointer-events-none fixed z-50 w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-white/10 bg-neutral-950 shadow-[0_24px_80px_rgba(0,0,0,0.75)] animate-scale-in"
             style={{ left: pos.left, top: pos.top }}
-            onMouseEnter={handlePreviewEnter}
-            onMouseLeave={handlePreviewLeave}
           >
             <div className="relative aspect-[16/9] w-full overflow-hidden bg-neutral-900">
               {bgSrc ? (
@@ -284,7 +297,11 @@ export default function MovieCard({
                 )}
               </div>
 
-              <div className="absolute right-4 bottom-4 left-4">
+              <div
+                className="pointer-events-auto absolute right-4 bottom-4 left-4"
+                onMouseEnter={handlePreviewInteractiveEnter}
+                onMouseLeave={handlePreviewInteractiveLeave}
+              >
                 <h3 className="line-clamp-2 text-lg font-semibold leading-tight text-white drop-shadow-lg">
                   {movie.title}
                 </h3>
@@ -300,7 +317,11 @@ export default function MovieCard({
               </div>
             </div>
 
-            <div className="p-4">
+            <div
+              className="pointer-events-auto p-4"
+              onMouseEnter={handlePreviewInteractiveEnter}
+              onMouseLeave={handlePreviewInteractiveLeave}
+            >
               <div className="flex items-center gap-2">
                 {canPlay && (
                   <Button
@@ -317,12 +338,15 @@ export default function MovieCard({
                 )}
                 <Button
                   size="icon-sm"
-                  variant="outline"
-                  disabled
-                  title={t("common.availableSoon")}
-                  className="size-9 shrink-0 rounded-lg border-white/10 bg-white/[0.03] text-neutral-500"
+                  variant="ghost"
+                  title={isFavorite ? t("favorites.removeAria") : t("favorites.addAria")}
+                  className="size-9 shrink-0 rounded-lg bg-transparent text-neutral-400 hover:bg-white/[0.06] hover:text-white"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onFavorite?.(movie)
+                  }}
                 >
-                  <Plus className="size-4" />
+                  <Star className={`size-4 ${isFavorite ? "fill-white text-white" : "fill-transparent text-white/70"}`} />
                 </Button>
                 {movie.description && (
                   <Button

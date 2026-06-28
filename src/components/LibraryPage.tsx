@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import MovieCard from "@/components/MovieCard"
-import { Search, ArrowLeft, X } from "lucide-react"
+import { Search, ArrowLeft, Star, X } from "lucide-react"
 import type { Movie } from "@/lib/data"
 import { useI18n } from "@/i18n/I18nProvider"
 
@@ -17,9 +17,10 @@ interface LibraryPageProps {
   onPlay?: (movie: Movie) => void
   onDetails?: (movie: Movie) => void
   onFavorite?: (movie: Movie) => void
+  isFavorite?: (movie: Movie) => boolean
 }
 
-type Tab = "all" | "movies" | "series" | "anime"
+type Tab = "all" | "favorites" | "movies" | "series" | "anime"
 
 export default function LibraryPage({
   onClose,
@@ -30,14 +31,20 @@ export default function LibraryPage({
   onPlay,
   onDetails,
   onFavorite,
+  isFavorite,
 }: LibraryPageProps) {
   const [activeTab, setActiveTab] = useState<Tab>("all")
   const { t } = useI18n()
   const [librarySearch, setLibrarySearch] = useState("")
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
+  const favoriteItems = useMemo(
+    () => allItems.filter((item) => isFavorite?.(item)),
+    [allItems, isFavorite]
+  )
 
   const availableTabs = useMemo(() => {
     const tabs: { id: Tab; label: string }[] = [{ id: "all", label: t("library.everything") }]
+    tabs.push({ id: "favorites", label: t("nav.favorites") })
     if (movies.length > 0) tabs.push({ id: "movies", label: t("common.movies") })
     if (series.length > 0) tabs.push({ id: "series", label: t("common.series") })
     if (anime.length > 0) tabs.push({ id: "anime", label: t("common.anime") })
@@ -61,6 +68,8 @@ export default function LibraryPage({
     const source =
       activeTab === "all"
         ? allItems
+        : activeTab === "favorites"
+          ? favoriteItems
         : activeTab === "movies"
           ? movies
           : activeTab === "series"
@@ -109,7 +118,40 @@ export default function LibraryPage({
             )}
 
             <div className="flex shrink-0 items-center gap-1">
+              {!mobileSearchOpen && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`hidden h-9 gap-2 rounded-lg px-3 text-xs transition-all sm:inline-flex ${
+                    activeTab === "favorites"
+                      ? "bg-white text-black hover:bg-neutral-900 hover:text-white hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]"
+                      : "text-neutral-400 hover:bg-white/10 hover:text-white"
+                  }`}
+                  onClick={() => setActiveTab(activeTab === "favorites" ? "all" : "favorites")}
+                >
+                  <Star className={`size-4 ${activeTab === "favorites" ? "fill-black text-black group-hover/button:fill-white group-hover/button:text-white" : "fill-transparent text-neutral-400"}`} />
+                  {t("nav.favorites")}
+                </Button>
+              )}
+
               {/* Mobile search toggle */}
+              {!mobileSearchOpen && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  title={t("nav.favorites")}
+                  aria-pressed={activeTab === "favorites"}
+                  className={`sm:hidden ${
+                    activeTab === "favorites"
+                      ? "bg-white text-black hover:bg-neutral-900 hover:text-white hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]"
+                      : "text-neutral-400 hover:bg-white/10 hover:text-white"
+                  }`}
+                  onClick={() => setActiveTab(activeTab === "favorites" ? "all" : "favorites")}
+                >
+                  <Star className={`size-4 ${activeTab === "favorites" ? "fill-black text-black group-hover/button:fill-white group-hover/button:text-white" : "fill-transparent"}`} />
+                </Button>
+              )}
+
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -164,6 +206,8 @@ export default function LibraryPage({
           onPlay={onPlay}
           onDetails={onDetails}
           onFavorite={onFavorite}
+          isFavorite={isFavorite}
+          emptyMessage={activeTab === "favorites" ? t("favorites.empty") : undefined}
         />
       </div>
     </div>
@@ -175,11 +219,15 @@ function TabGrid({
   onPlay,
   onDetails,
   onFavorite,
+  isFavorite,
+  emptyMessage,
 }: {
   items: Movie[]
   onPlay?: (movie: Movie) => void
   onDetails?: (movie: Movie) => void
   onFavorite?: (movie: Movie) => void
+  isFavorite?: (movie: Movie) => boolean
+  emptyMessage?: string
 }) {
   const { t } = useI18n()
   if (items.length === 0) {
@@ -189,7 +237,7 @@ function TabGrid({
           <Search className="size-5 text-neutral-600 sm:size-6" />
         </div>
         <p className="text-sm text-neutral-500">
-          {t("common.noResults")}
+          {emptyMessage || t("common.noResults")}
         </p>
       </div>
     )
@@ -204,6 +252,7 @@ function TabGrid({
           onPlay={onPlay}
           onDetails={onDetails}
           onFavorite={onFavorite}
+          isFavorite={isFavorite?.(movie)}
           index={i}
         />
       ))}

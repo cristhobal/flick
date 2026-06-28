@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Play, Heart, Star, Clock, Languages, Subtitles } from "lucide-react"
+import { Play, Star, Clock, Languages, Subtitles } from "lucide-react"
 import type { Movie } from "@/lib/data"
 import { useI18n } from "@/i18n/I18nProvider"
 import { displayLanguage, translateGenre } from "@/i18n/translations"
@@ -26,6 +26,8 @@ interface MovieDetailsModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onPlay?: (movie: Movie) => void
+  onFavorite?: (movie: Movie) => void
+  isFavorite?: boolean
 }
 
 export default function MovieDetailsModal({
@@ -33,6 +35,8 @@ export default function MovieDetailsModal({
   open,
   onOpenChange,
   onPlay,
+  onFavorite,
+  isFavorite = false,
 }: MovieDetailsModalProps) {
   const { lang, t } = useI18n()
   if (!movie) return null
@@ -118,12 +122,12 @@ export default function MovieDetailsModal({
             )}
             <Button
               variant="outline"
-              disabled
-              title={t("common.availableSoon")}
-              className="h-9 gap-2 border-white/10 px-4 text-sm text-neutral-500 sm:h-10"
+              title={isFavorite ? t("favorites.removeAria") : t("favorites.addAria")}
+              className="h-9 gap-2 border-white/10 px-4 text-sm text-neutral-300 hover:bg-white/10 hover:text-white sm:h-10"
+              onClick={() => onFavorite?.(movie)}
             >
-              <Heart className="size-4" />
-              {t("common.favoritesSoon")}
+              <Star className={`size-4 ${isFavorite ? "fill-white text-white" : "fill-transparent text-white/70"}`} />
+              {isFavorite ? t("favorites.activeAction") : t("favorites.addAction")}
             </Button>
           </div>
 
