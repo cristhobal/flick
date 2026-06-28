@@ -41,6 +41,7 @@ export default function CategoryPage({
   ]
   const [activeGenre, setActiveGenre] = useState<string | null>(initialGenre ?? null)
   const [sortBy, setSortBy] = useState("recent")
+  const initialGenreRef = useState(initialGenre)[0]
 
   const Icon = type === "movie" ? Film : type === "series" ? Tv : Clapperboard
 
@@ -58,15 +59,19 @@ export default function CategoryPage({
   )
 
   useEffect(() => {
-    setActiveGenre(null)
+    setActiveGenre(initialGenreRef ?? null)
     setSearch("")
-  }, [type])
+  }, [type, initialGenreRef])
 
   useEffect(() => {
     if (activeGenre && !genres.includes(activeGenre)) {
       setActiveGenre(null)
     }
   }, [activeGenre, genres])
+
+  useEffect(() => {
+    setActiveGenre(initialGenre ?? null)
+  }, [initialGenre])
 
   const filtered = items
     .filter((m) => {

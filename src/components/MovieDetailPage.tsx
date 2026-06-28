@@ -1,8 +1,13 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import {
+  Card,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card"
 import MovieCard from "@/components/MovieCard"
 import {
   posterUrl,
@@ -11,8 +16,8 @@ import {
   isPlayableMovie,
 } from "@/lib/data"
 import type { Movie } from "@/lib/data"
-import { fetchCredits, IMG_URL } from "@/lib/tmdb"
-import type { TMDbCast } from "@/lib/tmdb"
+import { fetchCreativeCredits, fetchTvEpisodeGroupSeasons, fetchTvSeasonEpisodes, IMG_URL } from "@/lib/tmdb"
+import type { TMDbCast, TMDbCreativeCredits, TMDbEpisodeGroupSeason } from "@/lib/tmdb"
 import { useI18n } from "@/i18n/I18nProvider"
 import { displayLanguage, translateGenre } from "@/i18n/translations"
 import {
@@ -26,6 +31,9 @@ import {
   Languages,
   Subtitles,
   Check,
+  Clapperboard,
+  Building2,
+  UserRound,
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -34,6 +42,15 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
+
+function runtimeStr(minutes: number | null | undefined): string {
+  if (!minutes || minutes <= 0) return "-"
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (h <= 0) return `${m}m`
+  if (m <= 0) return `${h}h`
+  return `${h}h ${m}m`
+}
 
 interface MovieDetailPageProps {
   movie: Movie
@@ -54,32 +71,246 @@ export default function MovieDetailPage({
   const { lang, t } = useI18n()
   const [selectedSeason, setSelectedSeason] = useState(1)
   const [cast, setCast] = useState<TMDbCast[]>([])
+  const [creativeCredits, setCreativeCredits] = useState<TMDbCreativeCredits | null>(null)
+  const [tmdbEpisodesBySeason, setTmdbEpisodesBySeason] = useState<Record<number, Movie[]>>({})
+  const [tmdbEpisodeGroupSeasons, setTmdbEpisodeGroupSeasons] = useState<{ season: number; title: string; episodes: Movie[] }[]>([])
+  const [tmdbEpisodesLoading, setTmdbEpisodesLoading] = useState(false)
   const [castReady, setCastReady] = useState(false)
 
   useEffect(() => {
+    setSelectedSeason(1)
+  }, [movie.id])
+
+  useEffect(() => {
     setCastReady(false)
+    setCast([])
+    setCreativeCredits(null)
+    setTmdbEpisodesBySeason({})
+    setTmdbEpisodeGroupSeasons([])
     if (!movie.tmdbId) return
+    let cancelled = false
     const tmdbType = movie.type === "series" || movie.type === "anime" ? "tv" : "movie"
-    fetchCredits(movie.tmdbId, tmdbType, lang).then((data) => {
-      setCast(data)
+    fetchCreativeCredits(movie.tmdbId, tmdbType, lang).then((data) => {
+      if (cancelled) return
+      setCast(data.cast)
+      setCreativeCredits(data)
       // One rAF so the DOM node exists before we trigger the CSS animation
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => setCastReady(true))
+        requestAnimationFrame(() => {
+          if (!cancelled) setCastReady(true)
+        })
       })
     })
+    return () => {
+      cancelled = true
+    }
   }, [movie.tmdbId, movie.type, lang])
 
-  const hasMultipleSeasons = (movie.seasonList?.length || 0) > 1
+  const tmdbSeasonList = useMemo(
+    () => {
+      const detailSeasons = (creativeCredits?.detail?.seasons || [])
+        .filter((season) => season.season_number > 0 && season.episode_count > 0)
+        .map((season) => ({
+          season: season.season_number,
+          title: season.name,
+          episodes: tmdbEpisodesBySeason[season.season_number] || [],
+        }))
+
+      if (detailSeasons.length > 0) return detailSeasons
+
+      const seasonCount = creativeCredits?.detail?.number_of_seasons || movie.seasons || 0
+      return Array.from({ length: seasonCount }, (_, index) => {
+        const season = index + 1
+        return {
+          season,
+          title: `${t("common.season")} ${season}`,
+          episodes: tmdbEpisodesBySeason[season] || [],
+        }
+      })
+    },
+    [creativeCredits?.detail?.seasons, creativeCredits?.detail?.number_of_seasons, movie.seasons, movie.type, tmdbEpisodesBySeason, t]
+  )
+
+  const activeSeasonList = tmdbEpisodeGroupSeasons.length > 0
+    ? tmdbEpisodeGroupSeasons
+    : movie.seasonList?.length
+      ? movie.seasonList
+      : tmdbSeasonList
+  const activeSeriesEpisodes = movie.seriesEpisodes?.length
+    ? movie.seriesEpisodes
+    : (activeSeasonList.find((season) => season.season === selectedSeason)?.episodes || [])
+  const hasMultipleSeasons = (activeSeasonList?.length || 0) > 1
+  const selectedSeasonMeta = activeSeasonList.find((season) => season.season === selectedSeason)
+  const seasonOptionLabel = useCallback((season: { season: number; title?: string }) => {
+    const fallback = `${t("common.season")} ${season.season}`
+    const title = season.title?.trim()
+    if (!title || title.toLowerCase() === fallback.toLowerCase()) return fallback
+    return `${fallback} - ${title}`
+  }, [t])
 
   const filteredEpisodes = useMemo(() => {
-    if (!movie.seriesEpisodes) return movie.seriesEpisodes
-    if (!hasMultipleSeasons) return movie.seriesEpisodes
-    return movie.seriesEpisodes.filter((ep) => (ep.seasonNumber || 1) === selectedSeason)
-  }, [movie.seriesEpisodes, selectedSeason, hasMultipleSeasons])
+    if (!activeSeriesEpisodes) return activeSeriesEpisodes
+    if (!hasMultipleSeasons) return activeSeriesEpisodes
+    return activeSeriesEpisodes.filter((ep) => (ep.seasonNumber || 1) === selectedSeason)
+  }, [activeSeriesEpisodes, selectedSeason, hasMultipleSeasons])
+  const visibleEpisodes = filteredEpisodes || activeSeriesEpisodes || []
+
+  useEffect(() => {
+    const firstSeason = activeSeasonList?.[0]?.season
+    if (firstSeason && !activeSeasonList.some((season) => season.season === selectedSeason)) {
+      setSelectedSeason(firstSeason)
+    }
+  }, [activeSeasonList, selectedSeason])
+
+  const mapTmdbEpisodes = useCallback((episodes: TMDbEpisodeGroupSeason["episodes"], seasonNumber: number): Movie[] =>
+    episodes.map((episode) => ({
+      ...movie,
+      id: `${movie.id}-season-${seasonNumber}-episode-${episode.episode_number}`,
+      title: episode.name || `${t("player.episode", { episode: episode.episode_number })}`,
+      description: episode.overview || "",
+      longDescription: episode.overview || "",
+      duration: episode.runtime ? `${episode.runtime}m` : movie.duration,
+      durationSeconds: episode.runtime ? episode.runtime * 60 : undefined,
+      rating: Math.round((episode.vote_average || 0) * 10) / 10,
+      posterPath: episode.still_path || movie.posterPath,
+      backdropPath: episode.still_path || movie.backdropPath,
+      episodeNumber: episode.episode_number,
+      seasonNumber,
+      episodeTitle: episode.name || `${t("player.episode", { episode: episode.episode_number })}`,
+      episodeSynopsis: episode.overview || "",
+      seriesTitle: movie.title,
+    })), [movie, t])
+
+  useEffect(() => {
+    if ((movie.type !== "series" && movie.type !== "anime") || movie.seriesEpisodes?.length || movie.tmdbId <= 0) return
+    if (!creativeCredits?.detail || tmdbEpisodeGroupSeasons.length > 0) return
+
+    let cancelled = false
+    const detailSeasons = (creativeCredits.detail.seasons || [])
+      .filter((season) => season.season_number > 0 && season.episode_count > 0)
+
+    fetchTvEpisodeGroupSeasons(
+      movie.tmdbId,
+      creativeCredits.detail.number_of_episodes || movie.episodes || 0,
+      detailSeasons.length,
+      lang,
+      Object.fromEntries(detailSeasons.map((season) => [season.season_number, season.name]))
+    ).then((groupSeasons) => {
+      if (cancelled || groupSeasons.length === 0) return
+      setTmdbEpisodeGroupSeasons(
+        groupSeasons.map((season) => ({
+          season: season.season,
+          title: season.title,
+          episodes: mapTmdbEpisodes(season.episodes, season.season),
+        }))
+      )
+      setSelectedSeason(groupSeasons[0].season)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [creativeCredits?.detail, mapTmdbEpisodes, movie.episodes, movie.seriesEpisodes?.length, movie.tmdbId, movie.type, tmdbEpisodeGroupSeasons.length])
+
+  useEffect(() => {
+    if ((movie.type !== "series" && movie.type !== "anime") || movie.seriesEpisodes?.length || movie.tmdbId <= 0) return
+    if (tmdbEpisodeGroupSeasons.length > 0) return
+    const seasonNumber = selectedSeason || tmdbSeasonList[0]?.season || 1
+    if (!seasonNumber || tmdbEpisodesBySeason[seasonNumber]) return
+
+    let cancelled = false
+    setTmdbEpisodesLoading(true)
+    fetchTvSeasonEpisodes(movie.tmdbId, seasonNumber, lang)
+      .then((episodes) => {
+        if (cancelled) return
+        const mappedEpisodes = mapTmdbEpisodes(episodes, seasonNumber)
+        setTmdbEpisodesBySeason((previous) => ({
+          ...previous,
+          [seasonNumber]: mappedEpisodes,
+        }))
+      })
+      .finally(() => {
+        if (!cancelled) setTmdbEpisodesLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [mapTmdbEpisodes, movie.seriesEpisodes?.length, movie.tmdbId, movie.type, selectedSeason, tmdbEpisodeGroupSeasons.length, tmdbEpisodesBySeason, tmdbSeasonList, lang])
 
   const bgSrc = backdropUrl(movie.backdropPath, "original")
   const posterSrc = posterUrl(movie.posterPath, "w500")
-  const canPlay = isPlayableMovie(movie)
+  const detailMovie = creativeCredits?.trailerUrl
+    ? { ...movie, trailerUrl: creativeCredits.trailerUrl }
+    : movie
+  const canPlay = isPlayableMovie(detailMovie)
+  const detailRuntime = creativeCredits?.detail?.runtime
+    || creativeCredits?.detail?.episode_run_time?.find((minutes) => minutes > 0)
+    || creativeCredits?.detail?.last_episode_to_air?.runtime
+  const visibleDuration = movie.duration && movie.duration !== "-"
+    ? movie.duration
+    : runtimeStr(detailRuntime)
+  const creativeCards = useMemo(() => {
+    const credits = creativeCredits
+    if (!credits) return []
+
+    const uniqueNames = (items: string[]) => [...new Set(items.filter(Boolean))]
+    const directors = uniqueNames(
+      credits.crew
+        .filter((person) =>
+          ["Director", "Series Director", "Episode Director", "Co-Director"].includes(person.job)
+        )
+        .map((person) => person.name)
+    ).slice(0, 2)
+    const creators = uniqueNames([
+      ...(credits.detail?.created_by || []).map((person) => person.name),
+      ...credits.crew
+        .filter((person) =>
+          ["Creator", "Original Creator", "Story", "Screenplay", "Writer"].includes(person.job)
+        )
+        .map((person) => person.name),
+    ]).slice(0, 2)
+    const studios = uniqueNames([
+      ...(credits.detail?.production_companies || []).map((company) => company.name),
+      ...(credits.detail?.networks || []).map((network) => network.name),
+    ]).slice(0, 2)
+
+    const cards: {
+      key: string
+      title: string
+      icon: typeof UserRound
+      items: string[]
+      badgeClassName: string
+    }[] = []
+    if (directors.length > 0) {
+      cards.push({
+        key: "directors",
+        title: movie.type === "movie" ? t("details.directors") : t("details.direction"),
+        icon: UserRound,
+        items: directors,
+        badgeClassName: "bg-white/10 text-white",
+      })
+    }
+    if (creators.length > 0) {
+      cards.push({
+        key: "creators",
+        title: t("details.creators"),
+        icon: Clapperboard,
+        items: creators,
+        badgeClassName: "bg-neutral-800 text-neutral-200",
+      })
+    }
+    if (studios.length > 0) {
+      cards.push({
+        key: "studios",
+        title: movie.type === "anime" ? t("details.animationStudios") : t("details.studios"),
+        icon: Building2,
+        items: studios,
+        badgeClassName: "bg-neutral-800 text-neutral-200",
+      })
+    }
+    return cards
+  }, [creativeCredits, movie.type, t])
 
   return (
     <div className="min-h-screen bg-black">
@@ -153,7 +384,7 @@ export default function MovieDetailPage({
               <div className="flex flex-wrap items-center gap-3 text-sm text-neutral-400 animate-fade-up stagger-3">
                 <span className="text-white/80">{movie.year}</span>
                 <span className="h-4 w-px bg-neutral-700" />
-                <span>{movie.duration}</span>
+                <span>{visibleDuration !== "-" ? visibleDuration : t("common.noAvailable")}</span>
                 {movie.quality && (
                   <>
                     <span className="h-4 w-px bg-neutral-700" />
@@ -185,12 +416,42 @@ export default function MovieDetailPage({
                 {movie.longDescription}
               </p>
 
+              {creativeCards.length > 0 && (
+                <div className="hide-scrollbar flex w-full max-w-5xl items-start gap-3 overflow-x-auto pb-1 animate-fade-up stagger-5">
+                  {creativeCards.map((card) => {
+                    const Icon = card.icon
+                    return (
+                      <div
+                        key={card.key}
+                        className="h-fit w-max min-w-fit shrink-0 rounded-lg border border-white/10 bg-black/35 p-4 backdrop-blur-md"
+                      >
+                        <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-neutral-400">
+                          <Icon className="size-3.5 text-neutral-300" />
+                          {card.title}
+                        </div>
+                        <div className="flex flex-nowrap gap-2">
+                          {card.items.map((item) => (
+                            <Badge
+                              key={item}
+                              variant="secondary"
+                              className={`h-auto w-max max-w-none justify-start whitespace-nowrap rounded-lg px-2.5 py-1.5 text-left text-[11px] leading-snug ${card.badgeClassName}`}
+                            >
+                              {item}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
               <div className="flex flex-wrap gap-3 animate-fade-up stagger-6">
                 {canPlay && (
                   <Button
                     size="lg"
                     className="gap-2 border-0 bg-white text-black transition-all duration-300 hover:scale-105 hover:bg-neutral-200 active:scale-95"
-                    onClick={() => onPlay(movie)}
+                    onClick={() => onPlay(detailMovie)}
                   >
                     <Play className="size-5 fill-black" />
                     {t("common.play")}
@@ -230,7 +491,7 @@ export default function MovieDetailPage({
             className="border-0 bg-neutral-800 text-xs text-neutral-300"
           >
             <Clock className="mr-1 size-3" />
-            {movie.duration}
+            {visibleDuration !== "-" ? visibleDuration : t("common.noAvailable")}
           </Badge>
           <Badge
             variant="secondary"
@@ -257,31 +518,8 @@ export default function MovieDetailPage({
         </div>
       </section>
 
-      {/* Subtitle files list */}
-      {movie.subFiles && movie.subFiles.length > 0 && (
-        <section className="mx-auto max-w-[1920px] px-4 pb-6 animate-fade-up sm:px-6 lg:px-8">
-          <h2 className="mb-3 text-sm font-medium text-neutral-400">
-            {t("details.subtitlesAvailable")}
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            {[...new Map((movie.subFiles || []).map((s) => [s.lang, s])).values()].map(
-              (sub) => (
-                <Badge
-                  key={sub.file}
-                  variant="secondary"
-                  className="border-0 bg-neutral-800 text-xs text-neutral-300"
-                >
-                  <Subtitles className="mr-1 size-3" />
-                  {sub.lang}
-                </Badge>
-              )
-            )}
-          </div>
-        </section>
-      )}
-
       {/* Episodes */}
-      {movie.seriesEpisodes && movie.seriesEpisodes.length > 0 && (
+      {((activeSeriesEpisodes && activeSeriesEpisodes.length > 0) || tmdbEpisodesLoading) && (
         <section className="mx-auto max-w-[1920px] px-4 pb-10 animate-fade-up sm:px-6 lg:px-8">
           <div className="mb-4 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -290,12 +528,12 @@ export default function MovieDetailPage({
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button className="flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-xs text-neutral-300 outline-none transition-colors hover:border-neutral-600 focus:border-neutral-500">
-                      {t("common.season")} {selectedSeason}
+                      {selectedSeasonMeta ? seasonOptionLabel(selectedSeasonMeta) : `${t("common.season")} ${selectedSeason}`}
                       <ChevronDown className="size-3" />
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="min-w-36 border-neutral-800 bg-neutral-950 text-neutral-300">
-                    {movie.seasonList!.map((s, i) => (
+                    {activeSeasonList!.map((s, i) => (
                       <div key={s.season}>
                         {i > 0 && <DropdownMenuSeparator className="bg-neutral-800" />}
                         <DropdownMenuItem
@@ -304,7 +542,7 @@ export default function MovieDetailPage({
                         >
                           {selectedSeason === s.season && <Check className="size-3 text-white" />}
                           <span className={selectedSeason === s.season ? "text-white" : ""}>
-                            {t("common.season")} {s.season}
+                            {seasonOptionLabel(s)}
                           </span>
                         </DropdownMenuItem>
                       </div>
@@ -314,43 +552,88 @@ export default function MovieDetailPage({
               )}
             </div>
             <span className="text-xs text-neutral-500">
-              {filteredEpisodes?.length || 0} {t("common.episodes")}
+              {visibleEpisodes.length} {t("common.episodes")}
             </span>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {(filteredEpisodes || movie.seriesEpisodes).map((episode) => (
-              <button
-                key={episode.id}
-                disabled={!isPlayableMovie(episode)}
-                onClick={() => onPlay(episode)}
-                className="group flex items-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900/50 p-3 text-left transition-colors hover:border-neutral-700 hover:bg-neutral-900 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <div className="h-20 w-14 shrink-0 overflow-hidden rounded-md bg-neutral-800 shadow-md transition-transform group-hover:scale-105">
-                  {posterUrl(episode.posterPath || movie.posterPath, "w185") ? (
-                    <img
-                      src={posterUrl(episode.posterPath || movie.posterPath, "w185") || ""}
-                      alt={movie.title}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className={`h-full w-full bg-gradient-to-b ${getGenreGradient(movie.genre)}`} />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-white">
-                    {episode.episodeTitle || episode.title}
-                  </p>
-                  <p className="mt-1 text-xs text-neutral-500">{episode.duration}</p>
-                  {episode.episodeSynopsis && (
-                    <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-neutral-400">
-                      {episode.episodeSynopsis}
-                    </p>
-                  )}
-                </div>
-                <Play className="size-4 shrink-0 text-neutral-500 group-hover:text-white" />
-              </button>
-            ))}
+            {tmdbEpisodesLoading && visibleEpisodes.length === 0
+              ? Array.from({ length: 6 }).map((_, index) => (
+                  <Card
+                    key={`episode-loading-${index}`}
+                    size="sm"
+                    className="border border-neutral-800 bg-neutral-900/50"
+                  >
+                    <div className="flex gap-3 p-3">
+                      <div className="h-24 w-16 shrink-0 animate-pulse rounded-md bg-neutral-800" />
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="h-4 w-2/3 animate-pulse rounded bg-neutral-800" />
+                        <div className="h-3 w-20 animate-pulse rounded bg-neutral-800" />
+                        <div className="h-12 animate-pulse rounded bg-neutral-800/80" />
+                      </div>
+                    </div>
+                  </Card>
+                ))
+              : visibleEpisodes.map((episode) => {
+                  const episodeImage = posterUrl(episode.posterPath || movie.posterPath, "w185")
+                  const episodeName = episode.episodeTitle || episode.title
+                  const episodeLabel = episode.episodeNumber
+                    ? `E${episode.episodeNumber} - ${episodeName}`
+                    : episodeName
+
+                  return (
+                    <Card
+                      key={episode.id}
+                      size="sm"
+                      className="cursor-pointer border border-neutral-800 bg-neutral-900/50 transition-colors hover:border-neutral-700 hover:bg-neutral-900"
+                      onClick={() => onMovieClick(episode)}
+                    >
+                      <div className="flex gap-3 p-3">
+                        <div className="h-24 w-16 shrink-0 overflow-hidden rounded-md bg-neutral-800 shadow-md">
+                          {episodeImage ? (
+                            <img
+                              src={episodeImage}
+                              alt={episodeLabel}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className={`h-full w-full bg-gradient-to-b ${getGenreGradient(movie.genre)}`} />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <CardTitle className="line-clamp-2 text-sm leading-snug text-white">
+                                {episodeLabel}
+                              </CardTitle>
+                              <CardDescription className="mt-1 text-xs text-neutral-500">
+                                {episode.duration && episode.duration !== "-"
+                                  ? episode.duration
+                                  : t("common.noAvailable")}
+                              </CardDescription>
+                            </div>
+                            {isPlayableMovie(episode) && (
+                              <button
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  onPlay(episode)
+                                }}
+                                className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white text-black transition-transform hover:scale-105 active:scale-95"
+                              >
+                                <Play className="size-3.5 fill-black" />
+                              </button>
+                            )}
+                          </div>
+                          {(episode.episodeSynopsis || episode.description) && (
+                            <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-neutral-400">
+                              {episode.episodeSynopsis || episode.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </Card>
+                  )
+                })}
           </div>
         </section>
       )}
