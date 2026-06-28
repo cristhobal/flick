@@ -43,9 +43,9 @@ export default function MovieDetailsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto border-neutral-800 bg-neutral-950 p-0 text-white">
+      <DialogContent className="max-h-[92dvh] w-[calc(100vw-1.5rem)] max-w-3xl overflow-y-auto border-neutral-800 bg-neutral-950 p-0 text-white sm:w-full">
         {/* Banner */}
-        <div className="relative h-64 w-full overflow-hidden sm:h-80">
+        <div className="relative h-56 w-full overflow-hidden sm:h-80">
           {bgSrc ? (
             <img
               src={bgSrc}
@@ -78,9 +78,9 @@ export default function MovieDetailsModal({
           </div>
 
           {/* Title */}
-          <div className="absolute right-0 bottom-0 left-0 p-6">
+          <div className="absolute right-0 bottom-0 left-0 p-4 sm:p-6">
             <DialogHeader>
-              <DialogTitle className="text-3xl font-bold tracking-tight text-white drop-shadow-lg">
+              <DialogTitle className="line-clamp-3 text-2xl font-bold tracking-tight text-white drop-shadow-lg sm:text-3xl">
                 {movie.title}
               </DialogTitle>
               <DialogDescription className="sr-only">
@@ -91,7 +91,7 @@ export default function MovieDetailsModal({
         </div>
 
         {/* Content */}
-        <div className="space-y-6 px-6 pb-6">
+        <div className="space-y-5 px-4 pb-5 sm:space-y-6 sm:px-6 sm:pb-6">
           <div className="flex flex-wrap items-center gap-3 text-sm text-neutral-400">
             <span className="text-white/70">{movie.year}</span>
             <span className="h-4 w-px bg-neutral-700" />
@@ -103,10 +103,10 @@ export default function MovieDetailsModal({
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-2 sm:gap-3">
             {canPlay && (
               <Button
-                className="gap-2 border-0 bg-white text-black hover:bg-neutral-200"
+                className="h-9 gap-2 border-0 bg-white px-4 text-sm text-black hover:bg-neutral-200 sm:h-10"
                 onClick={() => {
                   onPlay?.(movie)
                   onOpenChange(false)
@@ -120,7 +120,7 @@ export default function MovieDetailsModal({
               variant="outline"
               disabled
               title={t("common.availableSoon")}
-              className="gap-2 border-white/10 text-neutral-500"
+              className="h-9 gap-2 border-white/10 px-4 text-sm text-neutral-500 sm:h-10"
             >
               <Heart className="size-4" />
               {t("common.favoritesSoon")}
@@ -153,20 +153,20 @@ export default function MovieDetailsModal({
             </Badge>
             <Badge
               variant="secondary"
-              className="border-0 bg-neutral-800 text-xs text-neutral-300"
+              className="max-w-full whitespace-normal border-0 bg-neutral-800 text-left text-xs text-neutral-300"
             >
               {translateGenre(movie.genre, lang)}
             </Badge>
             <Badge
               variant="secondary"
-              className="border-0 bg-neutral-800 text-xs text-neutral-300"
+              className="max-w-full whitespace-normal border-0 bg-neutral-800 text-left text-xs text-neutral-300"
             >
               <Languages className="mr-1 size-3" />
               {movie.language.map((language) => displayLanguage(language, lang)).join(", ")}
             </Badge>
             <Badge
               variant="secondary"
-              className="border-0 bg-neutral-800 text-xs text-neutral-300"
+              className="max-w-full whitespace-normal border-0 bg-neutral-800 text-left text-xs text-neutral-300"
             >
               <Subtitles className="mr-1 size-3" />
               {movie.subtitles.map((language) => displayLanguage(language, lang)).join(", ")}

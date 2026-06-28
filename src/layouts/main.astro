@@ -1,4 +1,4 @@
-﻿---
+---
 import "@/styles/global.css"
 import { TooltipProvider } from "@/components/ui/tooltip"
 ---
@@ -6,7 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 <html lang="en" class="dark" data-i18n-loading>
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="canonical" href="https://flick.app/" />
 
@@ -76,10 +76,9 @@ import { TooltipProvider } from "@/components/ui/tooltip"
       })()
     </script>
   </head>
-  <body class="min-h-screen bg-black text-white antialiased">
+  <body class="min-h-screen bg-black text-white antialiased overflow-x-hidden">
     <TooltipProvider>
       <slot />
     </TooltipProvider>
   </body>
 </html>
-

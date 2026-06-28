@@ -84,10 +84,10 @@ export default function FilterSidebar({
         <Button
           variant="outline"
           size="sm"
-          className="relative gap-2 border-neutral-800 text-neutral-300 transition-all hover:scale-105 hover:bg-neutral-800 hover:text-white active:scale-95"
+          className="relative gap-2 border-neutral-800 px-2 text-neutral-300 transition-all hover:scale-105 hover:bg-neutral-800 hover:text-white active:scale-95 sm:px-2.5"
         >
           <SlidersHorizontal className="size-4" />
-          {t("filters.title")}
+          <span className="hidden sm:inline">{t("filters.title")}</span>
           {activeFilters > 0 && (
             <Badge className="ml-1 h-5 min-w-5 rounded-full border-0 bg-white px-1.5 text-[10px] text-black">
               {activeFilters}
@@ -97,9 +97,9 @@ export default function FilterSidebar({
       </SheetTrigger>
       <SheetContent
         side="right"
-        className="w-full border-neutral-800 bg-neutral-950 sm:max-w-sm"
+        className="flex h-dvh w-[min(100vw,24rem)] border-neutral-800 bg-neutral-950 p-0"
       >
-        <SheetHeader className="border-b border-neutral-800 pb-4">
+        <SheetHeader className="border-b border-neutral-800 p-4 pb-4">
           <div className="flex items-center justify-between">
             <SheetTitle className="text-lg text-white">{t("filters.title")}</SheetTitle>
             <Button
@@ -116,7 +116,7 @@ export default function FilterSidebar({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="space-y-6 p-4">
             {/* Sort */}
             <div>

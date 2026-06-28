@@ -10,6 +10,11 @@ export interface ParsedContentRoute {
   episode?: number
 }
 
+export interface ParsedBrowseRoute {
+  type: ContentRouteType
+  genreSlug: string | null
+}
+
 function routeType(type: Movie["type"]): ContentRouteType {
   return type === "movie" ? "movie" : type
 }
@@ -42,6 +47,22 @@ export function watchPath(movie: Movie): string {
   return base
 }
 
+export function sectionPath(type: ContentRouteType): string {
+  return type === "movie" ? "/movie" : `/${type}`
+}
+
+export function categoryPath(type: ContentRouteType, genre: string): string {
+  return `${sectionPath(type)}/${slugifyTitle(genre)}`
+}
+
+function browseRouteType(value: string | undefined): ContentRouteType | null {
+  if (!value) return null
+  if (["movie", "movies", "pelicula", "peliculas"].includes(value)) return "movie"
+  if (["series", "serie"].includes(value)) return "series"
+  if (value === "anime") return "anime"
+  return null
+}
+
 export function parseContentRoute(pathname: string): ParsedContentRoute | null {
   const parts = pathname.split("/").filter(Boolean)
   const isWatch = parts[0] === "watch"
@@ -67,6 +88,17 @@ export function parseContentRoute(pathname: string): ParsedContentRoute | null {
   }
 
   return route
+}
+
+export function parseBrowseRoute(pathname: string): ParsedBrowseRoute | null {
+  const parts = pathname.split("/").filter(Boolean)
+  const type = browseRouteType(parts[0])
+  if (!type) return null
+
+  return {
+    type,
+    genreSlug: parts[1] || null,
+  }
 }
 
 export function samePath(path: string): boolean {

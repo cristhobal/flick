@@ -69,10 +69,8 @@ export default function HeroSection({
   }, [resolvedTrailerUrl, movie.tmdbId, movie.type, lang])
 
   return (
-    // Sin mt-16: el header fixed transparente flota encima del hero
-    // min-h-[90vh] para que ocupe casi toda la pantalla
     <section
-      className={`min-h-[90vh] w-full overflow-hidden bg-black sm:min-h-screen ${
+      className={`min-h-[68svh] w-full overflow-hidden bg-black sm:min-h-[90vh] lg:min-h-screen ${
         phase === "exit"
           ? "hero-cinematic-exit absolute inset-0 z-0"
           : "hero-cinematic-enter relative z-10"
@@ -100,70 +98,69 @@ export default function HeroSection({
 
       {/* Ambient light effect */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.04)_0%,transparent_60%)]" />
-      <div className="absolute top-0 left-0 h-full w-1/2 bg-gradient-to-r from-black/90 via-black/60 to-transparent" />
-      <div className="absolute right-0 bottom-0 left-0 h-3/5 bg-gradient-to-t from-black via-black/60 to-transparent" />
+      <div className="absolute inset-0 bg-black/45 sm:bg-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/45 to-black/15 sm:from-black/90 sm:via-black/50 sm:to-transparent lg:w-1/2" />
+      <div className="absolute right-0 bottom-0 left-0 h-3/4 bg-gradient-to-t from-black via-black/70 to-transparent sm:h-3/5 sm:via-black/60" />
 
-      {/* Contenido centrado verticalmente.
-          pt-16 = espacio para el header fijo (64px).
-          flex + justify-center lo centra en el espacio restante. */}
-      <div className="absolute inset-0 z-10 flex flex-col justify-center pt-16 pb-[10vh]">
-        <div className="w-full max-w-[1920px] px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-4">
+      {/* Content — vertically centered, safe padding for header */}
+      <div className="absolute inset-0 z-10 flex flex-col justify-center py-14 sm:pb-[8vh] sm:pt-16 lg:pb-[10vh]">
+        <div className="content-container">
+          <div className="flex max-w-full flex-col items-start gap-3 sm:max-w-2xl sm:gap-4 lg:max-w-4xl">
             {/* Title */}
-            <h1 className={`${contentAnimation} hero-stagger-title max-w-4xl pb-2 text-4xl leading-[1.08] font-bold tracking-tight text-balance text-white drop-shadow-lg sm:text-5xl lg:text-6xl xl:text-7xl`}>
+            <h1 className={`${contentAnimation} hero-stagger-title max-w-full pb-1 text-3xl leading-[1.1] font-bold tracking-tight text-balance text-white drop-shadow-lg sm:pb-2 sm:text-5xl lg:text-6xl xl:text-7xl`}>
               {movie.title}
             </h1>
 
             {/* Meta info */}
-            <div className={`${contentAnimation} hero-stagger-meta flex flex-wrap items-center gap-3 text-sm text-neutral-400`}>
+            <div className={`${contentAnimation} hero-stagger-meta flex flex-wrap items-center gap-2 text-xs text-neutral-400 sm:gap-3 sm:text-sm`}>
               <span className="text-white/80">{movie.year}</span>
-              <span className="h-4 w-px bg-neutral-700" />
+              <span className="h-3.5 w-px bg-neutral-700 sm:h-4" />
               <span>{resolvedDuration && resolvedDuration !== "-" ? resolvedDuration : t("common.noAvailable")}</span>
-              <span className="h-4 w-px bg-neutral-700" />
+              <span className="h-3.5 w-px bg-neutral-700 sm:h-4" />
               <div className="flex items-center gap-1">
-                <Star className="size-4 fill-neutral-400 text-neutral-400" />
+                <Star className="size-3.5 fill-neutral-400 text-neutral-400 sm:size-4" />
                 <span className="text-white/80">{movie.rating}</span>
               </div>
-              <span className="h-4 w-px bg-neutral-700" />
-              <span className="text-neutral-500">
+              <span className="hidden h-4 w-px bg-neutral-700 sm:block" />
+              <span className="hidden text-neutral-500 sm:inline">
                 {movie.language.slice(0, 2).map((language) => displayLanguage(language, lang)).join(" / ")}
               </span>
             </div>
 
-            {/* Description */}
-            <p className={`${contentAnimation} hero-stagger-description line-clamp-3 max-w-2xl text-sm leading-relaxed text-neutral-400 sm:text-base`}>
+            {/* Description — hidden on very small screens */}
+            <p className={`${contentAnimation} hero-stagger-description line-clamp-2 max-w-full text-xs leading-relaxed text-neutral-300 sm:line-clamp-3 sm:text-sm md:text-base lg:text-neutral-400`}>
               {movie.description}
             </p>
 
             {/* Actions */}
-            <div className={`${contentAnimation} hero-stagger-actions mt-2 flex flex-wrap items-center gap-3`}>
+            <div className={`${contentAnimation} hero-stagger-actions mt-1 flex flex-wrap items-center gap-2 sm:mt-2 sm:gap-3`}>
               {canPlay && (
                 <Button
-                  size="lg"
-                  className="gap-2 border-0 bg-white text-black transition-all duration-300 hover:scale-105 hover:bg-neutral-200 active:scale-95"
+                  size="default"
+                  className="h-9 gap-2 border-0 bg-white px-4 text-sm text-black transition-all duration-300 hover:scale-105 hover:bg-neutral-200 active:scale-95 sm:h-11 sm:px-6 sm:text-base"
                   onClick={() => onPlay?.(playableMovie)}
                 >
-                  <Play className="size-5 fill-black" />
+                  <Play className="size-4 fill-black sm:size-5" />
                   {t("common.play")}
                 </Button>
               )}
               <Button
-                size="lg"
+                size="default"
                 variant="outline"
-                className="gap-2 border-white/20 text-white transition-all duration-300 hover:scale-105 hover:bg-white/10 active:scale-95"
+                className="h-9 gap-2 border-white/20 px-4 text-sm text-white transition-all duration-300 hover:scale-105 hover:bg-white/10 active:scale-95 sm:h-11 sm:px-6 sm:text-base"
                 onClick={() => onDetails?.(movie)}
               >
-                <Info className="size-5" />
+                <Info className="size-4 sm:size-5" />
                 {t("common.details")}
               </Button>
               <Button
-                size="lg"
+                size="default"
                 variant="ghost"
                 disabled
                 title={t("common.availableSoon")}
-                className="gap-2 text-neutral-500"
+                className="hidden h-9 gap-2 text-sm text-neutral-500 sm:flex sm:h-11 sm:text-base"
               >
-                <Heart className="size-5" />
+                <Heart className="size-4 sm:size-5" />
                 {t("common.favoritesSoon")}
               </Button>
             </div>
