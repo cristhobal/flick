@@ -86,13 +86,10 @@ export default function Header({
           onClick={() => onNavigate?.("home")}
           className="flex min-w-0 shrink-0 items-center gap-1.5"
         >
-          <img
-            src="/flick-logo.svg"
-            alt="flick"
-            className="h-7 w-auto sm:h-8"
-            decoding="async"
-          />
-          <span className="hidden h-5 w-px bg-white/20 sm:block" />
+          <span className="text-xl font-bold tracking-tighter text-white sm:text-2xl">
+            flick
+          </span>
+          <span className="mx-2 hidden h-5 w-px bg-white/20 sm:block lg:mx-3" />
         </button>
 
         {/* Desktop Nav */}
@@ -226,12 +223,7 @@ export default function Header({
               <DrawerHeader className="px-6 pt-8 pb-6">
                 <div className="flex items-center justify-between">
                   <DrawerTitle className="text-lg font-bold tracking-tighter text-white">
-                    <img
-                      src="/flick-logo.svg"
-                      alt="flick"
-                      className="h-7 w-auto"
-                      decoding="async"
-                    />
+                    flick
                   </DrawerTitle>
                   <DrawerClose asChild>
                     <button
