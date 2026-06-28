@@ -52,6 +52,34 @@ function runtimeStr(minutes: number | null | undefined): string {
   return `${h}h ${m}m`
 }
 
+function hasEastAsianScript(value: string): boolean {
+  return /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]/u.test(value)
+}
+
+function isGenericSeasonTitle(value: string, season: number): boolean {
+  const normalized = value.trim().toLowerCase()
+  return normalized === `season ${season}`
+    || normalized === `saison ${season}`
+    || normalized === `temporada ${season}`
+    || normalized === `serie ${season}`
+    || normalized === String(season)
+}
+
+function localizedSeasonTitle(
+  title: string | undefined,
+  season: number,
+  lang: string,
+  fallback: string
+): string {
+  const cleanTitle = title?.trim()
+  if (!cleanTitle || isGenericSeasonTitle(cleanTitle, season)) return fallback
+
+  const languageUsesEastAsianScript = lang === "zh"
+  if (!languageUsesEastAsianScript && hasEastAsianScript(cleanTitle)) return fallback
+
+  return `${fallback} - ${cleanTitle}`
+}
+
 interface MovieDetailPageProps {
   movie: Movie
   related: Movie[]
@@ -145,10 +173,8 @@ export default function MovieDetailPage({
   const selectedSeasonMeta = activeSeasonList.find((season) => season.season === selectedSeason)
   const seasonOptionLabel = useCallback((season: { season: number; title?: string }) => {
     const fallback = `${t("common.season")} ${season.season}`
-    const title = season.title?.trim()
-    if (!title || title.toLowerCase() === fallback.toLowerCase()) return fallback
-    return `${fallback} - ${title}`
-  }, [t])
+    return localizedSeasonTitle(season.title, season.season, lang, fallback)
+  }, [lang, t])
 
   const filteredEpisodes = useMemo(() => {
     if (!activeSeriesEpisodes) return activeSeriesEpisodes
