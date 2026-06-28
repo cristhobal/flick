@@ -13,6 +13,7 @@ interface MovieCarouselProps {
   onPlay?: (movie: Movie) => void
   onDetails?: (movie: Movie) => void
   onFavorite?: (movie: Movie) => void
+  isFavorite?: (movie: Movie) => boolean
   onViewAll?: () => void
 }
 
@@ -22,11 +23,12 @@ export default function MovieCarousel({
   onPlay,
   onDetails,
   onFavorite,
+  isFavorite,
   onViewAll,
 }: MovieCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const { t } = useI18n()
-  const isFavorites = items.length === 0 && [t("nav.favorites"), "Favoritos", "Favorites"].includes(title)
+  const isFavorites = items.length === 0 && title === t("nav.favorites")
 
   const scroll = (direction: "left" | "right") => {
     if (!scrollRef.current) return
@@ -89,7 +91,7 @@ export default function MovieCarousel({
           >
             {items.map((movie, i) => (
               <div
-                key={movie.id}
+                key={`${movie.type}-${movie.tmdbId}`}
                 className="w-[140px] shrink-0 snap-start sm:w-[160px] md:w-[180px] lg:w-[200px] xl:w-[210px] 2xl:w-[220px]"
               >
                 <MovieCard
@@ -97,6 +99,7 @@ export default function MovieCarousel({
                   onPlay={onPlay}
                   onDetails={onDetails}
                   onFavorite={onFavorite}
+                  isFavorite={isFavorite?.(movie)}
                   index={i}
                 />
               </div>

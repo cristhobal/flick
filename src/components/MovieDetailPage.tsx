@@ -25,7 +25,6 @@ import {
   ChevronRight,
   ChevronDown,
   Play,
-  Heart,
   Star,
   Clock,
   Languages,
@@ -86,6 +85,8 @@ interface MovieDetailPageProps {
   onBack: () => void
   onPlay: (movie: Movie) => void
   onMovieClick: (movie: Movie) => void
+  onFavorite?: (movie: Movie) => void
+  isFavorite?: (movie: Movie) => boolean
 }
 
 export default function MovieDetailPage({
@@ -94,6 +95,8 @@ export default function MovieDetailPage({
   onBack,
   onPlay,
   onMovieClick,
+  onFavorite,
+  isFavorite,
 }: MovieDetailPageProps) {
   const [imgLoaded, setImgLoaded] = useState(false)
   const { lang, t } = useI18n()
@@ -511,12 +514,12 @@ export default function MovieDetailPage({
                 <Button
                   size="default"
                   variant="outline"
-                  disabled
-                  title={t("common.availableSoon")}
-                  className="hidden h-9 gap-2 border-white/10 text-sm text-neutral-500 sm:flex sm:h-11 sm:text-base"
+                  title={isFavorite?.(detailMovie) ? t("favorites.removeAria") : t("favorites.addAria")}
+                  className="hidden h-9 gap-2 border-white/10 text-sm text-neutral-300 hover:bg-white/10 hover:text-white sm:flex sm:h-11 sm:text-base"
+                  onClick={() => onFavorite?.(detailMovie)}
                 >
-                  <Heart className="size-4 sm:size-5" />
-                  {t("common.favoritesSoon")}
+                  <Star className={`size-4 sm:size-5 ${isFavorite?.(detailMovie) ? "fill-white text-white" : "fill-transparent text-white/70"}`} />
+                  {isFavorite?.(detailMovie) ? t("favorites.activeAction") : t("favorites.addAction")}
                 </Button>
               </div>
 
@@ -761,6 +764,8 @@ export default function MovieDetailPage({
                   movie={item}
                   onPlay={onPlay}
                   onDetails={onMovieClick}
+                  onFavorite={onFavorite}
+                  isFavorite={isFavorite?.(item)}
                   index={i}
                 />
               </div>
