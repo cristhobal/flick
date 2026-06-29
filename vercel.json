@@ -1,10 +1,6 @@
 {
   "framework": "astro",
   "buildCommand": "astro build",
-  "outputDirectory": "dist",
-  "rewrites": [
-    { "source": "/((?!favicon.svg|robots.txt|sitemap.xml|.*\\..*).*)", "destination": "/" }
-  ],
   "github": {
     "silent": true
   }
