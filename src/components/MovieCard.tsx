@@ -188,6 +188,7 @@ export default function MovieCard({
   const hasRuntime = Boolean(movie.duration && movie.duration !== "-")
   const runtimeLabel = seasonInfo || (hasRuntime ? movie.duration : episodeInfo || "...")
   const genreLabel = translateGenres(movie.genre, lang).join(", ")
+  const favoriteDisabled = !onFavorite
 
   return (
     <>
@@ -241,11 +242,14 @@ export default function MovieCard({
 
             <button
               type="button"
-              aria-label={isFavorite ? t("favorites.removeAria") : t("favorites.addAria")}
+              aria-label={favoriteDisabled ? t("common.favoritesSoon") : isFavorite ? t("favorites.removeAria") : t("favorites.addAria")}
               aria-pressed={isFavorite}
-              className="absolute top-9 right-2 z-20 flex size-8 items-center justify-center rounded-full text-white/65 transition-all hover:scale-110 hover:text-white active:scale-95"
+              disabled={favoriteDisabled}
+              title={favoriteDisabled ? t("common.favoritesSoon") : undefined}
+              className="absolute top-9 right-2 z-20 flex size-8 items-center justify-center rounded-full text-white/65 transition-all hover:scale-110 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100 disabled:hover:text-white/65"
               onClick={(event) => {
                 event.stopPropagation()
+                if (favoriteDisabled) return
                 onFavorite?.(movie)
               }}
             >
@@ -339,8 +343,9 @@ export default function MovieCard({
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  title={isFavorite ? t("favorites.removeAria") : t("favorites.addAria")}
-                  className="size-9 shrink-0 rounded-lg bg-transparent text-neutral-400 hover:bg-white/[0.06] hover:text-white"
+                  title={favoriteDisabled ? t("common.favoritesSoon") : isFavorite ? t("favorites.removeAria") : t("favorites.addAria")}
+                  disabled={favoriteDisabled}
+                  className="size-9 shrink-0 rounded-lg bg-transparent text-neutral-400 hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-neutral-400"
                   onClick={(event) => {
                     event.stopPropagation()
                     onFavorite?.(movie)
@@ -416,3 +421,5 @@ export default function MovieCard({
     </>
   )
 }
+
+

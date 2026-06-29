@@ -44,6 +44,7 @@ export default function MovieDetailsModal({
   const bgSrc = backdropUrl(movie.backdropPath, "w1280")
   const posterSrc = posterUrl(movie.posterPath, "w342")
   const canPlay = isPlayableMovie(movie)
+  const favoriteDisabled = !onFavorite
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -122,12 +123,13 @@ export default function MovieDetailsModal({
             )}
             <Button
               variant="outline"
-              title={isFavorite ? t("favorites.removeAria") : t("favorites.addAria")}
-              className="h-9 gap-2 border-white/10 px-4 text-sm text-neutral-300 hover:bg-white/10 hover:text-white sm:h-10"
-              onClick={() => onFavorite?.(movie)}
+              title={favoriteDisabled ? t("common.favoritesSoon") : isFavorite ? t("favorites.removeAria") : t("favorites.addAria")}
+              disabled={favoriteDisabled}
+              className="h-9 gap-2 border-white/10 px-4 text-sm text-neutral-300 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-neutral-300 sm:h-10"
+              onClick={() => { if (!favoriteDisabled) onFavorite?.(movie) }}
             >
               <Star className={`size-4 ${isFavorite ? "fill-white text-white" : "fill-transparent text-white/70"}`} />
-              {isFavorite ? t("favorites.activeAction") : t("favorites.addAction")}
+              {favoriteDisabled ? t("common.favoritesSoon") : isFavorite ? t("favorites.activeAction") : t("favorites.addAction")}
             </Button>
           </div>
 
@@ -189,3 +191,5 @@ export default function MovieDetailsModal({
     </Dialog>
   )
 }
+
+

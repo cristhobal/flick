@@ -6,6 +6,12 @@ import type { Movie } from "@/lib/data"
 import FavoriteToast from "@/components/FavoriteToast"
 import { useI18n } from "@/i18n/I18nProvider"
 
+interface FavoritesResponse {
+  available?: boolean
+  blocked?: boolean
+  favorites?: string[]
+}
+
 function favoriteKey(movie: Pick<Movie, "type" | "tmdbId">): string {
   return `${movie.type}:${movie.tmdbId}`
 }
@@ -13,19 +19,25 @@ function favoriteKey(movie: Pick<Movie, "type" | "tmdbId">): string {
 export function useFavorites() {
   const { t } = useI18n()
   const [available, setAvailable] = useState(false)
+  const [blocked, setBlocked] = useState(false)
   const [favoriteKeys, setFavoriteKeys] = useState<Set<string>>(() => new Set())
 
   useEffect(() => {
     let cancelled = false
     fetch("/api/favorites")
       .then((response) => response.json())
-      .then((data: { available?: boolean; favorites?: string[] }) => {
+      .then((data: FavoritesResponse) => {
         if (cancelled) return
-        setAvailable(Boolean(data.available))
+        const nextAvailable = Boolean(data.available)
+        setAvailable(nextAvailable)
+        setBlocked(!nextAvailable && Boolean(data.blocked))
         setFavoriteKeys(new Set(data.favorites || []))
       })
       .catch(() => {
-        if (!cancelled) setAvailable(false)
+        if (!cancelled) {
+          setAvailable(false)
+          setBlocked(false)
+        }
       })
 
     return () => {
@@ -37,8 +49,17 @@ export function useFavorites() {
     return favoriteKeys.has(favoriteKey(movie))
   }, [favoriteKeys])
 
+  const showUnavailable = useCallback(() => {
+    toast.message(blocked ? t("common.favoritesSoon") : t("favorites.unavailable"), {
+      description: blocked ? t("favorites.unavailable") : undefined,
+    })
+  }, [blocked, t])
+
   const toggleFavorite = useCallback(async (movie: Movie) => {
-    if (!available) return
+    if (!available) {
+      showUnavailable()
+      return
+    }
 
     const key = favoriteKey(movie)
     const nextIsFavorite = !favoriteKeys.has(key)
@@ -55,7 +76,7 @@ export function useFavorites() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(nextIsFavorite ? movie : { type: movie.type, tmdbId: movie.tmdbId }),
       })
-      const data = await response.json() as { available?: boolean; ok?: boolean }
+      const data = await response.json() as FavoritesResponse & { ok?: boolean }
       if (!response.ok || !data.available || !data.ok) throw new Error("Favorites unavailable")
 
       toast.custom(() =>
@@ -75,12 +96,14 @@ export function useFavorites() {
         else next.add(key)
         return next
       })
+      showUnavailable()
     }
-  }, [available, favoriteKeys, t])
+  }, [available, favoriteKeys, showUnavailable, t])
 
   return useMemo(() => ({
     available,
+    blocked,
     isFavorite,
     toggleFavorite,
-  }), [available, isFavorite, toggleFavorite])
+  }), [available, blocked, isFavorite, toggleFavorite])
 }
