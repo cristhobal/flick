@@ -46,6 +46,7 @@ export default function HeroSection({
   const canPlay = isPlayableMovie(playableMovie)
   const contentAnimation = phase === "enter" ? "hero-content-enter" : "hero-content-exit"
   const seasonCount = Math.max(movie.seasons || 0, movie.totalSeasons || 0, movie.seasonList?.length || 0)
+  const favoriteDisabled = !onFavorite
   const heroRuntimeLabel =
     (movie.type === "series" || movie.type === "anime") && seasonCount > 0
       ? `${seasonCount} ${seasonCount === 1 ? t("common.season") : t("common.seasons")}`
@@ -166,12 +167,13 @@ export default function HeroSection({
               <Button
                 size="default"
                 variant="ghost"
-                title={isFavorite ? t("favorites.removeAria") : t("favorites.addAria")}
-                className="hidden h-9 gap-2 text-sm text-neutral-400 hover:bg-white/10 hover:text-white sm:flex sm:h-11 sm:text-base"
-                onClick={() => onFavorite?.(movie)}
+                title={favoriteDisabled ? t("common.favoritesSoon") : isFavorite ? t("favorites.removeAria") : t("favorites.addAria")}
+                disabled={favoriteDisabled}
+                className="hidden h-9 gap-2 text-sm text-neutral-400 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-neutral-400 sm:flex sm:h-11 sm:text-base"
+                onClick={() => { if (!favoriteDisabled) onFavorite?.(movie) }}
               >
                 <Star className={`size-4 sm:size-5 ${isFavorite ? "fill-white text-white" : "fill-transparent text-white/70"}`} />
-                {isFavorite ? t("favorites.activeAction") : t("favorites.addAction")}
+                {favoriteDisabled ? t("common.favoritesSoon") : isFavorite ? t("favorites.activeAction") : t("favorites.addAction")}
               </Button>
             </div>
           </div>
@@ -180,3 +182,5 @@ export default function HeroSection({
     </section>
   )
 }
+
+

@@ -359,6 +359,7 @@ export default function HomePage() {
   const handleFavorite = useCallback((movie: Movie) => {
     void favorites.toggleFavorite(movie)
   }, [favorites])
+  const favoriteAction = favorites.blocked ? undefined : handleFavorite
 
   const handleFilterReset = useCallback(() => {
     setSelectedGenres([])
@@ -453,7 +454,7 @@ export default function HomePage() {
           onBack={() => goHome()}
           onPlay={handlePlay}
           onMovieClick={handleMovieClick}
-          onFavorite={handleFavorite}
+          onFavorite={favoriteAction}
           isFavorite={favorites.isFavorite}
         />
       </PageTransition>
@@ -484,11 +485,11 @@ export default function HomePage() {
           onClose={() => goHome()}
           onPlay={handlePlay}
           onDetails={handleDetails}
-          onFavorite={handleFavorite}
+          onFavorite={favoriteAction}
           isFavorite={favorites.isFavorite}
           initialGenre={categoryGenre}
         />
-        <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} onFavorite={handleFavorite} isFavorite={selectedMovie ? favorites.isFavorite(selectedMovie) : false} />
+        <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} onFavorite={favoriteAction} isFavorite={selectedMovie ? favorites.isFavorite(selectedMovie) : false} />
       </PageTransition>
     )
   }
@@ -508,7 +509,7 @@ export default function HomePage() {
           }}
           onPlay={handlePlay}
           onDetails={handleDetails}
-          onFavorite={handleFavorite}
+          onFavorite={favoriteAction}
           isFavorite={favorites.isFavorite}
           selectedGenres={selectedGenres}
           onGenreToggle={handleGenreToggle}
@@ -522,7 +523,7 @@ export default function HomePage() {
           filterOpen={filterOpen}
           onFilterOpenChange={setFilterOpen}
         />
-        <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} onFavorite={handleFavorite} isFavorite={selectedMovie ? favorites.isFavorite(selectedMovie) : false} />
+        <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} onFavorite={favoriteAction} isFavorite={selectedMovie ? favorites.isFavorite(selectedMovie) : false} />
       </PageTransition>
     )
   }
@@ -548,10 +549,10 @@ export default function HomePage() {
           allItems={allMovies}
           onPlay={handlePlay}
           onDetails={handleDetails}
-          onFavorite={handleFavorite}
+          onFavorite={favoriteAction}
           isFavorite={favorites.isFavorite}
         />
-        <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} onFavorite={handleFavorite} isFavorite={selectedMovie ? favorites.isFavorite(selectedMovie) : false} />
+        <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} onFavorite={favoriteAction} isFavorite={selectedMovie ? favorites.isFavorite(selectedMovie) : false} />
       </PageTransition>
     )
   }
@@ -580,7 +581,7 @@ export default function HomePage() {
                   movie={exitingHero}
                   onPlay={handlePlay}
                   onDetails={handleDetails}
-                  onFavorite={handleFavorite}
+                  onFavorite={favoriteAction}
                   isFavorite={favorites.isFavorite(exitingHero)}
                   phase="exit"
                 />
@@ -590,7 +591,7 @@ export default function HomePage() {
                 movie={visibleHero}
                 onPlay={handlePlay}
                 onDetails={handleDetails}
-                onFavorite={handleFavorite}
+                onFavorite={favoriteAction}
                 isFavorite={favorites.isFavorite(visibleHero)}
                 phase="enter"
               />
@@ -610,7 +611,7 @@ export default function HomePage() {
                   items={category.items}
                   onPlay={handlePlay}
                   onDetails={handleDetails}
-                  onFavorite={handleFavorite}
+                  onFavorite={favoriteAction}
                   isFavorite={favorites.isFavorite}
                   onViewAll={onViewAll}
                 />
@@ -619,7 +620,7 @@ export default function HomePage() {
           </div>
         </main>
 
-        <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} onFavorite={handleFavorite} isFavorite={selectedMovie ? favorites.isFavorite(selectedMovie) : false} />
+        <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} onFavorite={favoriteAction} isFavorite={selectedMovie ? favorites.isFavorite(selectedMovie) : false} />
       </div>
     </PageTransition>
   )
@@ -672,3 +673,4 @@ function ErrorScreen({ message }: { message: string }) {
     </div>
   )
 }
+

@@ -275,6 +275,7 @@ export default function MovieDetailPage({
     ? { ...movie, trailerUrl: creativeCredits.trailerUrl }
     : movie
   const canPlay = isPlayableMovie(detailMovie)
+  const favoriteDisabled = !onFavorite
   const detailRuntime = creativeCredits?.detail?.runtime
     || creativeCredits?.detail?.episode_run_time?.find((minutes) => minutes > 0)
     || creativeCredits?.detail?.last_episode_to_air?.runtime
@@ -514,12 +515,13 @@ export default function MovieDetailPage({
                 <Button
                   size="default"
                   variant="outline"
-                  title={isFavorite?.(detailMovie) ? t("favorites.removeAria") : t("favorites.addAria")}
-                  className="hidden h-9 gap-2 border-white/10 text-sm text-neutral-300 hover:bg-white/10 hover:text-white sm:flex sm:h-11 sm:text-base"
-                  onClick={() => onFavorite?.(detailMovie)}
+                  title={favoriteDisabled ? t("common.favoritesSoon") : isFavorite?.(detailMovie) ? t("favorites.removeAria") : t("favorites.addAria")}
+                  disabled={favoriteDisabled}
+                  className="hidden h-9 gap-2 border-white/10 text-sm text-neutral-300 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-neutral-300 sm:flex sm:h-11 sm:text-base"
+                  onClick={() => { if (!favoriteDisabled) onFavorite?.(detailMovie) }}
                 >
                   <Star className={`size-4 sm:size-5 ${isFavorite?.(detailMovie) ? "fill-white text-white" : "fill-transparent text-white/70"}`} />
-                  {isFavorite?.(detailMovie) ? t("favorites.activeAction") : t("favorites.addAction")}
+                  {favoriteDisabled ? t("common.favoritesSoon") : isFavorite?.(detailMovie) ? t("favorites.activeAction") : t("favorites.addAction")}
                 </Button>
               </div>
 
@@ -776,3 +778,5 @@ export default function MovieDetailPage({
     </div>
   )
 }
+
+
