@@ -126,41 +126,40 @@ export default function MovieDetailsModal({
               {movie.longDescription}
             </p>
           </div>
-
-          <div className="flex flex-wrap gap-2">
+          <div className="metadata-grid">
             <Badge
               variant="secondary"
-              className="border-0 bg-neutral-800 text-xs text-neutral-300"
+              className="metadata-badge bg-neutral-800 text-xs text-neutral-300"
             >
-              <Star className="mr-1 size-3" />
-              {movie.rating}
+              <Star className="size-3" />
+              <span className="metadata-badge-text">{movie.rating}</span>
             </Badge>
             <Badge
               variant="secondary"
-              className="border-0 bg-neutral-800 text-xs text-neutral-300"
+              className="metadata-badge bg-neutral-800 text-xs text-neutral-300"
             >
-              <Clock className="mr-1 size-3" />
-              {movie.duration}
+              <Clock className="size-3" />
+              <span className="metadata-badge-text">{movie.duration}</span>
             </Badge>
             <Badge
               variant="secondary"
-              className="max-w-full whitespace-normal border-0 bg-neutral-800 text-left text-xs text-neutral-300"
+              className="metadata-badge metadata-badge-wide bg-neutral-800 text-xs text-neutral-300"
             >
-              {translateGenre(movie.genre, lang)}
+              <span className="metadata-badge-text">{translateGenre(movie.genre, lang)}</span>
             </Badge>
             <Badge
               variant="secondary"
-              className="max-w-full whitespace-normal border-0 bg-neutral-800 text-left text-xs text-neutral-300"
+              className="metadata-badge metadata-badge-wide bg-neutral-800 text-xs text-neutral-300"
             >
-              <Languages className="mr-1 size-3" />
-              {movie.language.map((language) => displayLanguage(language, lang)).join(", ")}
+              <Languages className="size-3" />
+              <span className="metadata-badge-text">{movie.language.map((language) => displayLanguage(language, lang)).join(", ")}</span>
             </Badge>
             <Badge
               variant="secondary"
-              className="max-w-full whitespace-normal border-0 bg-neutral-800 text-left text-xs text-neutral-300"
+              className="metadata-badge metadata-badge-wide bg-neutral-800 text-xs text-neutral-300"
             >
-              <Subtitles className="mr-1 size-3" />
-              {movie.subtitles.map((language) => displayLanguage(language, lang)).join(", ")}
+              <Subtitles className="size-3" />
+              <span className="metadata-badge-text">{movie.subtitles.map((language) => displayLanguage(language, lang)).join(", ")}</span>
             </Badge>
           </div>
 

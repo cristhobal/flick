@@ -438,7 +438,7 @@ export default function MovieDetailPage({
                   </>
                 )}
                 <span className="h-3.5 w-px bg-neutral-700 sm:h-4" />
-                <span className="text-neutral-500">{translateGenre(movie.genre, lang)}</span>
+                <span className="min-w-0 max-w-full break-words text-neutral-500">{translateGenre(movie.genre, lang)}</span>
               </div>
 
               <div className="flex flex-wrap gap-1.5 animate-fade-up stagger-4 sm:gap-2">
@@ -477,19 +477,19 @@ export default function MovieDetailPage({
                           creativeCardRefs.current[card.key] = element
                         }}
                         key={card.key}
-                        className="h-fit w-max min-w-fit shrink-0 rounded-lg border border-white/10 bg-black/35 p-3 backdrop-blur-md sm:p-4"
+                        className="h-fit w-[min(18rem,calc(100vw-1.5rem))] min-w-0 shrink-0 rounded-lg border border-white/10 bg-black/35 p-3 backdrop-blur-md sm:w-max sm:min-w-fit sm:p-4"
                         style={creativeCardWidth ? { width: creativeCardWidth } : undefined}
                       >
                         <div className="mb-2 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-neutral-400 sm:gap-2 sm:text-xs">
                           <Icon className="size-3 text-neutral-300 sm:size-3.5" />
                           {card.title}
                         </div>
-                        <div className="flex flex-nowrap gap-1.5 sm:gap-2">
+                        <div className="flex flex-wrap gap-1.5 sm:gap-2">
                           {card.items.map((item) => (
                             <Badge
                               key={item}
                               variant="secondary"
-                              className={`h-auto w-max max-w-none justify-start whitespace-nowrap rounded-lg px-2 py-1 text-left text-[10px] leading-snug sm:px-2.5 sm:py-1.5 sm:text-[11px] ${card.badgeClassName}`}
+                              className={`h-auto max-w-full justify-start overflow-visible whitespace-normal rounded-lg px-2 py-1 text-left text-[10px] leading-snug sm:w-max sm:max-w-none sm:px-2.5 sm:py-1.5 sm:text-[11px] ${card.badgeClassName}`}
                             >
                               {item}
                             </Badge>
@@ -520,44 +520,46 @@ export default function MovieDetailPage({
 
       {/* Tags section */}
       <section className="content-container pb-5 animate-fade-up stagger-7 sm:pb-6">
-        <div className="flex flex-wrap gap-2">
+        <div className="metadata-grid">
           {movie.rating > 0 && (
             <Badge
               variant="secondary"
-              className="border-0 bg-neutral-800 text-xs text-neutral-300"
+              className="metadata-badge bg-neutral-800 text-xs text-neutral-300"
             >
-              <Star className="mr-1 size-3" />
-              {movie.rating}
+              <Star className="size-3" />
+              <span className="metadata-badge-text">{movie.rating}</span>
             </Badge>
           )}
           <Badge
             variant="secondary"
-            className="border-0 bg-neutral-800 text-xs text-neutral-300"
+            className="metadata-badge bg-neutral-800 text-xs text-neutral-300"
           >
-            <Clock className="mr-1 size-3" />
-            {visibleDuration !== "-" ? visibleDuration : t("common.noAvailable")}
+            <Clock className="size-3" />
+            <span className="metadata-badge-text">{visibleDuration !== "-" ? visibleDuration : t("common.noAvailable")}</span>
           </Badge>
           <Badge
             variant="secondary"
-            className="max-w-full whitespace-normal border-0 bg-neutral-800 text-left text-xs text-neutral-300"
+            className="metadata-badge metadata-badge-wide bg-neutral-800 text-xs text-neutral-300"
           >
-            {translateGenre(movie.genre, lang)}
+            <span className="metadata-badge-text">{translateGenre(movie.genre, lang)}</span>
           </Badge>
           <Badge
             variant="secondary"
-            className="max-w-full whitespace-normal border-0 bg-neutral-800 text-left text-xs text-neutral-300"
+            className="metadata-badge metadata-badge-wide bg-neutral-800 text-xs text-neutral-300"
           >
-            <Languages className="mr-1 size-3" />
-            {movie.language.map((language) => displayLanguage(language, lang)).join(", ")}
+            <Languages className="size-3" />
+            <span className="metadata-badge-text">{movie.language.map((language) => displayLanguage(language, lang)).join(", ")}</span>
           </Badge>
           <Badge
             variant="secondary"
-            className="max-w-full whitespace-normal border-0 bg-neutral-800 text-left text-xs text-neutral-300"
+            className="metadata-badge metadata-badge-wide bg-neutral-800 text-xs text-neutral-300"
           >
-            <Subtitles className="mr-1 size-3" />
-            {movie.subtitles.length > 0
-              ? movie.subtitles.map((language) => displayLanguage(language, lang)).join(", ")
-              : t("common.noAvailable")}
+            <Subtitles className="size-3" />
+            <span className="metadata-badge-text">
+              {movie.subtitles.length > 0
+                ? movie.subtitles.map((language) => displayLanguage(language, lang)).join(", ")
+                : t("common.noAvailable")}
+            </span>
           </Badge>
         </div>
       </section>
