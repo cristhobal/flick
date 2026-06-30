@@ -26,10 +26,11 @@ import { useI18n } from "@/i18n/I18nProvider"
 import { displayLanguage, translateGenre, type Lang } from "@/i18n/translations"
 
 const QUALITIES = ["4K", "1080p", "4K HDR", "1080p HDR", "720p"]
-const MAX_PAGES = 2
+const SECTION_ITEM_TARGET = 500
+const MAX_PAGES = Math.ceil(SECTION_ITEM_TARGET / 20)
 const DETAIL_CONCURRENCY = 4
 const FETCH_CONCURRENCY = 4  // max parallel endpoint fetches to avoid rate limiting
-const PAGES_PER_ENDPOINT = 1
+const PAGES_PER_ENDPOINT = 2
 const INITIAL_PAGES = 1
 const CATALOG_CACHE_TTL_MS = 10 * 60 * 1000
 const BACKGROUND_DETAIL_LIMIT = 72
@@ -39,7 +40,7 @@ type CachedCatalog = Pick<TMDbState, "hero" | "categories" | "allMovies" | "movi
 }
 
 function catalogCacheKey(lang: Lang): string {
-  return `flick:tmdb-catalog:v2:${lang}`
+  return `flick:tmdb-catalog:v3:${lang}`
 }
 
 function readCatalogCache(lang: Lang): CachedCatalog | null {
@@ -220,14 +221,27 @@ function toMovie(
   }
 }
 
-// deduplicate by tmdbId
+// Deduplicate by type and TMDB id so movie/tv/anime records with the same numeric id can coexist.
 function dedupe(items: Movie[]): Movie[] {
-  const seen = new Set<number>()
+  const seen = new Set<string>()
   return items.filter((m) => {
-    if (seen.has(m.tmdbId)) return false
-    seen.add(m.tmdbId)
+    const key = `${m.type}:${m.tmdbId}`
+    if (seen.has(key)) return false
+    seen.add(key)
     return true
   })
+}
+
+function hasPoster(item: TMDbMovie): boolean {
+  return Boolean(item.poster_path)
+}
+
+function hasMoviePoster(item: Movie): boolean {
+  return Boolean(item.posterPath)
+}
+
+function capSectionItems(items: Movie[]): Movie[] {
+  return dedupe(items).filter(hasMoviePoster).slice(0, SECTION_ITEM_TARGET)
 }
 
 function mergeEnrichedItems(base: Movie[], enriched: Movie[]): Movie[] {
@@ -236,10 +250,11 @@ function mergeEnrichedItems(base: Movie[], enriched: Movie[]): Movie[] {
 }
 
 function dedupeRaw(items: TMDbMovie[]): TMDbMovie[] {
-  const seen = new Set<number>()
+  const seen = new Set<string>()
   return items.filter((item) => {
-    if (seen.has(item.id)) return false
-    seen.add(item.id)
+    const key = `${item.media_type || "movie"}:${item.id}`
+    if (seen.has(key)) return false
+    seen.add(key)
     return true
   })
 }
@@ -532,11 +547,11 @@ export function useTMDB(): TMDbState {
             : [...popularMoviesRaw, ...trendingMoviesRaw, ...topRatedMoviesRaw]
         ).sort(byReleaseDateDesc)
 
-        const masterMovie = dedupe(toBasicMovie(movieRaw, "movie"))
-        const masterSeries = dedupe(toBasicMovie(seriesRaw.filter((item) => !animeIds.has(item.id)), "series"))
-        const masterAnime = dedupe(toBasicMovie(animeRaw, "anime"))
-        const featuredMovies = dedupe(toBasicMovie(featuredMovieRaw, "movie"))
-        const recentMovies = dedupe(toBasicMovie(recentMovieRaw, "movie"))
+        const masterMovie = capSectionItems(toBasicMovie(movieRaw.filter(hasPoster), "movie"))
+        const masterSeries = capSectionItems(toBasicMovie(seriesRaw.filter((item) => !animeIds.has(item.id) && hasPoster(item)), "series"))
+        const masterAnime = capSectionItems(toBasicMovie(animeRaw.filter(hasPoster), "anime"))
+        const featuredMovies = capSectionItems(toBasicMovie(featuredMovieRaw.filter(hasPoster), "movie"))
+        const recentMovies = capSectionItems(toBasicMovie(recentMovieRaw.filter(hasPoster), "movie"))
 
         const heroRaw = [
           ...trendingAllRaw,
@@ -662,36 +677,36 @@ export function useTMDB(): TMDbState {
           }
         }
       }
-
       // ---- Build full movie/series/anime lists (without detail enrichment) ----
-      const allIds = new Set<number>()
+      const allIds = new Set<string>()
       const allRaw: TMDbMovie[] = []
 
-      const addRaw = (items: TMDbMovie[]) => {
+      const addRaw = (items: TMDbMovie[], mediaType?: "movie" | "tv") => {
         for (const item of items) {
-          if (!allIds.has(item.id)) {
-            allIds.add(item.id)
-            allRaw.push(item)
+          if (!hasPoster(item)) continue
+          const normalized = mediaType ? { ...item, media_type: mediaType } : item
+          const key = `${normalized.media_type || "movie"}:${normalized.id}`
+          if (!allIds.has(key)) {
+            allIds.add(key)
+            allRaw.push(normalized)
           }
         }
       }
 
-      addRaw(popularMoviesRaw)
-      addRaw(nowPlayingMoviesRaw)
-      addRaw(trendingMoviesRaw)
-      addRaw(topRatedMoviesRaw)
-      addRaw(popularTvRaw)
-      addRaw(trendingTvRaw)
-      addRaw(topRatedTvRaw)
-      addRaw(animeRaw)
+      addRaw(popularMoviesRaw, "movie")
+      addRaw(nowPlayingMoviesRaw, "movie")
+      addRaw(trendingMoviesRaw, "movie")
+      addRaw(topRatedMoviesRaw, "movie")
+      addRaw(popularTvRaw, "tv")
+      addRaw(trendingTvRaw, "tv")
+      addRaw(topRatedTvRaw, "tv")
+      addRaw(animeRaw, "tv")
       addRaw(trendingAllRaw)
       // Add all genre discover results
       for (const key of Object.keys(resultMap)) {
-        if (key.startsWith("movieGenre_") || key.startsWith("tvGenre_")) {
-          addRaw(resultMap[key])
-        }
+        if (key.startsWith("movieGenre_")) addRaw(resultMap[key], "movie")
+        if (key.startsWith("tvGenre_")) addRaw(resultMap[key], "tv")
       }
-
       // Separate by type
       const movieRaw: TMDbMovie[] = []
       const seriesRaw: TMDbMovie[] = []
@@ -727,9 +742,9 @@ export function useTMDB(): TMDbState {
       const allSeriesRaw = toBasicMovie(seriesRaw, "series")
       const allAnimeRaw = toBasicMovie(animeRawItems, "anime")
 
-      const masterMovie = dedupe(allMoviesRaw)
-      const masterSeries = dedupe(allSeriesRaw)
-      const masterAnime = dedupe(allAnimeRaw)
+      const masterMovie = capSectionItems(allMoviesRaw)
+      const masterSeries = capSectionItems(allSeriesRaw)
+      const masterAnime = capSectionItems(allAnimeRaw)
 
       // ---- Hero (random trending item with backdrop) ----
       const heroRaw = [
@@ -837,12 +852,12 @@ export function useTMDB(): TMDbState {
           : [...popularMoviesRaw, ...trendingMoviesRaw, ...topRatedMoviesRaw]
       ).sort(byReleaseDateDesc)
       const destacadasPool = dedupe(
-        featuredMovieRaw.map((item, index) =>
+        featuredMovieRaw.filter(hasPoster).map((item, index) =>
           toMovie(item, null, resolveGenre(item.genre_ids || []), "movie", index, undefined, translate("movie.unknown"), translate("movie.fallback"), translate("common.general"), lang)
         )
       ).slice(0, 20)
       const recientesPool = dedupe(
-        recentMovieRaw.map((item, index) =>
+        recentMovieRaw.filter(hasPoster).map((item, index) =>
           toMovie(item, null, resolveGenre(item.genre_ids || []), "movie", index, undefined, translate("movie.unknown"), translate("movie.fallback"), translate("common.general"), lang)
         )
       ).slice(0, 20)
@@ -938,13 +953,15 @@ export function useTMDB(): TMDbState {
       if (!query.trim()) return []
       try {
         const allSearchResults: TMDbMovie[] = []
-        const seenSearchIds = new Set<number>()
+        const seenSearchIds = new Set<string>()
         for (let page = 1; page <= 5; page++) {
           const items = await searchMulti(query, page, lang)
           if (!items || items.length === 0) break
           for (const item of items) {
-            if (!seenSearchIds.has(item.id)) {
-              seenSearchIds.add(item.id)
+            if (!hasPoster(item)) continue
+            const key = `${item.media_type || "movie"}:${item.id}`
+            if (!seenSearchIds.has(key)) {
+              seenSearchIds.add(key)
               allSearchResults.push(item)
             }
           }
