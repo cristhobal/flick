@@ -57,7 +57,6 @@ Astro genera la aplicación estática y React controla la navegación, los filtr
 - Detección de pistas de audio integradas y selector de idioma
 - Despliegue estático en Vercel para el modo TMDB
 
-> Favoritos aparece deshabilitado hasta que exista persistencia y estado de usuario.
 
 ---
 

@@ -58,7 +58,6 @@ The application is statically built with Astro while React handles navigation, f
 - Responsive navigation and Netflix-style card previews
 - Static deployment support on Vercel for TMDB mode
 
-> Favorites are intentionally displayed as unavailable until persistence and user state are implemented.
 
 ---
 

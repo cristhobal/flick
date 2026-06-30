@@ -57,7 +57,6 @@ Astro स्थिर एप्लिकेशन बनाता है और 
 - embedded audio tracks की पहचान और भाषा चयन
 - TMDB मोड के लिए Vercel static deployment
 
-> Favorites सुविधा अभी निष्क्रिय है; persistence और user state बाद में जोड़े जाएंगे।
 
 ---
 
