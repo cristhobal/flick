@@ -22,8 +22,6 @@ interface MovieCardProps {
   movie: Movie
   onPlay?: (movie: Movie) => void
   onDetails?: (movie: Movie) => void
-  onFavorite?: (movie: Movie) => void
-  isFavorite?: boolean
   index?: number
 }
 
@@ -31,8 +29,6 @@ export default function MovieCard({
   movie,
   onPlay,
   onDetails,
-  onFavorite,
-  isFavorite = false,
   index = 0,
 }: MovieCardProps) {
   const [showExpanded, setShowExpanded] = useState(false)
@@ -188,7 +184,6 @@ export default function MovieCard({
   const hasRuntime = Boolean(movie.duration && movie.duration !== "-")
   const runtimeLabel = seasonInfo || (hasRuntime ? movie.duration : episodeInfo || "...")
   const genreLabel = translateGenres(movie.genre, lang).join(", ")
-  const favoriteDisabled = !onFavorite
 
   return (
     <>
@@ -240,21 +235,6 @@ export default function MovieCard({
               )}
             </div>
 
-            <button
-              type="button"
-              aria-label={favoriteDisabled ? t("common.favoritesSoon") : isFavorite ? t("favorites.removeAria") : t("favorites.addAria")}
-              aria-pressed={isFavorite}
-              disabled={favoriteDisabled}
-              title={favoriteDisabled ? t("common.favoritesSoon") : undefined}
-              className="absolute top-9 right-2 z-20 flex size-8 items-center justify-center rounded-full text-white/65 transition-all hover:scale-110 hover:text-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100 disabled:hover:text-white/65"
-              onClick={(event) => {
-                event.stopPropagation()
-                if (favoriteDisabled) return
-                onFavorite?.(movie)
-              }}
-            >
-              <Star className={`size-4 transition-colors ${isFavorite ? "fill-white text-white" : "fill-transparent text-white/70"}`} />
-            </button>
 
             <div className="absolute right-0 bottom-0 left-0 flex min-h-24 flex-col justify-end p-3">
               <p className="line-clamp-2 text-sm font-medium leading-[1.125rem] text-white drop-shadow-lg transition-transform duration-300 group-hover/card:translate-y-[-2px]">
@@ -340,19 +320,6 @@ export default function MovieCard({
                     {t("common.play")}
                   </Button>
                 )}
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  title={favoriteDisabled ? t("common.favoritesSoon") : isFavorite ? t("favorites.removeAria") : t("favorites.addAria")}
-                  disabled={favoriteDisabled}
-                  className="size-9 shrink-0 rounded-lg bg-transparent text-neutral-400 hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-neutral-400"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onFavorite?.(movie)
-                  }}
-                >
-                  <Star className={`size-4 ${isFavorite ? "fill-white text-white" : "fill-transparent text-white/70"}`} />
-                </Button>
                 {movie.description && (
                   <Button
                     size="icon-sm"

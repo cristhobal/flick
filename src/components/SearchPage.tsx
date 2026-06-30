@@ -19,8 +19,6 @@ interface SearchPageProps {
   onClose: () => void
   onPlay?: (movie: Movie) => void
   onDetails?: (movie: Movie) => void
-  onFavorite?: (movie: Movie) => void
-  isFavorite?: (movie: Movie) => boolean
   selectedGenres: string[]
   onGenreToggle: (genre: string) => void
   selectedQualities: string[]
@@ -42,8 +40,6 @@ export default function SearchPage({
   onClose,
   onPlay,
   onDetails,
-  onFavorite,
-  isFavorite,
   selectedGenres,
   onGenreToggle,
   selectedQualities,
@@ -203,8 +199,6 @@ export default function SearchPage({
                   movie={movie}
                   onPlay={onPlay}
                   onDetails={onDetails}
-                  onFavorite={onFavorite}
-                  isFavorite={isFavorite?.(movie)}
                   index={i}
                 />
               ))}
