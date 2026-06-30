@@ -1,7 +1,5 @@
 {
-  "framework": "astro",
-  "buildCommand": "astro build",
-  "github": {
-    "silent": true
-  }
+  "rewrites": [
+    { "source": "/((?!_astro/|favicon.svg|flick-logo.svg|robots.txt|sitemap.xml).*)", "destination": "/" }
+  ]
 }
