@@ -18,6 +18,7 @@ interface LibraryPageProps {
   onDetails?: (movie: Movie) => void
   onFavorite?: (movie: Movie) => void
   isFavorite?: (movie: Movie) => boolean
+  favoritesBlocked?: boolean
 }
 
 type Tab = "all" | "favorites" | "movies" | "series" | "anime"
@@ -32,6 +33,7 @@ export default function LibraryPage({
   onDetails,
   onFavorite,
   isFavorite,
+  favoritesBlocked = false,
 }: LibraryPageProps) {
   const [activeTab, setActiveTab] = useState<Tab>("all")
   const { t } = useI18n()
@@ -44,18 +46,22 @@ export default function LibraryPage({
 
   const availableTabs = useMemo(() => {
     const tabs: { id: Tab; label: string }[] = [{ id: "all", label: t("library.everything") }]
-    tabs.push({ id: "favorites", label: t("nav.favorites") })
+    tabs.push({ id: "favorites", label: favoritesBlocked ? t("common.favoritesSoon") : t("nav.favorites") })
     if (movies.length > 0) tabs.push({ id: "movies", label: t("common.movies") })
     if (series.length > 0) tabs.push({ id: "series", label: t("common.series") })
     if (anime.length > 0) tabs.push({ id: "anime", label: t("common.anime") })
     return tabs
-  }, [movies.length, series.length, anime.length, t])
+  }, [movies.length, series.length, anime.length, favoritesBlocked, t])
 
   useEffect(() => {
+    if (favoritesBlocked && activeTab === "favorites") {
+      setActiveTab("all")
+      return
+    }
     if (!availableTabs.some((tab) => tab.id === activeTab)) {
       setActiveTab("all")
     }
-  }, [activeTab, availableTabs])
+  }, [activeTab, availableTabs, favoritesBlocked])
 
   const filterItems = (items: Movie[]) =>
     items.filter(
@@ -127,7 +133,9 @@ export default function LibraryPage({
                       ? "bg-white text-black hover:bg-neutral-900 hover:text-white hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]"
                       : "text-neutral-400 hover:bg-white/10 hover:text-white"
                   }`}
-                  onClick={() => setActiveTab(activeTab === "favorites" ? "all" : "favorites")}
+                  disabled={favoritesBlocked}
+                  title={favoritesBlocked ? t("common.favoritesSoon") : t("nav.favorites")}
+                  onClick={() => { if (!favoritesBlocked) setActiveTab(activeTab === "favorites" ? "all" : "favorites") }}
                 >
                   <Star className={`size-4 ${activeTab === "favorites" ? "fill-black text-black group-hover/button:fill-white group-hover/button:text-white" : "fill-transparent text-neutral-400"}`} />
                   {t("nav.favorites")}
@@ -139,14 +147,15 @@ export default function LibraryPage({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  title={t("nav.favorites")}
+                  title={favoritesBlocked ? t("common.favoritesSoon") : t("nav.favorites")}
+                  disabled={favoritesBlocked}
                   aria-pressed={activeTab === "favorites"}
                   className={`sm:hidden ${
                     activeTab === "favorites"
                       ? "bg-white text-black hover:bg-neutral-900 hover:text-white hover:shadow-[0_0_0_1px_rgba(255,255,255,0.12)]"
                       : "text-neutral-400 hover:bg-white/10 hover:text-white"
                   }`}
-                  onClick={() => setActiveTab(activeTab === "favorites" ? "all" : "favorites")}
+                  onClick={() => { if (!favoritesBlocked) setActiveTab(activeTab === "favorites" ? "all" : "favorites") }}
                 >
                   <Star className={`size-4 ${activeTab === "favorites" ? "fill-black text-black group-hover/button:fill-white group-hover/button:text-white" : "fill-transparent"}`} />
                 </Button>
@@ -187,7 +196,9 @@ export default function LibraryPage({
             {availableTabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                disabled={favoritesBlocked && tab.id === "favorites"}
+                title={favoritesBlocked && tab.id === "favorites" ? t("common.favoritesSoon") : undefined}
+                onClick={() => { if (!(favoritesBlocked && tab.id === "favorites")) setActiveTab(tab.id) }}
                 className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all whitespace-nowrap sm:px-4 ${
                   activeTab === tab.id
                     ? "bg-neutral-800 text-white"
@@ -259,3 +270,4 @@ function TabGrid({
     </div>
   )
 }
+

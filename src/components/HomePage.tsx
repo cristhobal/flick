@@ -551,6 +551,7 @@ export default function HomePage() {
           onDetails={handleDetails}
           onFavorite={favoriteAction}
           isFavorite={favorites.isFavorite}
+          favoritesBlocked={favorites.blocked}
         />
         <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} onFavorite={favoriteAction} isFavorite={selectedMovie ? favorites.isFavorite(selectedMovie) : false} />
       </PageTransition>
