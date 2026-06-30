@@ -461,9 +461,14 @@ export default function MovieDetailPage({
               <p className="line-clamp-3 max-w-full text-xs leading-relaxed text-neutral-400 animate-fade-up stagger-5 sm:max-w-2xl sm:text-sm md:text-base lg:line-clamp-none">
                 {movie.longDescription}
               </p>
-
-              {creativeCards.length > 0 && (
-                <div className="hide-scrollbar flex w-full items-start gap-2 overflow-x-auto pb-1 animate-fade-up stagger-5 sm:gap-3">
+              <div className="min-h-[4.75rem] w-full animate-fade-up stagger-5 sm:min-h-[5.5rem]">
+                <div
+                  className={`hide-scrollbar flex w-full items-start gap-2 overflow-x-auto pb-1 transition-all duration-300 ease-out sm:gap-3 ${
+                    creativeCards.length > 0
+                      ? "translate-y-0 opacity-100"
+                      : "pointer-events-none translate-y-1 opacity-0"
+                  }`}
+                >
                   {creativeCards.map((card) => {
                     const Icon = card.icon
                     return (
@@ -494,8 +499,7 @@ export default function MovieDetailPage({
                     )
                   })}
                 </div>
-              )}
-
+              </div>
               <div className="flex flex-wrap gap-2 animate-fade-up stagger-6 sm:gap-3">
                 {canPlay && (
                   <Button
