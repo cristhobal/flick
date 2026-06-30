@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -77,6 +77,20 @@ export default function CategoryPage({
     if (!samePath(path)) window.history.pushState(null, "", path)
   }
 
+  const handleHorizontalWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    const target = event.currentTarget
+    const maxScrollLeft = target.scrollWidth - target.clientWidth
+    if (maxScrollLeft <= 0) return
+
+    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
+    if (delta === 0) return
+
+    const nextScrollLeft = Math.min(Math.max(target.scrollLeft + delta, 0), maxScrollLeft)
+    if (nextScrollLeft === target.scrollLeft) return
+
+    event.preventDefault()
+    target.scrollLeft = nextScrollLeft
+  }, [])
   const filtered = items
     .filter((m) => {
       if (search && !m.title.toLowerCase().includes(search.toLowerCase()))
@@ -173,7 +187,7 @@ export default function CategoryPage({
                 <span className="hidden shrink-0 text-[10px] font-medium uppercase tracking-wider text-neutral-600 sm:block">
                   {t("category.categories")}
                 </span>
-                <div className="hide-scrollbar min-w-0 flex-1 overflow-x-auto">
+                <div className="hide-scrollbar min-w-0 flex-1 overflow-x-auto overscroll-x-contain" onWheel={handleHorizontalWheel}>
                   <div className="flex w-max items-center gap-1 pr-2 sm:gap-1.5 sm:pr-4">
                     {[t("common.all"), ...genres].map((genre, index) => {
                       const isActive = index === 0 ? !activeGenre : activeGenre === genre
@@ -205,7 +219,7 @@ export default function CategoryPage({
                 <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-neutral-600">
                   {t("category.sort")}
                 </span>
-                <div className="hide-scrollbar min-w-0 flex-1 overflow-x-auto">
+                <div className="hide-scrollbar min-w-0 flex-1 overflow-x-auto overscroll-x-contain" onWheel={handleHorizontalWheel}>
                   <div className="flex w-max items-center gap-1">
                     {sortOptions.map((option) => (
                       <button
