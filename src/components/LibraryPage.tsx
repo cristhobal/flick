@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react"
 import { Button } from "@/components/ui/button"
 import MovieCard from "@/components/MovieCard"
 import { Search, ArrowLeft, X } from "lucide-react"
@@ -19,6 +19,8 @@ interface LibraryPageProps {
 
 type Tab = "all" | "movies" | "series" | "anime"
 
+const LIBRARY_PAGE_SIZE = 120
+
 export default function LibraryPage({
   onClose,
   movies,
@@ -32,7 +34,9 @@ export default function LibraryPage({
   const { t } = useI18n()
   const [librarySearch, setLibrarySearch] = useState("")
   const [searchOpen, setSearchOpen] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(LIBRARY_PAGE_SIZE)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const loadMoreRef = useRef<HTMLDivElement>(null)
 
   const availableTabs = useMemo(() => {
     const tabs: { id: Tab; label: string }[] = [{ id: "all", label: t("library.everything") }]
@@ -52,14 +56,23 @@ export default function LibraryPage({
     if (searchOpen) searchInputRef.current?.focus()
   }, [searchOpen])
 
-  const filterItems = (items: Movie[]) =>
-    items.filter(
-      (m) =>
-        m.title.toLowerCase().includes(librarySearch.toLowerCase()) ||
-        m.genre.toLowerCase().includes(librarySearch.toLowerCase())
-    )
+  useEffect(() => {
+    const htmlOverflow = document.documentElement.style.overflow
+    const bodyOverflow = document.body.style.overflow
+    const bodyOverscroll = document.body.style.overscrollBehavior
 
-  const currentItems = () => {
+    document.documentElement.style.overflow = ""
+    document.body.style.overflow = ""
+    document.body.style.overscrollBehavior = ""
+
+    return () => {
+      document.documentElement.style.overflow = htmlOverflow
+      document.body.style.overflow = bodyOverflow
+      document.body.style.overscrollBehavior = bodyOverscroll
+    }
+  }, [])
+
+  const filteredItems = useMemo(() => {
     const source =
       activeTab === "all"
         ? allItems
@@ -68,8 +81,37 @@ export default function LibraryPage({
           : activeTab === "series"
             ? series
             : anime
-    return filterItems(source)
-  }
+    const query = librarySearch.trim().toLowerCase()
+    if (!query) return source
+    return source.filter(
+      (m) =>
+        m.title.toLowerCase().includes(query) ||
+        m.genre.toLowerCase().includes(query)
+    )
+  }, [activeTab, allItems, anime, librarySearch, movies, series])
+
+  useEffect(() => {
+    setVisibleCount(LIBRARY_PAGE_SIZE)
+  }, [activeTab, librarySearch, filteredItems.length])
+
+  useEffect(() => {
+    const target = loadMoreRef.current
+    if (!target || visibleCount >= filteredItems.length) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisibleCount((current) => Math.min(current + LIBRARY_PAGE_SIZE, filteredItems.length))
+        }
+      },
+      { rootMargin: "800px 0px" }
+    )
+
+    observer.observe(target)
+    return () => observer.disconnect()
+  }, [filteredItems.length, visibleCount])
+
+  const visibleItems = filteredItems.slice(0, visibleCount)
 
   return (
     <div className="min-h-screen bg-black pb-16">
@@ -160,7 +202,11 @@ export default function LibraryPage({
         </div>
 
         <TabGrid
-          items={currentItems()}
+          items={visibleItems}
+          totalCount={filteredItems.length}
+          hasMore={visibleCount < filteredItems.length}
+          loadMoreRef={loadMoreRef}
+          onLoadMore={() => setVisibleCount((current) => Math.min(current + LIBRARY_PAGE_SIZE, filteredItems.length))}
           onPlay={onPlay}
           onDetails={onDetails}
         />
@@ -171,10 +217,18 @@ export default function LibraryPage({
 
 function TabGrid({
   items,
+  totalCount,
+  hasMore,
+  loadMoreRef,
+  onLoadMore,
   onPlay,
   onDetails,
 }: {
   items: Movie[]
+  totalCount: number
+  hasMore: boolean
+  loadMoreRef: RefObject<HTMLDivElement | null>
+  onLoadMore: () => void
   onPlay?: (movie: Movie) => void
   onDetails?: (movie: Movie) => void
 }) {
@@ -191,16 +245,33 @@ function TabGrid({
   }
 
   return (
-    <div className="responsive-card-grid">
-      {items.map((movie, i) => (
-        <MovieCard
-          key={movie.id}
-          movie={movie}
-          onPlay={onPlay}
-          onDetails={onDetails}
-          index={i}
-        />
-      ))}
-    </div>
+    <>
+      <div className="mb-4 text-xs text-neutral-600 sm:mb-5">
+        {t("category.count", { shown: items.length, total: totalCount })}
+      </div>
+      <div className="responsive-card-grid">
+        {items.map((movie, i) => (
+          <MovieCard
+            key={movie.id}
+            movie={movie}
+            onPlay={onPlay}
+            onDetails={onDetails}
+            index={i}
+          />
+        ))}
+      </div>
+      {hasMore && (
+        <div ref={loadMoreRef} className="flex justify-center py-8 sm:py-10">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="border border-neutral-800 text-neutral-400 hover:bg-neutral-900 hover:text-white"
+            onClick={onLoadMore}
+          >
+            {t("common.viewAll")}
+          </Button>
+        </div>
+      )}
+    </>
   )
 }
