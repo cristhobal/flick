@@ -1,8 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import MovieCard from "@/components/MovieCard"
 import { Search, ArrowLeft, X } from "lucide-react"
 import type { Movie } from "@/lib/data"
@@ -32,7 +31,8 @@ export default function LibraryPage({
   const [activeTab, setActiveTab] = useState<Tab>("all")
   const { t } = useI18n()
   const [librarySearch, setLibrarySearch] = useState("")
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   const availableTabs = useMemo(() => {
     const tabs: { id: Tab; label: string }[] = [{ id: "all", label: t("library.everything") }]
@@ -47,6 +47,10 @@ export default function LibraryPage({
       setActiveTab("all")
     }
   }, [activeTab, availableTabs])
+
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus()
+  }, [searchOpen])
 
   const filterItems = (items: Movie[]) =>
     items.filter(
@@ -71,7 +75,7 @@ export default function LibraryPage({
     <div className="min-h-screen bg-black pb-16">
       <div className="sticky top-14 z-30 border-b border-white/5 bg-black/80 backdrop-blur-xl sm:top-16">
         <div className="content-container py-3 sm:py-4">
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex h-10 items-center gap-2 sm:h-11 sm:gap-3">
             <Button
               variant="ghost"
               size="icon-sm"
@@ -81,65 +85,55 @@ export default function LibraryPage({
               <ArrowLeft className="size-5" />
             </Button>
 
-            {!mobileSearchOpen && (
-              <div className="min-w-0 flex-1">
-                <h1 className="truncate text-base font-semibold text-white sm:text-lg">{t("library.title")}</h1>
-                <p className="text-[11px] text-neutral-500 sm:text-xs">
-                  {t("library.count", { count: allItems.length })}
-                </p>
-              </div>
-            )}
-
-            {mobileSearchOpen && (
-              <div className="relative flex-1">
-                <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-neutral-500" />
-                <Input
-                  autoFocus
-                  placeholder={t("library.filter")}
-                  value={librarySearch}
-                  onChange={(e) => setLibrarySearch(e.target.value)}
-                  className="h-9 border-neutral-800 bg-neutral-900/50 pl-9 text-sm text-white placeholder:text-neutral-500 focus:border-neutral-600"
-                />
-              </div>
-            )}
+            <div className={`min-w-0 flex-1 transition-all duration-300 ${searchOpen ? "opacity-0 sm:opacity-100" : "opacity-100"}`}>
+              <h1 className="truncate text-base font-semibold text-white sm:text-lg">{t("library.title")}</h1>
+              <p className="truncate text-[11px] text-neutral-500 sm:text-xs">
+                {t("library.count", { count: allItems.length })}
+              </p>
+            </div>
 
             <div className="flex shrink-0 items-center gap-1">
-              {!mobileSearchOpen && (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="text-neutral-400 sm:hidden"
+              <div className="relative flex min-w-0 items-center">
+                <div
+                  className={`flex cursor-pointer items-center overflow-hidden rounded-lg transition-all duration-300 ease-in-out ${
+                    searchOpen
+                      ? "w-[min(12rem,calc(100vw-7rem))] border border-neutral-800 bg-neutral-900/70 sm:w-48 sm:bg-neutral-900/50 lg:w-64"
+                      : "w-9"
+                  }`}
                   onClick={() => {
-                    setMobileSearchOpen(!mobileSearchOpen)
-                    if (mobileSearchOpen) setLibrarySearch("")
+                    if (!searchOpen) setSearchOpen(true)
                   }}
                 >
-                  {mobileSearchOpen ? <X className="size-4" /> : <Search className="size-4" />}
-                </Button>
-              )}
-
-              {mobileSearchOpen && (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="text-neutral-400 sm:hidden"
-                  onClick={() => {
-                    setMobileSearchOpen(false)
-                    setLibrarySearch("")
-                  }}
-                >
-                  <X className="size-4" />
-                </Button>
-              )}
-
-              <div className="relative hidden w-48 sm:block lg:w-64">
-                <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-neutral-500" />
-                <Input
-                  placeholder={t("library.filter")}
-                  value={librarySearch}
-                  onChange={(e) => setLibrarySearch(e.target.value)}
-                  className="h-9 border-neutral-800 bg-neutral-900/50 pl-9 text-sm text-white placeholder:text-neutral-500 transition-all focus:border-neutral-600"
-                />
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-white/10">
+                    <Search className="size-4 text-neutral-500" />
+                  </div>
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    placeholder={t("library.filter")}
+                    value={librarySearch}
+                    onChange={(e) => setLibrarySearch(e.target.value)}
+                    className={`h-9 min-w-0 bg-transparent text-sm text-white placeholder:text-neutral-500 outline-none transition-all duration-300 ${
+                      searchOpen ? "w-full pr-2 opacity-100" : "w-0 p-0 opacity-0"
+                    }`}
+                  />
+                  {searchOpen && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (librarySearch) {
+                          setLibrarySearch("")
+                        } else {
+                          setSearchOpen(false)
+                        }
+                      }}
+                      className="mr-2 shrink-0 text-neutral-500 hover:text-white"
+                      aria-label="Cerrar busqueda"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
