@@ -13,7 +13,7 @@ import CategoryPage from "@/components/CategoryPage"
 import MovieDetailPage from "@/components/MovieDetailPage"
 import { useTMDB } from "@/lib/use-tmdb"
 import { getPlayableMovie, type Movie } from "@/lib/data"
-import { categoryPath, contentPath, parseBrowseRoute, parseContentRoute, samePath, sectionPath, slugifyTitle, watchPath } from "@/lib/routes"
+import { categoryPath, contentPath, parseBrowseRoute, parseContentRoute, samePath, sectionPath, slugifyTitle, watchPath, type ParsedContentRoute } from "@/lib/routes"
 import { useI18n } from "@/i18n/I18nProvider"
 import { translateGenre } from "@/i18n/translations"
 
@@ -136,6 +136,7 @@ export default function HomePage() {
   const [searchResults, setSearchResults] = useState<Movie[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null)
+  const [pendingContentRoute, setPendingContentRoute] = useState<ParsedContentRoute | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [filterOpen, setFilterOpen] = useState(false)
   const [selectedGenres, setSelectedGenres] = useState<string[]>([])
@@ -236,18 +237,33 @@ export default function HomePage() {
   }, [hero])
 
   useEffect(() => {
-    if (!searchQuery.trim()) {
+    const trimmedQuery = searchQuery.trim()
+    if (!trimmedQuery) {
       setSearchResults([])
+      setSearchLoading(false)
       setView("home")
       return
     }
 
     if (view !== "search") setView("search")
     setSearchLoading(true)
-    tmdb.search(searchQuery).then((results) => {
-      setSearchResults(results)
-      setSearchLoading(false)
-    })
+
+    let cancelled = false
+    // Debounce so we don't fire a request on every keystroke, and guard
+    // against out-of-order responses so a slow, stale request can't
+    // overwrite the results of a newer one.
+    const debounceId = window.setTimeout(() => {
+      tmdb.search(trimmedQuery).then((results) => {
+        if (cancelled) return
+        setSearchResults(results)
+        setSearchLoading(false)
+      })
+    }, 400)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(debounceId)
+    }
   }, [searchQuery, tmdb.search])
 
   const genreFromSlug = useCallback((items: Movie[], genreSlug: string | null) => {
@@ -267,11 +283,16 @@ export default function HomePage() {
               episode.seasonNumber === contentRoute.season && episode.episodeNumber === contentRoute.episode
             ) || baseItem
           : baseItem
-        if (!item) return
-        setSelectedMovie(item)
-        setView(contentRoute.view === "watch" ? "player" : "detail")
-        setCurrentPage(contentRoute.type === "movie" ? "movies" : contentRoute.type)
-        window.scrollTo({ top: 0, behavior: "instant" })
+        if (item) {
+          setSelectedMovie(item)
+          setView(contentRoute.view === "watch" ? "player" : "detail")
+          setCurrentPage(contentRoute.type === "movie" ? "movies" : contentRoute.type)
+          setPendingContentRoute(null)
+          window.scrollTo({ top: 0, behavior: "instant" })
+          return
+        }
+        // Not in catalog — fetch on-demand instead of falling through to browse route
+        setPendingContentRoute(contentRoute)
         return
       }
 
@@ -300,6 +321,23 @@ export default function HomePage() {
     window.addEventListener("popstate", applyRoute)
     return () => window.removeEventListener("popstate", applyRoute)
   }, [allMovies, genreFromSlug, tmdb.anime, tmdb.movies, tmdb.series])
+
+  // Fetch content on demand when navigating directly to a URL not in the catalog
+  useEffect(() => {
+    if (!pendingContentRoute) return
+    let cancelled = false
+    const fetchContent = async () => {
+      const movie = await tmdb.loadDetail(pendingContentRoute.tmdbId, pendingContentRoute.type)
+      if (cancelled || !movie) return
+      setSelectedMovie(movie)
+      setView(pendingContentRoute.view === "watch" ? "player" : "detail")
+      setCurrentPage(pendingContentRoute.type === "movie" ? "movies" : pendingContentRoute.type)
+      setPendingContentRoute(null)
+      window.scrollTo({ top: 0, behavior: "instant" })
+    }
+    fetchContent()
+    return () => { cancelled = true }
+  }, [pendingContentRoute, tmdb.loadDetail])
 
   const handleNavigate = useCallback((page: string) => {
     if (page === "home") {

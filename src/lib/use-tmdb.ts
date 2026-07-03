@@ -340,6 +340,7 @@ export interface TMDbState {
   loading: boolean
   error: string | null
   search: (query: string) => Promise<Movie[]>
+  loadDetail: (tmdbId: number, type: Movie["type"]) => Promise<Movie | null>
 }
 
 export function useTMDB(): TMDbState {
@@ -1036,6 +1037,77 @@ export function useTMDB(): TMDbState {
     [lang, translate]
   )
 
+  const loadDetail = useCallback(async (tmdbId: number, type: Movie["type"]): Promise<Movie | null> => {
+    try {
+      const tmdbType = type === "series" || type === "anime" ? "tv" : "movie"
+      const result = await fetchDetailWithVideos(tmdbId, tmdbType, lang)
+      if (!result.detail) return null
+
+      const genreNames = await mapGenres(
+        (result.detail.genres || []).map((g) => g.id),
+        lang
+      )
+      const movieItem: TMDbMovie = {
+        id: tmdbId,
+        title: result.detail.title || result.detail.name || translate("movie.unknown"),
+        name: result.detail.name || result.detail.title || translate("movie.unknown"),
+        poster_path: result.detail.poster_path,
+        backdrop_path: result.detail.backdrop_path,
+        overview: result.detail.overview || "",
+        vote_average: result.detail.vote_average || 0,
+        release_date: result.detail.release_date || result.detail.first_air_date || "",
+        first_air_date: result.detail.first_air_date || result.detail.release_date || "",
+        genre_ids: (result.detail.genres || []).map((g) => g.id),
+        original_language: (result.detail as any).original_language || "",
+        popularity: result.detail.popularity || 0,
+        media_type: tmdbType,
+      }
+      const movie = toMovie(
+        movieItem,
+        result.detail,
+        genreNames,
+        type,
+        0,
+        result.trailerUrl || undefined,
+        translate("movie.unknown"),
+        translate("movie.fallback"),
+        translate("common.general"),
+        lang
+      )
+
+      if (type === "series" || type === "anime") {
+        const detailSeasonCount = result.detail.number_of_seasons || 1
+        const groupedSeasons = await fetchTvEpisodeGroupSeasons(
+          tmdbId,
+          result.detail.number_of_episodes || movie.episodes || 0,
+          detailSeasonCount,
+          lang,
+          Object.fromEntries(
+            (result.detail.seasons || [])
+              .filter((season) => season.season_number > 0 && season.name)
+              .map((season) => [season.season_number, season.name])
+          )
+        )
+        if (groupedSeasons.length > 0) {
+          return {
+            ...movie,
+            seasons: Math.max(movie.seasons || 0, groupedSeasons.length),
+            totalSeasons: Math.max(movie.totalSeasons || 0, groupedSeasons.length),
+            seasonList: groupedSeasons.map((season) => ({
+              season: season.season,
+              title: season.title,
+              episodes: [],
+            })),
+          }
+        }
+      }
+
+      return movie
+    } catch {
+      return null
+    }
+  }, [lang, translate])
+
   return {
     hero,
     categories,
@@ -1046,5 +1118,6 @@ export function useTMDB(): TMDbState {
     loading,
     error,
     search,
+    loadDetail,
   }
 }

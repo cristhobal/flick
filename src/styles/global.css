@@ -99,12 +99,22 @@
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
-    /* Prevent horizontal overflow on all viewports */
-    overflow-x: hidden;
-    -webkit-text-size-adjust: 100%;
-    text-rendering: optimizeLegibility;
+   body {
+     @apply bg-background text-foreground;
+     /* Prevent horizontal overflow on all viewports */
+     overflow-x: hidden;
+     overflow-y: scroll;
+     scrollbar-gutter: stable;
+     -webkit-text-size-adjust: 100%;
+     text-rendering: optimizeLegibility;
+   }
+  /* The scrollbar is always visible (overflow-y: scroll above), so it never
+     needs to be compensated for. Prevent Radix's scroll-lock (used by modal
+     Dialog/Sheet/Select) from adding extra padding-right when it opens,
+     which otherwise makes the page visibly narrower while open. */
+  html body[data-scroll-locked] {
+    padding-right: 0 !important;
+    margin-right: 0 !important;
   }
   html {
     @apply font-sans;
