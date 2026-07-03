@@ -19,7 +19,7 @@ export interface TMDbMovieDetail {
   created_by?: { id: number; name: string }[]
   production_companies?: { id: number; name: string; origin_country?: string }[]
   networks?: { id: number; name: string; origin_country?: string }[]
-  seasons?: { id: number; name: string; season_number: number; episode_count: number }[]
+  seasons?: { id: number; name: string; season_number: number; episode_count: number; air_date?: string | null }[]
   production_countries: { iso_3166_1: string; name: string }[]; number_of_seasons?: number
   number_of_episodes?: number; status: string; popularity: number; tagline: string; vote_count: number
 }

@@ -23,24 +23,22 @@ import { displayLanguage, translateGenre } from "@/i18n/translations"
 import {
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
   Play,
   Star,
   Clock,
   Languages,
   Subtitles,
-  Check,
   Clapperboard,
   Building2,
   UserRound,
 } from "lucide-react"
 import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu"
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 function runtimeStr(minutes: number | null | undefined): string {
   if (!minutes || minutes <= 0) return "-"
@@ -53,6 +51,16 @@ function runtimeStr(minutes: number | null | undefined): string {
 
 function hasEastAsianScript(value: string): boolean {
   return /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff\uac00-\ud7af]/u.test(value)
+}
+
+function isSeasonReleased(airDate: string | null | undefined): boolean {
+  // TMDb creates a season entry (sometimes with a placeholder episode_count)
+  // as soon as a renewal is announced, well before any episode has aired.
+  // Only count seasons that have actually started airing.
+  if (!airDate) return false
+  const parsed = Date.parse(airDate)
+  if (Number.isNaN(parsed)) return false
+  return parsed <= Date.now()
 }
 
 function isGenericSeasonTitle(value: string, season: number): boolean {
@@ -105,6 +113,7 @@ export default function MovieDetailPage({
   const [castReady, setCastReady] = useState(false)
   const [creativeCardWidth, setCreativeCardWidth] = useState<number | null>(null)
   const creativeCardRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const seasonTriggerRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     setSelectedSeason(1)
@@ -138,7 +147,7 @@ export default function MovieDetailPage({
   const tmdbSeasonList = useMemo(
     () => {
       const detailSeasons = (creativeCredits?.detail?.seasons || [])
-        .filter((season) => season.season_number > 0 && season.episode_count > 0)
+        .filter((season) => season.season_number > 0 && season.episode_count > 0 && isSeasonReleased(season.air_date))
         .map((season) => ({
           season: season.season_number,
           title: season.name,
@@ -189,24 +198,39 @@ export default function MovieDetailPage({
     }
   }, [activeSeasonList, selectedSeason])
 
+  const cleanEpisodeName = useCallback((name: string, epNum: number): string => {
+    const fallback = `${t("player.episode", { episode: epNum })}`
+    if (!name) return fallback
+    // Strip leading patterns like "1. ", "E1 - ", "Episode 1: ", "Ep 1 - " etc.
+    const cleaned = name
+      .replace(new RegExp(`^\\s*E?${epNum}\\s*[\\.:\\-–]\\s*`, "i"), "")
+      .replace(new RegExp(`^Episode\\s+${epNum}\\s*[\\.:\\-–]\\s*`, "i"), "")
+      .replace(new RegExp(`^Ep\\.?\\s+${epNum}\\s*[\\.:\\-–]\\s*`, "i"), "")
+      .trim()
+    return cleaned || name
+  }, [t])
+
   const mapTmdbEpisodes = useCallback((episodes: TMDbEpisodeGroupSeason["episodes"], seasonNumber: number): Movie[] =>
-    episodes.map((episode) => ({
-      ...movie,
-      id: `${movie.id}-season-${seasonNumber}-episode-${episode.episode_number}`,
-      title: episode.name || `${t("player.episode", { episode: episode.episode_number })}`,
-      description: episode.overview || "",
-      longDescription: episode.overview || "",
-      duration: episode.runtime ? `${episode.runtime}m` : movie.duration,
-      durationSeconds: episode.runtime ? episode.runtime * 60 : undefined,
-      rating: Math.round((episode.vote_average || 0) * 10) / 10,
-      posterPath: episode.still_path || movie.posterPath,
-      backdropPath: episode.still_path || movie.backdropPath,
-      episodeNumber: episode.episode_number,
-      seasonNumber,
-      episodeTitle: episode.name || `${t("player.episode", { episode: episode.episode_number })}`,
-      episodeSynopsis: episode.overview || "",
-      seriesTitle: movie.title,
-    })), [movie, t])
+    episodes.map((episode) => {
+      const cleanName = cleanEpisodeName(episode.name, episode.episode_number)
+      return {
+        ...movie,
+        id: `${movie.id}-season-${seasonNumber}-episode-${episode.episode_number}`,
+        title: cleanName,
+        description: episode.overview || "",
+        longDescription: episode.overview || "",
+        duration: episode.runtime ? `${episode.runtime}m` : movie.duration,
+        durationSeconds: episode.runtime ? episode.runtime * 60 : undefined,
+        rating: Math.round((episode.vote_average || 0) * 10) / 10,
+        posterPath: episode.still_path || movie.posterPath,
+        backdropPath: episode.still_path || movie.backdropPath,
+        episodeNumber: episode.episode_number,
+        seasonNumber,
+        episodeTitle: cleanName,
+        episodeSynopsis: episode.overview || "",
+        seriesTitle: movie.title,
+      }
+    }), [movie, t, cleanEpisodeName])
 
   useEffect(() => {
     if ((movie.type !== "series" && movie.type !== "anime") || movie.seriesEpisodes?.length || movie.tmdbId <= 0) return
@@ -571,30 +595,41 @@ export default function MovieDetailPage({
             <div className="flex items-center gap-3">
               <h2 className="text-lg font-semibold text-white">{t("details.episodes")}</h2>
               {hasMultipleSeasons && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button className="flex items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-xs text-neutral-300 outline-none transition-colors hover:border-neutral-600 focus:border-neutral-500">
+                <Select
+                  value={String(selectedSeason)}
+                  onValueChange={(value) => setSelectedSeason(Number(value))}
+                >
+                  <SelectTrigger
+                    ref={seasonTriggerRef}
+                    size="sm"
+                    className="h-auto gap-1.5 rounded-lg border-neutral-700 bg-neutral-900 px-2.5 py-1 text-xs text-neutral-300 hover:border-neutral-600 focus-visible:border-neutral-500 focus-visible:ring-0 data-[state=open]:border-neutral-500 [&_svg]:size-3 [&_svg]:opacity-100"
+                  >
+                    <SelectValue>
                       {selectedSeasonMeta ? seasonOptionLabel(selectedSeasonMeta) : `${t("common.season")} ${selectedSeason}`}
-                      <ChevronDown className="size-3" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="min-w-36 border-neutral-800 bg-neutral-950 text-neutral-300">
-                    {activeSeasonList!.map((s, i) => (
-                      <div key={s.season}>
-                        {i > 0 && <DropdownMenuSeparator className="bg-neutral-800" />}
-                        <DropdownMenuItem
-                          className="flex items-center gap-2 text-xs cursor-pointer"
-                          onClick={() => setSelectedSeason(s.season)}
-                        >
-                          {selectedSeason === s.season && <Check className="size-3 text-white" />}
-                          <span className={selectedSeason === s.season ? "text-white" : ""}>
-                            {seasonOptionLabel(s)}
-                          </span>
-                        </DropdownMenuItem>
-                      </div>
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent
+                    align="start"
+                    className="min-w-40 border-neutral-800 bg-neutral-950 text-neutral-300"
+                    onCloseAutoFocus={(event) => {
+                      // Radix restores focus to the trigger on close, and the
+                      // browser's default focus() call scrolls it into view.
+                      // Restore focus manually without moving the scroll position.
+                      event.preventDefault()
+                      seasonTriggerRef.current?.focus({ preventScroll: true })
+                    }}
+                  >
+                    {activeSeasonList!.map((s) => (
+                      <SelectItem
+                        key={s.season}
+                        value={String(s.season)}
+                        className="text-xs focus:bg-neutral-800 focus:text-white [&_svg]:text-white"
+                      >
+                        {seasonOptionLabel(s)}
+                      </SelectItem>
                     ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                  </SelectContent>
+                </Select>
               )}
             </div>
             <span className="text-xs text-neutral-500">
@@ -621,7 +656,10 @@ export default function MovieDetailPage({
                 ))
               : visibleEpisodes.map((episode) => {
                   const episodeImage = posterUrl(episode.posterPath || movie.posterPath, "w185")
-                  const episodeName = episode.episodeTitle || episode.title
+                  // Some TMDB episodes have their number prefixed in the name
+                  // (e.g. "E1 - ..." or "1. ..."). Strip it here so the
+                  // E{n} - prefix we add below doesn't duplicate.
+                  const episodeName = cleanEpisodeName(episode.episodeTitle || episode.title, episode.episodeNumber ?? 0)
                   const episodeLabel = episode.episodeNumber
                     ? `E${episode.episodeNumber} - ${episodeName}`
                     : episodeName
@@ -631,7 +669,28 @@ export default function MovieDetailPage({
                       key={episode.id}
                       size="sm"
                       className="cursor-pointer border border-neutral-800 bg-neutral-900/50 transition-colors hover:border-neutral-700 hover:bg-neutral-900"
-                      onClick={() => onMovieClick(episode)}
+                      onPointerDown={(e) => {
+                        (e.currentTarget as HTMLElement).dataset.pointerX = String(e.clientX)
+                        ;(e.currentTarget as HTMLElement).dataset.pointerY = String(e.clientY)
+                      }}
+                      onClick={(event) => {
+                        // Distinguish a selection drag from a real click by
+                        // checking if the pointer moved more than 4px between
+                        // pointerdown and click.
+                        const el = event.currentTarget as HTMLElement
+                        const px = el.dataset.pointerX
+                        const py = el.dataset.pointerY
+                        if (px && py && (Math.abs(event.clientX - Number(px)) > 4 || Math.abs(event.clientY - Number(py)) > 4)) {
+                          return
+                        }
+                        // Fallback: if for some reason the position check
+                        // fails, also ignore text selections on the card.
+                        const sel = window.getSelection?.()
+                        if (sel && sel.toString().length > 0 && el.contains(sel.anchorNode)) {
+                          return
+                        }
+                        onMovieClick(episode)
+                      }}
                     >
                       <div className="flex gap-3 p-3">
                         <div className="h-24 w-16 shrink-0 overflow-hidden rounded-md bg-neutral-800 shadow-md">
