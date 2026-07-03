@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import type { Movie } from "@/lib/data"
 import { useI18n } from "@/i18n/I18nProvider"
+import { useScrollState } from "@/hooks/useScrollState"
 
 interface MovieCarouselProps {
   title: string
@@ -23,6 +24,7 @@ export default function MovieCarousel({
   onViewAll,
 }: MovieCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const { canScrollLeft, canScrollRight, ref: scrollStateRef } = useScrollState()
   const { t } = useI18n()
 
   const scroll = (direction: "left" | "right") => {
@@ -53,7 +55,7 @@ export default function MovieCarousel({
       </div>
 
       <div className="relative">
-        <div className="pointer-events-none absolute top-0 bottom-0 left-0 z-10 flex w-12 items-center opacity-0 transition-all duration-500 group-hover/row:opacity-100 sm:pointer-events-auto sm:w-16">
+        <div className="pointer-events-none absolute top-0 bottom-0 left-0 z-10 flex w-12 items-center opacity-0 transition-all duration-500 group-hover/row:opacity-100 sm:pointer-events-auto sm:w-16" style={{ opacity: canScrollLeft ? undefined : 0, pointerEvents: canScrollLeft ? undefined : "none" }}>
           <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent" />
           <Button
             variant="ghost"
@@ -66,7 +68,7 @@ export default function MovieCarousel({
         </div>
 
         <div
-          ref={scrollRef}
+          ref={(node) => { scrollRef.current = node; scrollStateRef(node) }}
           className="hide-scrollbar flex flex-nowrap gap-2 overflow-x-auto px-3 pb-4 scroll-smooth sm:gap-3 sm:px-6 lg:px-8"
         >
           {items.map((movie, i) => (
@@ -84,7 +86,7 @@ export default function MovieCarousel({
           ))}
         </div>
 
-        <div className="pointer-events-none absolute top-0 right-0 bottom-0 z-10 flex w-12 items-center justify-end opacity-0 transition-all duration-500 group-hover/row:opacity-100 sm:pointer-events-auto sm:w-16">
+        <div className="pointer-events-none absolute top-0 right-0 bottom-0 z-10 flex w-12 items-center justify-end opacity-0 transition-all duration-500 group-hover/row:opacity-100 sm:pointer-events-auto sm:w-16" style={{ opacity: canScrollRight ? undefined : 0, pointerEvents: canScrollRight ? undefined : "none" }}>
           <div className="absolute inset-0 bg-gradient-to-l from-black/70 via-black/30 to-transparent" />
           <Button
             variant="ghost"
