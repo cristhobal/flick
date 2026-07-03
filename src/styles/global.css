@@ -276,8 +276,8 @@
 
 
   .metadata-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: 0.5rem;
   }
 
@@ -287,7 +287,7 @@
     min-width: 0;
     max-width: 100%;
     justify-content: flex-start;
-    align-items: flex-start;
+    align-items: center;
     overflow: visible;
     border: 0;
     border-radius: 0.5rem;
@@ -298,12 +298,10 @@
   }
 
   .metadata-badge-wide {
-    grid-column: 1 / -1;
-    width: 100%;
+    width: auto;
   }
 
   .metadata-badge > svg {
-    margin-top: 0.0625rem;
     flex: none;
   }
 
@@ -318,14 +316,7 @@
     }
 
 
-    .metadata-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-    }
-
     .metadata-badge-wide {
-      width: auto;
       max-width: min(100%, 42rem);
     }
     .responsive-card-grid {

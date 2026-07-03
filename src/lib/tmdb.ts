@@ -314,3 +314,26 @@ export async function fetchTvTrending(page = 1, lang: Lang = "en"): Promise<Page
   const data = await apiFetch<TMDbPageResponse<TMDbMovie>>(`/trending/tv/week?language=${locale(lang)}&page=${page}`)
   return toPagedResult(data)
 }
+
+interface TMDbBackdrop {
+  file_path: string
+  width: number
+  height: number
+  aspect_ratio: number
+  vote_average: number
+}
+interface TMDbImagesResponse {
+  backdrops: TMDbBackdrop[]
+}
+
+export async function fetchImages(id: number, type: "movie" | "tv" = "movie"): Promise<string[]> {
+  try {
+    const data = await apiFetch<TMDbImagesResponse>(`/${type}/${id}/images`)
+    const backdrops = (data.backdrops || [])
+      .filter((b) => b.width >= 1280 && b.file_path)
+      .sort((a, b) => b.vote_average - a.vote_average)
+    return backdrops.map((b) => b.file_path)
+  } catch {
+    return []
+  }
+}
