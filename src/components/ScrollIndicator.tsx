@@ -1,28 +1,25 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef } from "react"
 
 export default function ScrollIndicator() {
-  const [thumbTop, setThumbTop] = useState(0)
-  const [thumbHeight, setThumbHeight] = useState(0)
-  const [visible, setVisible] = useState(false)
+  const barRef = useRef<HTMLDivElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout>>()
 
   useEffect(() => {
+    const bar = barRef.current
+    if (!bar) return
+
     const update = () => {
       const { scrollTop, scrollHeight, clientHeight } = document.documentElement
       const maxScroll = scrollHeight - clientHeight
-      if (maxScroll <= 0) {
-        setVisible(false)
-        return
-      }
-      const ratio = scrollTop / maxScroll
-      const thumbH = Math.max(24, (clientHeight / scrollHeight) * clientHeight)
-      setThumbTop(ratio * (clientHeight - thumbH))
-      setThumbHeight(thumbH)
-      setVisible(true)
+      const progress = maxScroll > 0 ? scrollTop / maxScroll : 0
+      bar.style.transform = `scaleX(${progress})`
+      bar.style.opacity = progress > 0 ? "1" : "0"
       clearTimeout(timerRef.current)
-      timerRef.current = setTimeout(() => setVisible(false), 1200)
+      timerRef.current = setTimeout(() => {
+        bar.style.opacity = "0"
+      }, 1000)
     }
 
     update()
@@ -36,18 +33,14 @@ export default function ScrollIndicator() {
   }, [])
 
   return (
-    <div
-      className="fixed top-0 right-0 z-[999] h-full pointer-events-none"
-      style={{ width: 5 }}
-    >
+    <div className="fixed top-0 left-0 z-[999] h-0.5 w-full pointer-events-none">
       <div
-        className="relative w-full rounded-full transition-opacity duration-300"
+        ref={barRef}
+        className="h-full origin-left transition-opacity duration-300"
         style={{
-          top: thumbTop,
-          height: thumbHeight,
-          width: 5,
-          opacity: visible ? 1 : 0,
-          backgroundColor: "rgba(255,255,255,0.2)",
+          backgroundColor: "rgba(255,255,255,0.25)",
+          transform: "scaleX(0)",
+          opacity: 0,
         }}
       />
     </div>
