@@ -127,7 +127,7 @@ function ScreenshotDialog({ screenshots, index: initialIndex }: { screenshots: s
                       className="transition-opacity duration-500"
                       style={{
                         ...(isMobile
-                          ? { height: "93dvh", width: "100dvw", objectFit: "cover" }
+                          ? { height: "93dvh", width: "calc(100dvw - 7dvw)", objectFit: "cover", borderRadius: "0.5rem" }
                           : { maxWidth: "95dvw", maxHeight: "95dvh", width: "auto", height: "auto", objectFit: "contain", borderRadius: "0.5rem" }
                         ),
                       }}
