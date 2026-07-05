@@ -125,6 +125,11 @@
        the page content and the real (outer) scrollbar, on every page. */
     overflow-x: hidden;
     overflow-y: scroll;
+    scrollbar-width: none;
+  }
+  ::-webkit-scrollbar {
+    width: 0;
+    height: 0;
   }
   /* Ensure images never overflow their containers */
   img {
@@ -141,13 +146,6 @@
   textarea,
   select {
     font: inherit;
-  }
-  ::-webkit-scrollbar {
-    width: 0;
-    height: 0;
-  }
-  html {
-    scrollbar-width: none;
   }
 }
 
