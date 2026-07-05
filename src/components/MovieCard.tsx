@@ -24,7 +24,6 @@ interface MovieCardProps {
   onPlay?: (movie: Movie) => void
   onDetails?: (movie: Movie) => void
   index?: number
-  expandUpward?: boolean
 }
 
 export default function MovieCard({
@@ -32,7 +31,6 @@ export default function MovieCard({
   onPlay,
   onDetails,
   index = 0,
-  expandUpward = false,
 }: MovieCardProps) {
   const [showExpanded, setShowExpanded] = useState(false)
   const [isHoveringCard, setIsHoveringCard] = useState(false)
@@ -41,17 +39,13 @@ export default function MovieCard({
   const [synopsisHeight, setSynopsisHeight] = useState(0)
   const [resolvedTrailerUrl, setResolvedTrailerUrl] = useState<string | null | undefined>(movie.trailerUrl)
   const [pos, setPos] = useState({ left: 0, top: 0 })
+  const [expandUpward, setExpandUpward] = useState(false)
   const showTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const cardRef = useRef<HTMLDivElement>(null)
   const previewIdRef = useRef(`preview-${movie.id}-${index}`)
   const synopsisRef = useRef<HTMLDivElement>(null)
   const synopsisTogglingRef = useRef(false)
-  const expandUpwardRef = useRef(expandUpward)
-
-  useEffect(() => {
-    expandUpwardRef.current = expandUpward
-  }, [expandUpward])
 
   const cancelHide = useCallback(() => {
     clearTimeout(hideTimerRef.current)
@@ -139,6 +133,7 @@ export default function MovieCard({
       if (cardRef.current) {
         const rect = cardRef.current.getBoundingClientRect()
         const previewWidth = Math.min(360, window.innerWidth - 24)
+        const previewHeight = Math.min(460, window.innerHeight - 24)
         const viewportPadding = 12
         const gap = 8
         const spaceRight = window.innerWidth - rect.right
@@ -149,16 +144,22 @@ export default function MovieCard({
           Math.max(viewportPadding, rawLeft),
           window.innerWidth - previewWidth - viewportPadding
         )
-        if (expandUpward) {
-          const bottom = Math.max(
-            window.innerHeight - rect.bottom - gap,
-            viewportPadding
+        const spaceAbove = rect.top
+        const spaceBelow = window.innerHeight - rect.bottom
+        const canExpandDown = spaceBelow >= previewHeight + gap + viewportPadding
+        const canExpandUp = spaceAbove >= previewHeight + gap + viewportPadding
+        const shouldExpandUp = (!canExpandDown && canExpandUp) || (!canExpandDown && !canExpandUp && spaceAbove >= spaceBelow)
+        setExpandUpward(shouldExpandUp)
+        if (shouldExpandUp) {
+          const bottom = Math.min(
+            Math.max(window.innerHeight - rect.bottom - gap, viewportPadding),
+            window.innerHeight - previewHeight - viewportPadding
           )
           setPos({ left, top: bottom })
         } else {
           const top = Math.min(
             Math.max(rect.top, viewportPadding),
-            window.innerHeight - viewportPadding
+            window.innerHeight - previewHeight - viewportPadding
           )
           setPos({ left, top })
         }

@@ -891,7 +891,7 @@ export default function MovieDetailPage({
                     onPlay={onPlay}
                     onDetails={onMovieClick}
                     index={i}
-                    expandUpward
+
                   />
                 </div>
               ))}
