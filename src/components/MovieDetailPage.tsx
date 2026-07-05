@@ -528,7 +528,7 @@ export default function MovieDetailPage({
                           creativeCardRefs.current[card.key] = element
                         }}
                         key={card.key}
-                        className="h-fit w-[min(18rem,calc(100vw-1.5rem))] min-w-0 shrink-0 rounded-lg border border-white/10 bg-black/35 p-3 backdrop-blur-md sm:w-max sm:min-w-fit sm:p-4"
+                        className="h-fit w-[min(18rem,calc(100vw-1.5rem))] min-w-0 shrink-0 rounded-md border border-white/10 bg-black/35 p-3 backdrop-blur-md sm:w-max sm:min-w-fit sm:p-4"
                         style={creativeCardWidth ? { width: creativeCardWidth } : undefined}
                       >
                         <div className="mb-2 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-neutral-400 sm:gap-2 sm:text-xs">
@@ -540,7 +540,7 @@ export default function MovieDetailPage({
                             <Badge
                               key={item}
                               variant="secondary"
-                              className={`h-auto max-w-full justify-start overflow-visible whitespace-normal rounded-lg px-2 py-1 text-left text-[10px] leading-snug sm:w-max sm:max-w-none sm:px-2.5 sm:py-1.5 sm:text-[11px] ${card.badgeClassName}`}
+                              className={`h-auto max-w-full justify-start overflow-visible whitespace-normal rounded-sm px-2 py-1 text-left text-[10px] leading-snug sm:w-max sm:max-w-none sm:px-2.5 sm:py-1.5 sm:text-[11px] ${card.badgeClassName}`}
                             >
                               {item}
                             </Badge>
@@ -924,6 +924,7 @@ export default function MovieDetailPage({
                     onPlay={onPlay}
                     onDetails={onMovieClick}
                     index={i}
+                    expandUpward
                   />
                 </div>
               ))}
