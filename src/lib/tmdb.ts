@@ -178,6 +178,27 @@ export async function fetchCreativeCredits(id: number, type: "movie" | "tv" = "m
   }
 }
 
+export interface TMDbPerson {
+  id: number
+  name: string
+  biography: string
+  birthday: string | null
+  deathday: string | null
+  place_of_birth: string | null
+  gender: number
+  profile_path: string | null
+  known_for_department: string
+  also_known_as: string[]
+  homepage: string | null
+}
+export async function fetchPersonDetails(id: number, lang: Lang = "en"): Promise<TMDbPerson | null> {
+  try {
+    return await apiFetch<TMDbPerson>(`/person/${id}?language=${locale(lang)}`)
+  } catch {
+    return null
+  }
+}
+
 export interface TMDbEpisode {
   id: number
   name: string
