@@ -745,7 +745,7 @@ function ErrorScreen({ message }: { message: string }) {
       <p className="text-sm text-neutral-400">{message}</p>
       <button
         onClick={() => window.location.reload()}
-        className="rounded-lg border border-neutral-800 px-4 py-2 text-sm text-neutral-300 transition-all hover:scale-105 hover:bg-neutral-900 hover:text-white active:scale-95"
+        className="cursor-pointer rounded-lg border border-neutral-800 px-4 py-2 text-sm text-neutral-300 transition-all hover:scale-105 hover:bg-neutral-900 hover:text-white active:scale-95"
       >
         {t("common.retry")}
       </button>

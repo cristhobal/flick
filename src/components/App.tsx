@@ -27,7 +27,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { message: str
           <p className="max-w-xl text-sm text-neutral-400">{this.state.message}</p>
           <button
             onClick={() => window.location.reload()}
-            className="rounded-lg border border-neutral-800 px-4 py-2 text-sm text-neutral-300 hover:bg-neutral-900 hover:text-white"
+            className="cursor-pointer rounded-lg border border-neutral-800 px-4 py-2 text-sm text-neutral-300 hover:bg-neutral-900 hover:text-white"
           >
             Reintentar
           </button>

@@ -169,7 +169,7 @@ export default function LibraryPage({
                           setSearchOpen(false)
                         }
                       }}
-                      className="mr-2 shrink-0 text-neutral-500 hover:text-white"
+                      className="mr-2 shrink-0 cursor-pointer text-neutral-500 hover:text-white"
                       aria-label="Cerrar busqueda"
                     >
                       <X className="size-3.5" />
@@ -189,7 +189,7 @@ export default function LibraryPage({
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all whitespace-nowrap sm:px-4 ${
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all whitespace-nowrap sm:px-4 cursor-pointer ${
                   activeTab === tab.id
                     ? "bg-neutral-800 text-white"
                     : "text-neutral-400 hover:text-white"

@@ -201,7 +201,7 @@ export default function CategoryPage({
                               updateGenreRoute(nextGenre)
                             }
                           }
-                          className={`shrink-0 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors sm:px-3 sm:py-1.5 ${
+                          className={`shrink-0 cursor-pointer rounded-lg px-2.5 py-1 text-xs font-medium transition-colors sm:px-3 sm:py-1.5 ${
                             isActive
                               ? "bg-white text-black"
                               : "bg-neutral-900 text-neutral-400 hover:bg-neutral-800 hover:text-white"
@@ -225,7 +225,7 @@ export default function CategoryPage({
                       <button
                         key={option.id}
                         onClick={() => setSortBy(option.id)}
-                        className={`shrink-0 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors sm:px-3 sm:py-1.5 ${
+                        className={`shrink-0 cursor-pointer rounded-lg px-2.5 py-1 text-xs font-medium transition-colors sm:px-3 sm:py-1.5 ${
                           sortBy === option.id
                             ? "bg-neutral-800 text-white"
                             : "text-neutral-500 hover:bg-neutral-900 hover:text-neutral-300"

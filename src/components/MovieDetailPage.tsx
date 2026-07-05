@@ -135,8 +135,8 @@ function ScreenshotDialog({ screenshots, index: initialIndex }: { screenshots: s
                       decoding="async"
                     />
                     <DialogClose asChild>
-                      <button
-                        className="absolute top-3 right-3 z-10 flex size-8 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-black/80"
+                    <button
+                      className="absolute top-3 right-3 z-10 flex size-8 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-black/80"
                         aria-label="Close"
                       >
                         <XIcon className="size-4" />
@@ -151,17 +151,17 @@ function ScreenshotDialog({ screenshots, index: initialIndex }: { screenshots: s
             </CarouselContent>
           </Carousel>
 
-          <button
-            onClick={() => api?.scrollPrev()}
-            className="absolute left-3 top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-black/80 disabled:opacity-30"
+                <button
+                  onClick={() => api?.scrollPrev()}
+                  className="absolute left-3 top-1/2 z-10 flex size-10 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-black/80 disabled:opacity-30"
             disabled={!api?.canScrollPrev()}
             aria-label="Previous screenshot"
           >
             <ChevronLeft className="size-5" />
           </button>
-          <button
-            onClick={() => api?.scrollNext()}
-            className="absolute right-3 top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-black/80 disabled:opacity-30"
+                <button
+                  onClick={() => api?.scrollNext()}
+                  className="absolute right-3 top-1/2 z-10 flex size-10 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-black/80 disabled:opacity-30"
             disabled={!api?.canScrollNext()}
             aria-label="Next screenshot"
           >
@@ -837,7 +837,7 @@ export default function MovieDetailPage({
                 <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent" />
                 <button
                   onClick={() => screenshotScrollRef.current?.scrollBy({ left: -screenshotScrollRef.current.clientWidth, behavior: "smooth" })}
-                  className="relative z-10 ml-1 flex size-8 items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
+                  className="relative z-10 ml-1 flex size-8 cursor-pointer items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
                 >
                   <ChevronLeft className="size-5" />
                 </button>
@@ -854,7 +854,7 @@ export default function MovieDetailPage({
                 <div className="absolute inset-0 bg-gradient-to-l from-black/70 via-black/30 to-transparent" />
                 <button
                   onClick={() => screenshotScrollRef.current?.scrollBy({ left: screenshotScrollRef.current.clientWidth, behavior: "smooth" })}
-                  className="relative z-10 mr-1 flex size-8 items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
+                  className="relative z-10 mr-1 flex size-8 cursor-pointer items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
                 >
                   <ChevronRight className="size-5" />
                 </button>
@@ -890,7 +890,7 @@ export default function MovieDetailPage({
                 <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent" />
                 <button
                   onClick={() => castScrollRef.current?.scrollBy({ left: -castScrollRef.current.clientWidth, behavior: "smooth" })}
-                  className="relative z-10 ml-1 flex size-8 items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
+                  className="relative z-10 ml-1 flex size-8 cursor-pointer items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
                 >
                   <ChevronLeft className="size-5" />
                 </button>
@@ -907,7 +907,7 @@ export default function MovieDetailPage({
                 <div className="absolute inset-0 bg-gradient-to-l from-black/70 via-black/30 to-transparent" />
                 <button
                   onClick={() => castScrollRef.current?.scrollBy({ left: castScrollRef.current.clientWidth, behavior: "smooth" })}
-                  className="relative z-10 mr-1 flex size-8 items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
+                  className="relative z-10 mr-1 flex size-8 cursor-pointer items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
                 >
                   <ChevronRight className="size-5" />
                 </button>
@@ -926,9 +926,9 @@ export default function MovieDetailPage({
           <div className="relative">
             <div className="pointer-events-none absolute top-0 bottom-0 left-0 z-10 flex w-12 items-center opacity-0 transition-all duration-500 group-hover/row:opacity-100 sm:pointer-events-auto" style={{ opacity: canRelatedScrollLeft ? undefined : 0, pointerEvents: canRelatedScrollLeft ? undefined : "none" }}>
               <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent" />
-              <button
-                onClick={() => relatedScrollRef.current?.scrollBy({ left: -relatedScrollRef.current.clientWidth, behavior: "smooth" })}
-                className="relative z-10 ml-1 flex size-8 items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
+                <button
+                  onClick={() => relatedScrollRef.current?.scrollBy({ left: -relatedScrollRef.current.clientWidth, behavior: "smooth" })}
+                  className="relative z-10 ml-1 flex size-8 cursor-pointer items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
               >
                 <ChevronLeft className="size-5" />
               </button>
@@ -951,9 +951,9 @@ export default function MovieDetailPage({
             </div>
             <div className="pointer-events-none absolute top-0 right-0 bottom-0 z-10 flex w-12 items-center justify-end opacity-0 transition-all duration-500 group-hover/row:opacity-100 sm:pointer-events-auto" style={{ opacity: canRelatedScrollRight ? undefined : 0, pointerEvents: canRelatedScrollRight ? undefined : "none" }}>
               <div className="absolute inset-0 bg-gradient-to-l from-black/70 via-black/30 to-transparent" />
-              <button
-                onClick={() => relatedScrollRef.current?.scrollBy({ left: relatedScrollRef.current.clientWidth, behavior: "smooth" })}
-                className="relative z-10 mr-1 flex size-8 items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
+                <button
+                  onClick={() => relatedScrollRef.current?.scrollBy({ left: relatedScrollRef.current.clientWidth, behavior: "smooth" })}
+                  className="relative z-10 mr-1 flex size-8 cursor-pointer items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
               >
                 <ChevronRight className="size-5" />
               </button>
