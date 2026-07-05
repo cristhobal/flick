@@ -58,7 +58,6 @@ function ScreenshotDialog({ screenshots, index: initialIndex }: { screenshots: s
   const [open, setOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [api, setApi] = useState<CarouselApi>()
-  const [slideIndex, setSlideIndex] = useState(initialIndex)
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 767px)")
@@ -78,13 +77,6 @@ function ScreenshotDialog({ screenshots, index: initialIndex }: { screenshots: s
   }, [open])
 
   useEffect(() => {
-    if (!api) return
-    const onSelect = () => setSlideIndex(api.selectedScrollSnap())
-    api.on("select", onSelect)
-    return () => { api.off("select", onSelect) }
-  }, [api])
-
-  useEffect(() => {
     if (open) {
       screenshots.forEach((p) => {
         const img = new Image()
@@ -97,7 +89,6 @@ function ScreenshotDialog({ screenshots, index: initialIndex }: { screenshots: s
     setOpen(isOpen)
     if (isOpen && api) {
       api.scrollTo(initialIndex)
-      setSlideIndex(initialIndex)
     }
   }
 
@@ -128,8 +119,8 @@ function ScreenshotDialog({ screenshots, index: initialIndex }: { screenshots: s
           >
             <CarouselContent className="-ml-0">
               {screenshots.map((p, i) => (
-                <CarouselItem key={p} className="pl-0">
-                  <div className="flex items-center justify-center">
+                <CarouselItem key={p} className="flex items-center justify-center pl-0">
+                  <div className="relative inline-flex items-center justify-center">
                     <img
                       src={`${IMG_URL}/original${p}`}
                       alt={`Screenshot ${i + 1}`}
@@ -143,6 +134,17 @@ function ScreenshotDialog({ screenshots, index: initialIndex }: { screenshots: s
                       fetchPriority={i === initialIndex ? "high" : "auto"}
                       decoding="async"
                     />
+                    <DialogClose asChild>
+                      <button
+                        className="absolute top-3 right-3 z-10 flex size-8 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-black/80"
+                        aria-label="Close"
+                      >
+                        <XIcon className="size-4" />
+                      </button>
+                    </DialogClose>
+                    <div className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-xs text-white backdrop-blur-sm pointer-events-none">
+                      {i + 1} / {screenshots.length}
+                    </div>
                   </div>
                 </CarouselItem>
               ))}
@@ -165,18 +167,6 @@ function ScreenshotDialog({ screenshots, index: initialIndex }: { screenshots: s
           >
             <ChevronRight className="size-5" />
           </button>
-
-          <DialogClose asChild>
-            <button
-              className="absolute top-3 right-3 z-10 flex size-8 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-black/80"
-              aria-label="Close"
-            >
-              <XIcon className="size-4" />
-            </button>
-          </DialogClose>
-          <div className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-xs text-white backdrop-blur-sm">
-            {slideIndex + 1} / {screenshots.length}
-          </div>
         </div>
       </DialogContent>
     </Dialog>
