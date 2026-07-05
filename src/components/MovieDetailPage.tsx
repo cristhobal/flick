@@ -21,6 +21,7 @@ import type { TMDbCast, TMDbCreativeCredits, TMDbEpisodeGroupSeason } from "@/li
 import { useI18n } from "@/i18n/I18nProvider"
 import { displayLanguage, translateGenre } from "@/i18n/translations"
 import { useScrollState } from "@/hooks/useScrollState"
+import { Spinner } from "@/components/ui/spinner"
 import {
   ChevronLeft,
   ChevronRight,
@@ -48,6 +49,60 @@ import {
   DialogContent,
   DialogTrigger,
 } from "@/components/ui/dialog"
+
+function ScreenshotDialog({ path, alt }: { path: string; alt: string }) {
+  const [loaded, setLoaded] = useState(false)
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <div className="w-[260px] shrink-0 snap-start cursor-pointer sm:w-[320px] lg:w-[400px]">
+          <div className="aspect-video overflow-hidden rounded-lg bg-neutral-800 transition-opacity hover:opacity-90">
+            <img
+              src={`${IMG_URL}/w780${path}`}
+              alt={alt}
+              className="h-full w-full object-cover"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+        </div>
+      </DialogTrigger>
+      <DialogContent
+        className="flex max-w-none items-center justify-center border-0 bg-transparent p-0 shadow-none ring-0 outline-none sm:max-w-none"
+        showCloseButton={false}
+      >
+        <div className="relative flex items-center justify-center">
+          <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${loaded ? "opacity-0 pointer-events-none" : "opacity-100"}`}>
+            <Spinner className="size-8 text-neutral-400" />
+          </div>
+          <img
+            src={`${IMG_URL}/original${path}`}
+            alt={alt}
+            className="rounded-lg object-contain transition-opacity duration-500"
+            style={{
+              maxWidth: "95dvw",
+              maxHeight: "95dvh",
+              width: "auto",
+              height: "auto",
+              minWidth: loaded ? "auto" : "70dvw",
+              minHeight: loaded ? "auto" : "50dvh",
+              opacity: loaded ? 1 : 0,
+            }}
+            onLoad={() => setLoaded(true)}
+          />
+          <DialogClose asChild>
+            <button
+              className={`absolute top-2 right-2 flex size-8 items-center justify-center rounded-full bg-black/60 text-white transition-opacity duration-200 hover:bg-black/80 ${loaded ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+            >
+              <XIcon className="size-4" />
+            </button>
+          </DialogClose>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 function runtimeStr(minutes: number | null | undefined): string {
   if (!minutes || minutes <= 0) return "-"
@@ -789,40 +844,7 @@ export default function MovieDetailPage({
               className="hide-scrollbar flex flex-nowrap gap-4 overflow-x-auto pb-2 scroll-smooth"
             >
               {screenshots.map((path, index) => (
-                <Dialog key={path}>
-                  <DialogTrigger asChild>
-                    <div className="w-[260px] shrink-0 snap-start cursor-pointer sm:w-[320px] lg:w-[400px]">
-                      <div className="aspect-video overflow-hidden rounded-lg bg-neutral-800 transition-opacity hover:opacity-90">
-                        <img
-                          src={`${IMG_URL}/w780${path}`}
-                          alt={`${t("details.screenshots")} ${index + 1}`}
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                          decoding="async"
-                        />
-                      </div>
-                    </div>
-                  </DialogTrigger>
-                  <DialogContent
-                    className="flex w-fit max-w-none items-center justify-center border-0 bg-transparent p-0 shadow-none"
-                    showCloseButton={false}
-                  >
-                    <div className="relative flex items-center justify-center">
-                      <img
-                        src={`${IMG_URL}/original${path}`}
-                        alt={`${t("details.screenshots")} ${index + 1}`}
-                        className="block max-h-[95vh] w-auto max-w-[95vw] rounded-lg object-contain"
-                      />
-                      <DialogClose asChild>
-                        <button
-                          className="absolute -top-10 right-0 flex size-8 items-center justify-center rounded-full bg-black/60 text-white transition-colors hover:bg-black/80 sm:-right-10 sm:top-0"
-                        >
-                          <XIcon className="size-4" />
-                        </button>
-                      </DialogClose>
-                    </div>
-                  </DialogContent>
-                </Dialog>
+                <ScreenshotDialog key={path} path={path} alt={`${t("details.screenshots")} ${index + 1}`} />
               ))}
             </div>
             <div className="pointer-events-none absolute top-0 right-0 bottom-0 z-10 flex w-12 items-center justify-end opacity-0 transition-all duration-500 group-hover/row:opacity-100 sm:pointer-events-auto" style={{ opacity: canScreenshotScrollRight ? undefined : 0, pointerEvents: canScreenshotScrollRight ? undefined : "none" }}>

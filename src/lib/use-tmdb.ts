@@ -357,6 +357,7 @@ export function useTMDB(): TMDbState {
   const fetched = useRef<Lang | null>(null)
   const fetchGeneration = useRef(0)
   const stableCategoriesPublished = useRef(false)
+  const searchCacheRef = useRef<Map<string, Movie[]>>(new Map())
 
   const fetchAll = useCallback(async () => {
     if (fetched.current === lang) return
@@ -951,13 +952,29 @@ export function useTMDB(): TMDbState {
   // ---- Search with pagination ----
   const search = useCallback(
     async (query: string): Promise<Movie[]> => {
-      if (!query.trim()) return []
+      const trimmed = query.trim()
+      if (!trimmed) return []
+
+      const cacheKey = `${trimmed}:${lang}`
+      const cached = searchCacheRef.current.get(cacheKey)
+      if (cached) return cached
+
+      // Evict oldest if cache exceeds limit
+      if (searchCacheRef.current.size >= 50) {
+        const firstKey = searchCacheRef.current.keys().next().value
+        if (firstKey !== undefined) searchCacheRef.current.delete(firstKey)
+      }
+
       try {
+        // Fetch all 5 pages in parallel
+        const pagesResults = await Promise.all(
+          Array.from({ length: 5 }, (_, i) => searchMulti(trimmed, i + 1, lang))
+        )
+
         const allSearchResults: TMDbMovie[] = []
         const seenSearchIds = new Set<string>()
-        for (let page = 1; page <= 5; page++) {
-          const items = await searchMulti(query, page, lang)
-          if (!items || items.length === 0) break
+        for (const items of pagesResults) {
+          if (!items || items.length === 0) continue
           for (const item of items) {
             if (!hasPoster(item)) continue
             const key = `${item.media_type || "movie"}:${item.id}`
@@ -966,69 +983,32 @@ export function useTMDB(): TMDbState {
               allSearchResults.push(item)
             }
           }
-          if (items.length < 20) break
         }
+
+        // Resolve genres via the already-cached genre list (fetched during catalog load)
+        const genres = await fetchGenres(lang)
+        const genreMap: Record<number, string> = {}
+        for (const g of genres) genreMap[g.id] = g.name
+
+        const resolveGenre = (ids: number[] = []) =>
+          (Array.isArray(ids) ? ids : [])
+            .map((id) => genreMap[id])
+            .filter(Boolean)
+            .join(", ") || "General"
+
         const enriched: Movie[] = []
-        for (let i = 0; i < Math.min(allSearchResults.length, 60); i++) {
+        const limit = Math.min(allSearchResults.length, 60)
+        for (let i = 0; i < limit; i++) {
           const item = allSearchResults[i]
           const mediaType = item.media_type || "movie"
-          const t: Movie["type"] =
-            mediaType === "tv"
-              ? "series"
-              : mediaType === "movie"
-                ? "movie"
-                : "movie"
-          const g = await mapGenres(item.genre_ids || [], lang)
-          let detail: TMDbMovieDetail | null = null
-          let trailerUrl: string | undefined
-          try {
-            const result = await fetchDetailWithVideos(
-              item.id,
-              t === "series" ? "tv" : "movie",
-              lang
-            )
-            detail = result.detail
-            trailerUrl = result.trailerUrl || undefined
-          } catch {
-            try {
-              detail = await fetchDetail(
-                item.id,
-                t === "series" ? "tv" : "movie",
-                lang
-              )
-            } catch {
-            // Keep the basic TMDB item when localized details are unavailable.
-          }
-          }
-          const movie = toMovie(item, detail, g, t, i, trailerUrl, translate("movie.unknown"), translate("movie.fallback"), translate("common.general"), lang)
-          if (detail && t === "series") {
-            const groupedSeasons = await fetchTvEpisodeGroupSeasons(
-              item.id,
-              detail.number_of_episodes || movie.episodes || 0,
-              detail.number_of_seasons || movie.seasons || 0,
-              lang,
-              Object.fromEntries(
-                (detail.seasons || [])
-                  .filter((season) => season.season_number > 0 && season.name)
-                  .map((season) => [season.season_number, season.name])
-              )
-            )
-            if (groupedSeasons.length > 0) {
-              enriched.push({
-                ...movie,
-                seasons: Math.max(movie.seasons || 0, groupedSeasons.length),
-                totalSeasons: Math.max(movie.totalSeasons || 0, groupedSeasons.length),
-                seasonList: groupedSeasons.map((season) => ({
-                  season: season.season,
-                  title: season.title,
-                  episodes: [],
-                })),
-              })
-              continue
-            }
-          }
-          enriched.push(movie)
+          const t: Movie["type"] = mediaType === "tv" ? "series" : "movie"
+          const g = resolveGenre(item.genre_ids || [])
+          enriched.push(
+            toMovie(item, null, g, t, i, undefined, translate("movie.unknown"), translate("movie.fallback"), translate("common.general"), lang)
+          )
         }
+
+        searchCacheRef.current.set(cacheKey, enriched)
         return enriched
       } catch {
         return []
