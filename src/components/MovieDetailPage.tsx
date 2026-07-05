@@ -98,7 +98,7 @@ function ScreenshotDialog({ screenshots, index: initialIndex }: { screenshots: s
         <div className="w-[260px] shrink-0 snap-start cursor-pointer sm:w-[320px] lg:w-[400px]">
           <div className="aspect-video overflow-hidden rounded-lg bg-neutral-800 transition-opacity hover:opacity-90">
             <img
-              src={`${IMG_URL}/w780${screenshots[initialIndex]}`}
+              src={`${IMG_URL}/w1280${screenshots[initialIndex]}`}
               alt={`Screenshot ${initialIndex + 1}`}
               className="h-full w-full object-cover"
               loading="lazy"
