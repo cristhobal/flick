@@ -38,8 +38,8 @@ export default function MovieCarousel({
   }
 
   return (
-    <section className="group/row relative">
-      <div className="mb-3 flex items-center justify-between px-3 sm:mb-4 sm:px-6 lg:px-8">
+    <section className="content-container group/row relative">
+      <div className="mb-3 flex items-center justify-between sm:mb-4">
         <h2 className="truncate text-base font-semibold tracking-tight text-white sm:text-lg md:text-xl">
           {title}
         </h2>
@@ -69,7 +69,7 @@ export default function MovieCarousel({
 
         <div
           ref={(node) => { scrollRef.current = node; scrollStateRef(node) }}
-          className="hide-scrollbar flex flex-nowrap gap-2 overflow-x-auto px-3 pb-4 scroll-smooth sm:gap-3 sm:px-6 lg:px-8"
+          className="hide-scrollbar flex flex-nowrap gap-2 overflow-x-auto pb-4 scroll-smooth sm:gap-3"
         >
           {items.map((movie, i) => (
             <div
