@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback, useLayoutEffect } from "react"
+import { createPortal } from "react-dom"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Play, ChevronDown, Star } from "lucide-react"
@@ -137,7 +138,7 @@ export default function MovieCard({
       showTimerRef.current = undefined
       if (cardRef.current) {
         const rect = cardRef.current.getBoundingClientRect()
-        const previewWidth = Math.min(340, window.innerWidth - 24)
+        const previewWidth = Math.min(360, window.innerWidth - 24)
         const viewportPadding = 12
         const gap = 8
         const spaceRight = window.innerWidth - rect.right
@@ -278,133 +279,132 @@ export default function MovieCard({
       </div>
 
       {/* Netflix-style expanded preview — fixed position to avoid overflow clipping */}
-      {showExpanded && (
-        <>
-          <article
-            className="pointer-events-none fixed z-50 w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-white/10 bg-neutral-950 shadow-[0_24px_80px_rgba(0,0,0,0.75)] animate-scale-in"
-            style={{ left: pos.left, ...(expandUpward ? { bottom: pos.top } : { top: pos.top }) }}
-          >
-            <div className="relative aspect-[16/9] w-full overflow-hidden bg-neutral-900">
-              {bgSrc ? (
-                <img src={bgSrc} alt="" className="h-full w-full object-cover transition-transform duration-700 hover:scale-105" />
-              ) : imgSrc ? (
-                <img src={imgSrc} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <div className={`h-full w-full bg-gradient-to-br ${getGenreGradient(movie.genre)}`} />
+      {showExpanded && createPortal(
+        <article
+          className="pointer-events-none fixed z-[9999] w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-white/10 bg-neutral-950 shadow-[0_24px_80px_rgba(0,0,0,0.75)] animate-scale-in"
+          style={{ left: pos.left, ...(expandUpward ? { bottom: pos.top } : { top: pos.top }) }}
+        >
+          <div className="relative aspect-[16/9] w-full overflow-hidden bg-neutral-900">
+            {bgSrc ? (
+              <img src={bgSrc} alt="" className="h-full w-full object-cover transition-transform duration-700 hover:scale-105" />
+            ) : imgSrc ? (
+              <img src={imgSrc} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <div className={`h-full w-full bg-gradient-to-br ${getGenreGradient(movie.genre)}`} />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-black/20 to-black/10" />
+
+            <div className="absolute top-3 right-3 flex items-center gap-2">
+              {movie.quality && (
+                <span className="rounded-md border border-white/10 bg-black/55 px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-white backdrop-blur-md">
+                  {movie.quality}
+                </span>
               )}
-              <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-black/20 to-black/10" />
-
-              <div className="absolute top-3 right-3 flex items-center gap-2">
-                {movie.quality && (
-                  <span className="rounded-md border border-white/10 bg-black/55 px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-white backdrop-blur-md">
-                    {movie.quality}
-                  </span>
-                )}
-              </div>
-
-              <div
-                className="pointer-events-auto absolute right-4 bottom-4 left-4"
-                onMouseEnter={handlePreviewInteractiveEnter}
-                onMouseLeave={handlePreviewInteractiveLeave}
-              >
-                <h3 className="line-clamp-2 text-lg font-semibold leading-tight text-white drop-shadow-lg">
-                  {movie.title}
-                </h3>
-                <div className="mt-2 flex items-center gap-2 text-[11px] text-neutral-300">
-                  <span>{movie.year}</span>
-                  <span className="size-1 rounded-full bg-neutral-500" />
-                  <span>{runtimeLabel}</span>
-                  <span className="ml-auto flex items-center gap-1 font-medium text-white">
-                    <Star className="size-3 fill-amber-400 text-amber-400" />
-                    {movie.rating}
-                  </span>
-                </div>
-              </div>
             </div>
 
             <div
-              className="pointer-events-auto p-4"
+              className="pointer-events-auto absolute right-4 bottom-4 left-4"
               onMouseEnter={handlePreviewInteractiveEnter}
               onMouseLeave={handlePreviewInteractiveLeave}
             >
-              <div className="flex items-center gap-2">
-                {canPlay && (
-                  <Button
-                    size="sm"
-                    className="h-9 flex-1 rounded-lg bg-white text-xs font-semibold text-black hover:bg-neutral-200"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onPlay?.(playableMovie)
-                    }}
-                  >
-                    <Play className="size-4 fill-black" />
-                    {t("common.play")}
-                  </Button>
-                )}
-                {movie.description && (
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    title={t("common.details")}
-                    className="size-9 shrink-0 rounded-lg text-neutral-400 hover:bg-white/[0.06] hover:text-white"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      synopsisTogglingRef.current = true
-                      setTimeout(() => { synopsisTogglingRef.current = false }, 350)
-                      setShowSynopsis((prev) => !prev)
-                    }}
-                  >
-                    <ChevronDown className={`size-4 transition-transform duration-200 ${showSynopsis ? "rotate-180" : ""}`} />
-                  </Button>
-                )}
-              </div>
-
-              <div className="mt-4 flex flex-wrap items-center gap-2 text-[10px] text-neutral-400">
-                {movie.contentRating && (
-                  <span className="rounded border border-white/10 bg-white/[0.04] px-2 py-1 font-medium text-neutral-200">
-                    {movie.contentRating}
-                  </span>
-                )}
-                <span className="rounded border border-white/10 px-2 py-1">
-                  {runtimeLabel}
+              <h3 className="line-clamp-2 text-lg font-semibold leading-tight text-white drop-shadow-lg">
+                {movie.title}
+              </h3>
+              <div className="mt-2 flex items-center gap-2 text-[11px] text-neutral-300">
+                <span>{movie.year}</span>
+                <span className="size-1 rounded-full bg-neutral-500" />
+                <span>{runtimeLabel}</span>
+                <span className="ml-auto flex items-center gap-1 font-medium text-white">
+                  <Star className="size-3 fill-amber-400 text-amber-400" />
+                  {movie.rating}
                 </span>
-                <span className="rounded border border-white/10 px-2 py-1">
-                  {movie.type === "movie" ? t("common.movies") : movie.type === "series" ? t("common.series") : t("common.anime")}
-                </span>
-              </div>
-
-              {movie.description && (
-                <div
-                  ref={synopsisRef}
-                  className="overflow-hidden transition-all duration-300 ease-in-out"
-                  style={{
-                    maxHeight: showSynopsis ? synopsisHeight : 0,
-                    opacity: showSynopsis ? 1 : 0,
-                    transform: showSynopsis ? "translateY(0)" : "translateY(-8px)",
-                  }}
-                >
-                  <div className="pt-3">
-                    <p className="line-clamp-4 text-xs leading-relaxed text-neutral-400">
-                      {movie.description}
-                    </p>
-                  </div>
-                  <div className="h-4" />
-                </div>
-              )}
-
-              <div className={`flex flex-wrap gap-1.5 pt-3${!movie.description ? ' mt-4' : ''}`}>
-                {movie.genre.split(",").map((genre) => genre.trim()).filter(Boolean).slice(0, 4).map((genre) => (
-                  <span
-                    key={genre}
-                    className="rounded-full bg-white/[0.05] px-2.5 py-1 text-[10px] text-neutral-400 ring-1 ring-inset ring-white/5"
-                  >
-                    {translateGenre(genre, lang)}
-                  </span>
-                ))}
               </div>
             </div>
-          </article>
-        </>
+          </div>
+
+          <div
+            className="pointer-events-auto p-4"
+            onMouseEnter={handlePreviewInteractiveEnter}
+            onMouseLeave={handlePreviewInteractiveLeave}
+          >
+            <div className="flex items-center gap-2">
+              {canPlay && (
+                <Button
+                  size="sm"
+                  className="h-9 flex-1 rounded-lg bg-white text-xs font-semibold text-black hover:bg-neutral-200"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onPlay?.(playableMovie)
+                  }}
+                >
+                  <Play className="size-4 fill-black" />
+                  {t("common.play")}
+                </Button>
+              )}
+              {movie.description && (
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  title={t("common.details")}
+                  className="size-9 shrink-0 rounded-lg text-neutral-400 hover:bg-white/[0.06] hover:text-white"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    synopsisTogglingRef.current = true
+                    setTimeout(() => { synopsisTogglingRef.current = false }, 350)
+                    setShowSynopsis((prev) => !prev)
+                  }}
+                >
+                  <ChevronDown className={`size-4 transition-transform duration-200 ${showSynopsis ? "rotate-180" : ""}`} />
+                </Button>
+              )}
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-[10px] text-neutral-400">
+              {movie.contentRating && (
+                <span className="rounded border border-white/10 bg-white/[0.04] px-2 py-1 font-medium text-neutral-200">
+                  {movie.contentRating}
+                </span>
+              )}
+              <span className="rounded border border-white/10 px-2 py-1">
+                {runtimeLabel}
+              </span>
+              <span className="rounded border border-white/10 px-2 py-1">
+                {movie.type === "movie" ? t("common.movies") : movie.type === "series" ? t("common.series") : t("common.anime")}
+              </span>
+            </div>
+
+            {movie.description && (
+              <div
+                ref={synopsisRef}
+                className="overflow-hidden transition-all duration-300 ease-in-out"
+                style={{
+                  maxHeight: showSynopsis ? synopsisHeight : 0,
+                  opacity: showSynopsis ? 1 : 0,
+                  transform: showSynopsis ? "translateY(0)" : "translateY(-8px)",
+                }}
+              >
+                <div className="pt-3">
+                  <p className="line-clamp-4 text-xs leading-relaxed text-neutral-400">
+                    {movie.description}
+                  </p>
+                </div>
+                <div className="h-4" />
+              </div>
+            )}
+
+            <div className={`flex flex-wrap gap-1.5 pt-3${!movie.description ? ' mt-4' : ''}`}>
+              {movie.genre.split(",").map((genre) => genre.trim()).filter(Boolean).slice(0, 4).map((genre) => (
+                <span
+                  key={genre}
+                  className="rounded-full bg-white/[0.05] px-2.5 py-1 text-[10px] text-neutral-400 ring-1 ring-inset ring-white/5"
+                >
+                  {translateGenre(genre, lang)}
+                </span>
+              ))}
+            </div>
+          </div>
+        </article>,
+        document.body
       )}
     </>
   )
