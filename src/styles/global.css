@@ -143,16 +143,11 @@
     font: inherit;
   }
   ::-webkit-scrollbar {
-    @apply size-1.5;
+    width: 0;
+    height: 0;
   }
-  ::-webkit-scrollbar-track {
-    @apply bg-transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-neutral-700;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-neutral-600;
+  html {
+    scrollbar-width: none;
   }
 }
 
@@ -263,6 +258,15 @@
     width: 100%;
     max-width: 1920px;
     padding-inline: 0.75rem;
+  }
+
+  /* Extends a flush-left, edge-to-edge block (hero backdrops, etc.) to the
+     true viewport width instead of the width % that excludes the reserved
+     scrollbar gutter. Combined with `overflow-x: hidden` on html, the extra
+     sliver paints harmlessly under where the scrollbar sits instead of
+     stopping short of it and exposing the page's flat background color. */
+  .full-bleed {
+    width: 100vw;
   }
 
   .responsive-card-grid {
