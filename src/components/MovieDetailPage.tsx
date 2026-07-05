@@ -4,12 +4,9 @@ import { useState, useMemo, useEffect, useCallback, useLayoutEffect, useRef } fr
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Card,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import MovieCard from "@/components/MovieCard"
+import EpisodeCard from "@/components/EpisodeCard"
 import {
   posterUrl,
   backdropUrl,
@@ -738,91 +735,16 @@ export default function MovieDetailPage({
                     </div>
                   </Card>
                 ))
-              : visibleEpisodes.map((episode) => {
-                  const episodeImage = posterUrl(episode.posterPath || movie.posterPath, "w185")
-                  // Some TMDB episodes have their number prefixed in the name
-                  // (e.g. "E1 - ..." or "1. ..."). Strip it here so the
-                  // E{n} - prefix we add below doesn't duplicate.
-                  const episodeName = cleanEpisodeName(episode.episodeTitle || episode.title, episode.episodeNumber ?? 0)
-                  const episodeLabel = episode.episodeNumber
-                    ? `E${episode.episodeNumber} - ${episodeName}`
-                    : episodeName
-
-                  return (
-                    <Card
-                      key={episode.id}
-                      size="sm"
-                      className="cursor-pointer border border-neutral-800 bg-neutral-900/50 transition-colors hover:border-neutral-700 hover:bg-neutral-900"
-                      onPointerDown={(e) => {
-                        (e.currentTarget as HTMLElement).dataset.pointerX = String(e.clientX)
-                        ;(e.currentTarget as HTMLElement).dataset.pointerY = String(e.clientY)
-                      }}
-                      onClick={(event) => {
-                        // Distinguish a selection drag from a real click by
-                        // checking if the pointer moved more than 4px between
-                        // pointerdown and click.
-                        const el = event.currentTarget as HTMLElement
-                        const px = el.dataset.pointerX
-                        const py = el.dataset.pointerY
-                        if (px && py && (Math.abs(event.clientX - Number(px)) > 4 || Math.abs(event.clientY - Number(py)) > 4)) {
-                          return
-                        }
-                        // Fallback: if for some reason the position check
-                        // fails, also ignore text selections on the card.
-                        const sel = window.getSelection?.()
-                        if (sel && sel.toString().length > 0 && el.contains(sel.anchorNode)) {
-                          return
-                        }
-                        onMovieClick(episode)
-                      }}
-                    >
-                      <div className="flex gap-3 p-3">
-                        <div className="h-24 w-16 shrink-0 overflow-hidden rounded-md bg-neutral-800 shadow-md">
-                          {episodeImage ? (
-                            <img
-                              src={episodeImage}
-                              alt={episodeLabel}
-                              className="h-full w-full object-cover"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <div className={`h-full w-full bg-gradient-to-b ${getGenreGradient(movie.genre)}`} />
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <CardTitle className="line-clamp-2 text-sm leading-snug text-white">
-                                {episodeLabel}
-                              </CardTitle>
-                              <CardDescription className="mt-1 text-xs text-neutral-500">
-                                {episode.duration && episode.duration !== "-"
-                                  ? episode.duration
-                                  : t("common.noAvailable")}
-                              </CardDescription>
-                            </div>
-                            {isPlayableMovie(episode) && (
-                              <button
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  onPlay(episode)
-                                }}
-                                className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white text-black transition-transform hover:scale-105 active:scale-95"
-                              >
-                                <Play className="size-3.5 fill-black" />
-                              </button>
-                            )}
-                          </div>
-                          {(episode.episodeSynopsis || episode.description) && (
-                            <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-neutral-400">
-                              {episode.episodeSynopsis || episode.description}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </Card>
-                  )
-                })}
+              : visibleEpisodes.map((episode, index) => (
+                  <EpisodeCard
+                    key={episode.id}
+                    episode={episode}
+                    movie={movie}
+                    onPlay={onPlay}
+                    onClick={onMovieClick}
+                    index={index}
+                  />
+                ))}
           </div>
         </section>
       )}
