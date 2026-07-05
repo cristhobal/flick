@@ -33,6 +33,7 @@ export default function EpisodeCard({
 }: EpisodeCardProps) {
   const [showExpanded, setShowExpanded] = useState(false)
   const [pos, setPos] = useState({ left: 0, top: 0 })
+  const [expandUpward, setExpandUpward] = useState(false)
   const showTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const cardRef = useRef<HTMLDivElement>(null)
@@ -87,6 +88,7 @@ export default function EpisodeCard({
     showTimerRef.current = setTimeout(() => {
       showTimerRef.current = undefined
       const previewWidth = Math.min(360, window.innerWidth - 24)
+      const previewHeight = Math.min(460, window.innerHeight - 24)
       const viewportPadding = 12
       const gap = 8
       const spaceRight = window.innerWidth - rect.right
@@ -97,11 +99,25 @@ export default function EpisodeCard({
         Math.max(viewportPadding, rawLeft),
         window.innerWidth - previewWidth - viewportPadding
       )
-      const top = Math.min(
-        Math.max(rect.top, viewportPadding),
-        window.innerHeight - viewportPadding
-      )
-      setPos({ left, top })
+      const spaceAbove = rect.top
+      const spaceBelow = window.innerHeight - rect.bottom
+      const canExpandDown = spaceBelow >= previewHeight + gap + viewportPadding
+      const canExpandUp = spaceAbove >= previewHeight + gap + viewportPadding
+      const shouldExpandUp = (!canExpandDown && canExpandUp) || (!canExpandDown && !canExpandUp && spaceAbove >= spaceBelow)
+      setExpandUpward(shouldExpandUp)
+      if (shouldExpandUp) {
+        const bottom = Math.min(
+          Math.max(window.innerHeight - rect.bottom - gap, viewportPadding),
+          window.innerHeight - previewHeight - viewportPadding
+        )
+        setPos({ left, top: bottom })
+      } else {
+        const top = Math.min(
+          Math.max(rect.top, viewportPadding),
+          window.innerHeight - previewHeight - viewportPadding
+        )
+        setPos({ left, top })
+      }
       setShowExpanded(true)
     }, 120)
   }
@@ -212,7 +228,7 @@ export default function EpisodeCard({
       {showExpanded && createPortal(
         <article
           className="pointer-events-none fixed z-[9999] w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-white/10 bg-neutral-950 shadow-[0_24px_80px_rgba(0,0,0,0.75)] animate-scale-in"
-          style={{ left: pos.left, top: pos.top }}
+          style={{ left: pos.left, ...(expandUpward ? { bottom: pos.top } : { top: pos.top }) }}
         >
           <div className="relative aspect-[16/9] w-full overflow-hidden bg-neutral-900">
             {bgSrc ? (
