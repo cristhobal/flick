@@ -480,7 +480,7 @@ export default function MovieDetailPage({
       </div>
 
       {/* Hero backdrop section */}
-      <section className="relative w-full overflow-hidden">
+      <section className="full-bleed relative overflow-hidden">
         {bgSrc ? (
           <img
             src={bgSrc}
