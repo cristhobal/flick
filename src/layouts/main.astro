@@ -76,8 +76,28 @@ import { TooltipProvider } from "@/components/ui/tooltip"
         } catch (_) {}
       })()
     </script>
+    <script is:inline>
+      (function() {
+        try {
+          var saved = localStorage.getItem("flick-theme");
+          var isLight = saved
+            ? saved === "light"
+            : window.matchMedia("(prefers-color-scheme: light)").matches;
+          document.documentElement.classList.toggle("light", isLight);
+        } catch (_) {}
+      })();
+      (function() {
+        try {
+          window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", function(e) {
+            if (!localStorage.getItem("flick-theme")) {
+              document.documentElement.classList.toggle("light", e.matches);
+            }
+          });
+        } catch (_) {}
+      })();
+    </script>
   </head>
-  <body class="min-h-screen bg-black text-white antialiased">
+  <body class="min-h-screen bg-background text-foreground antialiased">
     <TooltipProvider>
       <slot />
     </TooltipProvider>
