@@ -6,6 +6,7 @@ import HeroSection from "@/components/HeroSection"
 import MovieCarousel from "@/components/MovieCarousel"
 import MovieDetailsModal from "@/components/MovieDetailsModal"
 import FlickTextLoader from "@/components/FlickTextLoader"
+import ScrollIndicator from "@/components/ScrollIndicator"
 import SearchPage from "@/components/SearchPage"
 import LibraryPage from "@/components/LibraryPage"
 import PlayerPage from "@/components/PlayerPage"
@@ -541,6 +542,7 @@ export default function HomePage() {
   if (view === "detail" && selectedMovie) {
     return (
       <PageTransition key="detail">
+        <ScrollIndicator />
         <MovieDetailPage
           movie={selectedMovie}
           related={relatedMovies}
@@ -555,6 +557,7 @@ export default function HomePage() {
   if (view === "player" && selectedMovie) {
     return (
       <PageTransition key="player">
+        <ScrollIndicator />
         <PlayerPage
           movie={selectedMovie}
           related={relatedMovies}
@@ -569,6 +572,7 @@ export default function HomePage() {
   if (view === "category") {
     return (
       <PageTransition key="category">
+        <ScrollIndicator />
         <CategoryPage
           type={categoryType}
           title={categoryTitles[categoryType]}
@@ -586,6 +590,7 @@ export default function HomePage() {
   if (view === "search") {
     return (
       <PageTransition key="search">
+        <ScrollIndicator />
         <SearchPage
           query={searchQuery}
           onQueryChange={setSearchQuery}
@@ -618,6 +623,7 @@ export default function HomePage() {
   if (view === "library") {
     return (
       <PageTransition key="library">
+        <ScrollIndicator />
         <Header
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
@@ -647,6 +653,7 @@ export default function HomePage() {
 
   return (
     <PageTransition key="home">
+      <ScrollIndicator />
       <div className="min-h-screen bg-black">
         <Header
           searchQuery={searchQuery}
