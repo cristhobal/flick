@@ -125,11 +125,45 @@
        the page content and the real (outer) scrollbar, on every page. */
     overflow-x: hidden;
     overflow-y: scroll;
-    scrollbar-width: none;
+    /* Firefox: a native thin scrollbar, translucent thumb over a transparent
+       track (Firefox has no ::-webkit-scrollbar-* pseudo-elements to style
+       further than this). */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
   }
+  /* Hide scrollbars everywhere by default (horizontal carousels, filter
+     chip rows, etc.) — the page's own vertical scrollbar is re-enabled and
+     styled specifically below. */
   ::-webkit-scrollbar {
     width: 0;
     height: 0;
+  }
+  /* Chrome/Edge/Safari: the page's real, native vertical scrollbar — styled
+     as a slim, rounded, semi-transparent thumb floating on a transparent
+     track. Being the actual native scrollbar (not a JS-driven stand-in), its
+     drag/inertia/momentum behavior is exactly what the OS/browser provides,
+     so it's always perfectly smooth. `html::-webkit-scrollbar` has higher
+     specificity than the blanket rule above, so it wins here without
+     touching any other scrollbar in the app. */
+  html::-webkit-scrollbar {
+    width: 12px;
+  }
+  html::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  html::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.25);
+    border-radius: 9999px;
+    /* Transparent border + background-clip keeps the hit area a comfortable
+       12px wide while the visible thumb reads as a slim ~6px pill. */
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  html::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.4);
+  }
+  html::-webkit-scrollbar-thumb:active {
+    background-color: rgba(255, 255, 255, 0.5);
   }
   /* Ensure images never overflow their containers */
   img {
