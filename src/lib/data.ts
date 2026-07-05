@@ -30,6 +30,8 @@
   seasonList?: { season: number; title?: string; episodes: Movie[] }[]
   totalSeasons?: number
   trailerUrl?: string
+  popularity?: number
+  trendingScore?: number
 }
 
 export interface Category {

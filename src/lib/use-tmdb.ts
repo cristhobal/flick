@@ -217,6 +217,7 @@ function toMovie(
       : {}),
     posterPath: item.poster_path || null,
     backdropPath: item.backdrop_path || item.poster_path || null,
+    popularity: item.popularity || 0,
     trailerUrl,
   }
 }
@@ -339,6 +340,7 @@ export interface TMDbState {
   anime: Movie[]
   loading: boolean
   error: string | null
+  trendingTmdbIds: Set<number>
   search: (query: string) => Promise<Movie[]>
   loadDetail: (tmdbId: number, type: Movie["type"]) => Promise<Movie | null>
 }
@@ -358,6 +360,7 @@ export function useTMDB(): TMDbState {
   const fetchGeneration = useRef(0)
   const stableCategoriesPublished = useRef(false)
   const searchCacheRef = useRef<Map<string, Movie[]>>(new Map())
+  const trendingTmdbIdsRef = useRef<Set<number>>(new Set())
 
   const fetchAll = useCallback(async () => {
     if (fetched.current === lang) return
@@ -493,6 +496,9 @@ export function useTMDB(): TMDbState {
           animeTopRatedRaw,
           trendingAllRaw,
         ] = await runWithConcurrency(initialTasks, FETCH_CONCURRENCY)
+
+        const trendingIds = new Set([...trendingMoviesRaw, ...trendingTvRaw, ...trendingAllRaw].map((i) => i.id))
+        trendingTmdbIdsRef.current = new Set([...trendingTmdbIdsRef.current, ...trendingIds])
 
         const animeIds = new Set<number>()
         const animeRaw: TMDbMovie[] = []
@@ -667,6 +673,8 @@ export function useTMDB(): TMDbState {
       const trendingTvRaw     = resultMap["trendingTv"]
       const topRatedTvRaw     = resultMap["topRatedTv"]
       const trendingAllRaw    = resultMap["trendingAll"]
+      const trendingPhase2 = new Set([...trendingMoviesRaw, ...trendingTvRaw, ...trendingAllRaw].map((i) => i.id))
+      trendingTmdbIdsRef.current = new Set([...trendingTmdbIdsRef.current, ...trendingPhase2])
 
       // Merge all anime sources into one deduplicated set
       const animeIds = new Set<number>()
@@ -1099,5 +1107,6 @@ export function useTMDB(): TMDbState {
     error,
     search,
     loadDetail,
+    trendingTmdbIds: trendingTmdbIdsRef.current,
   }
 }
