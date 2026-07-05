@@ -209,7 +209,7 @@ export default function EpisodeCard({
                       event.stopPropagation()
                       onPlay?.(episode)
                     }}
-                    className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white text-black transition-transform hover:scale-105 active:scale-95"
+                    className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white text-black transition-transform hover:scale-105 active:scale-95"
                   >
                     <Play className="size-3.5 fill-black" />
                   </button>

@@ -150,7 +150,7 @@ export default function Header({
                       setSearchOpen(false)
                     }
                   }}
-                  className="mr-2 shrink-0 text-neutral-500 hover:text-white"
+                  className="mr-2 shrink-0 cursor-pointer text-neutral-500 hover:text-white"
                   aria-label="Cerrar busqueda"
                 >
                   <X className="size-3.5" />
@@ -195,7 +195,7 @@ export default function Header({
                     e.stopPropagation()
                     onSearchChange("")
                   }}
-                  className="mr-2 shrink-0 text-neutral-500 hover:text-white"
+                  className="mr-2 shrink-0 cursor-pointer text-neutral-500 hover:text-white"
                 >
                   <X className="size-3.5" />
                 </button>
@@ -227,7 +227,7 @@ export default function Header({
                   </DrawerTitle>
                   <DrawerClose asChild>
                     <button
-                      className="flex size-7 items-center justify-center rounded-full text-neutral-600 transition-colors hover:text-neutral-300"
+                      className="flex size-7 cursor-pointer items-center justify-center rounded-full text-neutral-600 transition-colors hover:text-neutral-300"
                       aria-label="Cerrar menu"
                     >
                       <X className="size-3.5" />
@@ -250,7 +250,7 @@ export default function Header({
                       onNavigate?.(link.id)
                       setMobileMenuOpen(false)
                     }}
-                    className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-150 ${
+                    className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-150 cursor-pointer ${
                       link.disabled
                         ? "cursor-not-allowed opacity-25"
                         : currentPage === link.id

@@ -85,7 +85,7 @@ export default function SearchPage({
             {query && (
               <button
                 onClick={() => onQueryChange("")}
-                className="absolute top-1/2 right-3 -translate-y-1/2 text-neutral-500 transition-all hover:scale-110 hover:text-white"
+                className="absolute top-1/2 right-3 -translate-y-1/2 cursor-pointer text-neutral-500 transition-all hover:scale-110 hover:text-white"
               >
                 <X className="size-4" />
               </button>
@@ -173,7 +173,7 @@ export default function SearchPage({
                   <button
                     key={tag}
                     onClick={() => onQueryChange(tag)}
-                    className="rounded-full border border-neutral-800 bg-neutral-900/50 px-3 py-1.5 text-xs text-neutral-400 transition-all hover:scale-105 hover:border-neutral-700 hover:text-white active:scale-95 sm:px-4 sm:text-sm"
+                    className="cursor-pointer rounded-full border border-neutral-800 bg-neutral-900/50 px-3 py-1.5 text-xs text-neutral-400 transition-all hover:scale-105 hover:border-neutral-700 hover:text-white active:scale-95 sm:px-4 sm:text-sm"
                   >
                     {translateGenre(tag, lang)}
                   </button>
@@ -190,7 +190,7 @@ export default function SearchPage({
               ].map((item) => (
                 <button
                   key={item.label}
-                  className="flex items-center gap-2.5 rounded-xl border border-neutral-800 bg-neutral-900/30 p-3 transition-all hover:scale-105 hover:border-neutral-700 hover:bg-neutral-900 active:scale-95 sm:gap-3 sm:p-4"
+                  className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-neutral-800 bg-neutral-900/30 p-3 transition-all hover:scale-105 hover:border-neutral-700 hover:bg-neutral-900 active:scale-95 sm:gap-3 sm:p-4"
                 >
                   <item.icon className="size-4 shrink-0 text-neutral-500 sm:size-5" />
                   <span className="text-xs text-neutral-300 sm:text-sm">{item.label}</span>
