@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback, useLayoutEffect } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Play, ChevronDown, Star } from "lucide-react"
@@ -23,6 +23,7 @@ interface MovieCardProps {
   onPlay?: (movie: Movie) => void
   onDetails?: (movie: Movie) => void
   index?: number
+  expandUpward?: boolean
 }
 
 export default function MovieCard({
@@ -30,19 +31,26 @@ export default function MovieCard({
   onPlay,
   onDetails,
   index = 0,
+  expandUpward = false,
 }: MovieCardProps) {
   const [showExpanded, setShowExpanded] = useState(false)
   const [isHoveringCard, setIsHoveringCard] = useState(false)
   const { lang, t } = useI18n()
   const [showSynopsis, setShowSynopsis] = useState(false)
-  const [synopsisAnim, setSynopsisAnim] = useState<"idle" | "entering" | "closing">("idle")
+  const [synopsisHeight, setSynopsisHeight] = useState(0)
   const [resolvedTrailerUrl, setResolvedTrailerUrl] = useState<string | null | undefined>(movie.trailerUrl)
   const [pos, setPos] = useState({ left: 0, top: 0 })
   const showTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const synopsisTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const cardRef = useRef<HTMLDivElement>(null)
   const previewIdRef = useRef(`preview-${movie.id}-${index}`)
+  const synopsisRef = useRef<HTMLDivElement>(null)
+  const synopsisTogglingRef = useRef(false)
+  const expandUpwardRef = useRef(expandUpward)
+
+  useEffect(() => {
+    expandUpwardRef.current = expandUpward
+  }, [expandUpward])
 
   const cancelHide = useCallback(() => {
     clearTimeout(hideTimerRef.current)
@@ -72,12 +80,12 @@ export default function MovieCard({
     const closeOtherPreview = (event: Event) => {
       const previewId = (event as CustomEvent<string>).detail
       if (previewId === previewIdRef.current) return
+      if (synopsisTogglingRef.current) return
 
       clearTimeout(showTimerRef.current)
       clearTimeout(hideTimerRef.current)
       setShowExpanded(false)
       setShowSynopsis(false)
-      setSynopsisAnim("idle")
     }
 
     window.addEventListener(PREVIEW_OPEN_EVENT, closeOtherPreview)
@@ -85,7 +93,6 @@ export default function MovieCard({
       window.removeEventListener(PREVIEW_OPEN_EVENT, closeOtherPreview)
       clearTimeout(showTimerRef.current)
       clearTimeout(hideTimerRef.current)
-      clearTimeout(synopsisTimerRef.current)
     }
   }, [])
 
@@ -96,18 +103,23 @@ export default function MovieCard({
       cancelHide()
       setShowExpanded(false)
       setShowSynopsis(false)
-      setSynopsisAnim("idle")
     }
     window.addEventListener("scroll", handleScroll, { once: true })
     return () => window.removeEventListener("scroll", handleScroll)
   }, [showExpanded, cancelHide])
+
+  useLayoutEffect(() => {
+    if (synopsisRef.current && movie.description) {
+      const h = synopsisRef.current.scrollHeight
+      if (h > 0) setSynopsisHeight(h)
+    }
+  }, [movie.description, showSynopsis])
 
   const scheduleHide = useCallback((delay = 350) => {
     clearTimeout(hideTimerRef.current)
     hideTimerRef.current = setTimeout(() => {
       setShowExpanded(false)
       setShowSynopsis(false)
-      setSynopsisAnim("idle")
     }, delay)
   }, [])
 
@@ -136,11 +148,19 @@ export default function MovieCard({
           Math.max(viewportPadding, rawLeft),
           window.innerWidth - previewWidth - viewportPadding
         )
-        const top = Math.min(
-          Math.max(rect.top, viewportPadding),
-          window.innerHeight - viewportPadding
-        )
-        setPos({ left, top })
+        if (expandUpward) {
+          const bottom = Math.max(
+            window.innerHeight - rect.bottom - gap,
+            viewportPadding
+          )
+          setPos({ left, top: bottom })
+        } else {
+          const top = Math.min(
+            Math.max(rect.top, viewportPadding),
+            window.innerHeight - viewportPadding
+          )
+          setPos({ left, top })
+        }
       }
       setShowExpanded(true)
     }, 120)
@@ -159,6 +179,7 @@ export default function MovieCard({
   }
 
   const handlePreviewInteractiveLeave = () => {
+    if (synopsisTogglingRef.current) return
     scheduleHide(220)
   }
 
@@ -261,7 +282,7 @@ export default function MovieCard({
         <>
           <article
             className="pointer-events-none fixed z-50 w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-white/10 bg-neutral-950 shadow-[0_24px_80px_rgba(0,0,0,0.75)] animate-scale-in"
-            style={{ left: pos.left, top: pos.top }}
+            style={{ left: pos.left, ...(expandUpward ? { bottom: pos.top } : { top: pos.top }) }}
           >
             <div className="relative aspect-[16/9] w-full overflow-hidden bg-neutral-900">
               {bgSrc ? (
@@ -328,23 +349,12 @@ export default function MovieCard({
                     className="size-9 shrink-0 rounded-lg text-neutral-400 hover:bg-white/[0.06] hover:text-white"
                     onClick={(e) => {
                       e.stopPropagation()
-                      if (synopsisAnim === "idle") {
-                        setShowSynopsis(true)
-                        setSynopsisAnim("entering")
-                      } else if (synopsisAnim === "entering") {
-                        setSynopsisAnim("closing")
-                        synopsisTimerRef.current = setTimeout(() => {
-                          setShowSynopsis(false)
-                          setSynopsisAnim("idle")
-                        }, 200)
-                      } else {
-                        clearTimeout(synopsisTimerRef.current)
-                        setSynopsisAnim("entering")
-                        setShowSynopsis(true)
-                      }
+                      synopsisTogglingRef.current = true
+                      setTimeout(() => { synopsisTogglingRef.current = false }, 350)
+                      setShowSynopsis((prev) => !prev)
                     }}
                   >
-                    <ChevronDown className={`size-4 transition-transform duration-200 ${synopsisAnim === "entering" ? "rotate-180" : ""}`} />
+                    <ChevronDown className={`size-4 transition-transform duration-200 ${showSynopsis ? "rotate-180" : ""}`} />
                   </Button>
                 )}
               </div>
@@ -363,15 +373,26 @@ export default function MovieCard({
                 </span>
               </div>
 
-              {showSynopsis && movie.description && (
-                <div className={`mt-4 overflow-hidden border-t border-white/5 pt-3 ${synopsisAnim === "closing" ? "animate-slide-up" : "animate-slide-down"}`}>
-                  <p className="line-clamp-4 text-xs leading-relaxed text-neutral-400">
-                    {movie.description}
-                  </p>
+              {movie.description && (
+                <div
+                  ref={synopsisRef}
+                  className="overflow-hidden transition-all duration-300 ease-in-out"
+                  style={{
+                    maxHeight: showSynopsis ? synopsisHeight : 0,
+                    opacity: showSynopsis ? 1 : 0,
+                    transform: showSynopsis ? "translateY(0)" : "translateY(-8px)",
+                  }}
+                >
+                  <div className="pt-3">
+                    <p className="line-clamp-4 text-xs leading-relaxed text-neutral-400">
+                      {movie.description}
+                    </p>
+                  </div>
+                  <div className="h-4" />
                 </div>
               )}
 
-              <div className="mt-4 flex flex-wrap gap-1.5 border-t border-white/5 pt-3">
+              <div className={`flex flex-wrap gap-1.5 pt-3${!movie.description ? ' mt-4' : ''}`}>
                 {movie.genre.split(",").map((genre) => genre.trim()).filter(Boolean).slice(0, 4).map((genre) => (
                   <span
                     key={genre}

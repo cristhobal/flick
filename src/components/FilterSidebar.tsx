@@ -89,7 +89,7 @@ export default function FilterSidebar({
           <SlidersHorizontal className="size-4" />
           <span className="hidden sm:inline">{t("filters.title")}</span>
           {activeFilters > 0 && (
-            <Badge className="ml-1 h-5 min-w-5 rounded-full border-0 bg-white px-1.5 text-[10px] text-black">
+            <Badge className="ml-1 h-5 min-w-5 rounded-md border-0 bg-white px-1.5 text-[10px] text-black">
               {activeFilters}
             </Badge>
           )}
