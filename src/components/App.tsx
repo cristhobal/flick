@@ -20,7 +20,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { message: str
   render() {
     if (this.state.message) {
       return (
-        <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-black px-4 text-center text-white">
+        <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-4 text-center text-foreground">
           <div className="flex size-16 items-center justify-center rounded-full bg-neutral-900">
             <span className="text-2xl text-neutral-500">!</span>
           </div>

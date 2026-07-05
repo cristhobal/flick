@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react"
 import { useI18n } from "@/i18n/I18nProvider"
+import ThemeToggle from "@/components/ThemeToggle"
 
 interface HeaderProps {
   searchQuery: string
@@ -202,6 +203,8 @@ export default function Header({
               )}
             </div>
           </div>
+
+          <ThemeToggle />
 
           {/* Mobile Menu — Vaul Drawer from left */}
           <Drawer
