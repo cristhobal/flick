@@ -22,7 +22,7 @@ type PageView = "home" | "search" | "library" | "player" | "category" | "detail"
 const HERO_ROTATION_MS = 15_000
 const HERO_EXIT_MS = 720
 const HERO_MIN_RATING = 6.5
-const HERO_POPULAR_POOL_SIZE = 80
+
 
 interface ViewAllCtx {
   t: (key: string) => string
@@ -126,7 +126,7 @@ function buildViewAll(
 export default function HomePage() {
   const { lang, t } = useI18n()
   const tmdb = useTMDB()
-  const { allMovies, loading, error, hero: tmdbHero, categories } = tmdb
+  const { allMovies, loading, error, hero: tmdbHero, categories, trendingTmdbIds } = tmdb
 
   const [currentPage, setCurrentPage] = useState("home")
   const [view, setView] = useState<PageView>("home")
@@ -167,57 +167,112 @@ export default function HomePage() {
     return description !== t("movie.fallback")
   }, [t])
 
-  const tmdbHeroCandidates = useMemo(
-    () => allMovies
-      .filter((item) =>
+  // ---- Genre affinity tracking (localStorage) ----
+  const AFFINITY_KEY = "flick-genre-affinity"
+  const getAffinity = useCallback((): Record<string, number> => {
+    try {
+      const raw = localStorage.getItem(AFFINITY_KEY)
+      return raw ? JSON.parse(raw) : {}
+    } catch { return {} }
+  }, [])
+
+  const trackGenreView = useCallback((genreStr: string) => {
+    const genres = genreStr.split(",").map((g) => g.trim().toLowerCase()).filter(Boolean)
+    if (genres.length === 0) return
+    const affinity = getAffinity()
+    for (const genre of genres) {
+      affinity[genre] = (affinity[genre] || 0) + 1
+    }
+    try { localStorage.setItem(AFFINITY_KEY, JSON.stringify(affinity)) } catch { /* ignore */ }
+  }, [getAffinity])
+
+  const getUserAffinity = useCallback((movieGenre: string, affinity: Record<string, number>): number => {
+    if (Object.keys(affinity).length === 0) return 0.5
+    const genres = movieGenre.split(",").map((g) => g.trim().toLowerCase()).filter(Boolean)
+    const maxCount = Math.max(...Object.values(affinity), 1)
+    let score = 0
+    for (const genre of genres) {
+      score = Math.max(score, (affinity[genre] || 0) / maxCount)
+    }
+    return score || 0.5
+  }, [])
+
+  // ---- Hero scoring ----
+  const HERO_POOL_SIZE = 10
+  const currentYear = new Date().getFullYear()
+
+  const scoredHeroCandidates = useMemo(() => {
+    const affinity = getAffinity()
+    const candidates = allMovies.filter(
+      (item) =>
         item.rating >= HERO_MIN_RATING &&
         (item.backdropPath || item.posterPath) &&
         hasHeroSynopsis(item)
-      )
-      .sort((a, b) => b.year - a.year || b.rating - a.rating)
-      .slice(0, HERO_POPULAR_POOL_SIZE),
-    [allMovies, hasHeroSynopsis]
-  )
+    )
+    if (candidates.length === 0) return []
 
-  const chooseDifferentTmdbHero = useCallback((currentId: string | null) => {
-    const alternatives = tmdbHeroCandidates.filter((movie) => movie.id !== currentId)
-    const pool = alternatives.length > 0 ? alternatives : tmdbHeroCandidates
-    return pool[Math.floor(Math.random() * pool.length)]?.id || null
-  }, [tmdbHeroCandidates])
+    const maxPopularity = Math.max(...candidates.map((m) => m.popularity || 0), 1)
+    const years = candidates.map((m) => m.year).filter((y) => y > 0)
+    const minYear = Math.min(...years)
+    const maxYear = Math.max(...years)
+    const yearRange = Math.max(maxYear - minYear, 1)
+
+    const scored = candidates.map((item) => {
+      const popularityScore = Math.min((item.popularity || 0) / maxPopularity, 1)
+      const trendingScore = trendingTmdbIds.has(item.tmdbId) ? 1 : 0
+      const recencyScore = item.year > 0 ? Math.min((item.year - minYear) / yearRange, 1) : 0
+      const affinityScore = getUserAffinity(item.genre, affinity)
+
+      const total =
+        popularityScore * 0.35 +
+        trendingScore * 0.25 +
+        recencyScore * 0.15 +
+        affinityScore * 0.25
+
+      return { item, score: total }
+    })
+
+    return scored.sort((a, b) => b.score - a.score).slice(0, HERO_POOL_SIZE)
+  }, [allMovies, trendingTmdbIds, hasHeroSynopsis, getAffinity, getUserAffinity])
+
+  const chooseNextHero = useCallback((currentId: string | null) => {
+    const alternatives = scoredHeroCandidates.filter(({ item }) => item.id !== currentId)
+    const pool = alternatives.length > 0 ? alternatives : scoredHeroCandidates
+    return pool[0]?.item.id || null
+  }, [scoredHeroCandidates])
 
   useEffect(() => {
-    if (tmdbHeroCandidates.length === 0) {
-      setHeroMovieId((currentId) => currentId)
+    if (scoredHeroCandidates.length === 0) {
+      setHeroMovieId(null)
       return
     }
     setHeroMovieId((currentId) => {
-      if (currentId && tmdbHeroCandidates.some((movie) => movie.id === currentId)) {
+      if (currentId && scoredHeroCandidates.some(({ item }) => item.id === currentId)) {
         return currentId
       }
-
       const tmdbHeroCandidate = tmdbHero
-        ? tmdbHeroCandidates.find((movie) => movie.tmdbId === tmdbHero.tmdbId)
+        ? scoredHeroCandidates.find(({ item }) => item.tmdbId === tmdbHero.tmdbId)
         : undefined
-
-      return chooseDifferentTmdbHero(tmdbHeroCandidate?.id || currentId)
+      return tmdbHeroCandidate?.item.id || chooseNextHero(currentId)
     })
-  }, [tmdbHeroCandidates, tmdbHero?.tmdbId, chooseDifferentTmdbHero])
+  }, [scoredHeroCandidates, tmdbHero?.tmdbId, chooseNextHero])
 
   useEffect(() => {
-    if (view !== "home" || tmdbHeroCandidates.length < 2) return
+    if (view !== "home" || scoredHeroCandidates.length < 2) return
     const rotationTimer = window.setInterval(() => {
-      setHeroMovieId((currentId) => chooseDifferentTmdbHero(currentId || tmdbHero?.id || null))
+      setHeroMovieId((currentId) => chooseNextHero(currentId))
     }, HERO_ROTATION_MS)
     return () => window.clearInterval(rotationTimer)
-  }, [tmdbHeroCandidates, view, chooseDifferentTmdbHero, tmdbHero?.id])
+  }, [scoredHeroCandidates, view, chooseNextHero])
 
   const hero = useMemo(() => {
-    const selected = tmdbHeroCandidates.find((movie) => movie.id === heroMovieId)
+    const found = scoredHeroCandidates.find(({ item }) => item.id === heroMovieId)
+    const selected = found?.item || null
     if (selected && tmdbHero?.tmdbId === selected.tmdbId && tmdbHero.duration !== "-") {
       return { ...selected, duration: tmdbHero.duration, durationSeconds: tmdbHero.durationSeconds, trailerUrl: selected.trailerUrl || tmdbHero.trailerUrl }
     }
-    return selected || null
-  }, [heroMovieId, tmdbHero, tmdbHeroCandidates, hasHeroSynopsis])
+    return selected
+  }, [heroMovieId, tmdbHero, scoredHeroCandidates, hasHeroSynopsis])
 
   useEffect(() => {
     if (!hero) {
@@ -347,18 +402,21 @@ export default function HomePage() {
       setCurrentPage(page)
       setPath("/library")
     } else if (page === "movies") {
+      trackGenreView("movie")
       setCategoryType("movie")
       setCategoryGenre(null)
       setView("category")
       setCurrentPage("movies")
       setPath(sectionPath("movie"))
     } else if (page === "series") {
+      trackGenreView("series")
       setCategoryType("series")
       setCategoryGenre(null)
       setView("category")
       setCurrentPage("series")
       setPath(sectionPath("series"))
     } else if (page === "anime") {
+      trackGenreView("anime")
       setCategoryType("anime")
       setCategoryGenre(null)
       setView("category")
@@ -367,30 +425,33 @@ export default function HomePage() {
     } else {
       setCurrentPage(page)
     }
-  }, [goHome, setPath])
+  }, [goHome, setPath, trackGenreView])
 
   const handlePlay = useCallback((movie: Movie) => {
     const playable = getPlayableMovie(movie)
     if (!playable) return
+    trackGenreView(movie.genre)
     setSelectedMovie(playable)
     setView("player")
     setPath(watchPath(playable))
     window.scrollTo({ top: 0, behavior: "instant" })
-  }, [setPath])
+  }, [setPath, trackGenreView])
 
   const handleDetails = useCallback((movie: Movie) => {
+    trackGenreView(movie.genre)
     setSelectedMovie(movie)
     setView("detail")
     setPath(contentPath(movie))
     window.scrollTo({ top: 0, behavior: "instant" })
-  }, [setPath])
+  }, [setPath, trackGenreView])
 
   const handleMovieClick = useCallback((movie: Movie) => {
+    trackGenreView(movie.genre)
     setSelectedMovie(movie)
     setView("detail")
     setPath(contentPath(movie))
     window.scrollTo({ top: 0, behavior: "instant" })
-  }, [setPath])
+  }, [setPath, trackGenreView])
 
 
   const handleFilterReset = useCallback(() => {

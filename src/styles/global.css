@@ -103,9 +103,8 @@
      @apply bg-background text-foreground;
      /* Prevent horizontal overflow on all viewports */
      overflow-x: hidden;
-     overflow-y: scroll;
-     scrollbar-gutter: stable;
-     -webkit-text-size-adjust: 100%;
+      overflow-y: scroll;
+      -webkit-text-size-adjust: 100%;
      text-rendering: optimizeLegibility;
    }
   /* The scrollbar is always visible (overflow-y: scroll above), so it never

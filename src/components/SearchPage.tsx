@@ -113,10 +113,23 @@ export default function SearchPage({
           <div className="content-container pt-6 sm:pt-8">
             <div className="responsive-card-grid">
               {Array.from({ length: 18 }).map((_, i) => (
-                <div key={i} className="space-y-2">
-                  <Skeleton className="aspect-[2/3] w-full rounded-xl bg-neutral-900" />
-                  <Skeleton className="h-4 w-3/4 rounded bg-neutral-900" />
-                  <Skeleton className="h-3 w-1/2 rounded bg-neutral-900" />
+                <div key={i}>
+                  <div className="relative overflow-hidden rounded-xl bg-neutral-900 shadow-lg">
+                    <Skeleton className="aspect-[2/3] w-full bg-neutral-800" />
+                    <div className="absolute right-0 bottom-0 left-0 h-1/2 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                    <div className="absolute right-0 bottom-0 left-0 flex min-h-24 flex-col justify-end p-3">
+                      <Skeleton className="h-4 w-3/4 bg-neutral-700/50" />
+                      <div className="mt-2 flex items-center gap-2">
+                        <Skeleton className="h-3 w-12 bg-neutral-700/50" />
+                        <Skeleton className="h-3 w-px bg-neutral-600" />
+                        <Skeleton className="h-3 w-16 bg-neutral-700/50" />
+                        <div className="ml-auto flex items-center gap-1">
+                          <Skeleton className="size-3 rounded-full bg-neutral-700/50" />
+                          <Skeleton className="h-3 w-6 bg-neutral-700/50" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>

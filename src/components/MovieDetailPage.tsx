@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useCallback, useLayoutEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Card,
   CardTitle,
@@ -685,7 +686,7 @@ export default function MovieDetailPage({
                   <SelectTrigger
                     ref={seasonTriggerRef}
                     size="sm"
-                    className="h-auto gap-1.5 rounded-lg border-neutral-700 bg-neutral-900 px-2.5 py-1 text-xs text-neutral-300 hover:border-neutral-600 focus-visible:border-neutral-500 focus-visible:ring-0 data-[state=open]:border-neutral-500 [&_svg]:size-3 [&_svg]:opacity-100"
+                    className="h-auto gap-1.5 rounded-sm border-neutral-700 bg-neutral-900 px-2.5 py-1 text-xs text-neutral-300 hover:border-neutral-600 focus-visible:border-neutral-500 focus-visible:ring-0 data-[state=open]:border-neutral-500 [&_svg]:size-3 [&_svg]:opacity-100"
                   >
                     <SelectValue>
                       {selectedSeasonMeta ? seasonOptionLabel(selectedSeasonMeta) : `${t("common.season")} ${selectedSeason}`}
@@ -728,11 +729,11 @@ export default function MovieDetailPage({
                     className="border border-neutral-800 bg-neutral-900/50"
                   >
                     <div className="flex gap-3 p-3">
-                      <div className="h-24 w-16 shrink-0 animate-pulse rounded-md bg-neutral-800" />
+                      <Skeleton className="h-24 w-16 shrink-0 bg-neutral-800" />
                       <div className="min-w-0 flex-1 space-y-2">
-                        <div className="h-4 w-2/3 animate-pulse rounded bg-neutral-800" />
-                        <div className="h-3 w-20 animate-pulse rounded bg-neutral-800" />
-                        <div className="h-12 animate-pulse rounded bg-neutral-800/80" />
+                        <Skeleton className="h-4 w-2/3 bg-neutral-800" />
+                        <Skeleton className="h-3 w-20 bg-neutral-800" />
+                        <Skeleton className="h-12 bg-neutral-800/80" />
                       </div>
                     </div>
                   </Card>
@@ -826,98 +827,120 @@ export default function MovieDetailPage({
         </section>
       )}
       {/* Screenshots - carousel */}
-      {screenshots.length > 0 && (
-        <section className="content-container group/row pb-8 sm:pb-10">
-          <h2 className="mb-4 text-lg font-semibold text-white">{t("details.screenshots")}</h2>
-          <div className="relative">
-            <div className="pointer-events-none absolute top-0 bottom-0 left-0 z-10 flex w-12 items-center opacity-0 transition-all duration-500 group-hover/row:opacity-100 sm:pointer-events-auto" style={{ opacity: canScreenshotScrollLeft ? undefined : 0, pointerEvents: canScreenshotScrollLeft ? undefined : "none" }}>
-              <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent" />
-              <button
-                onClick={() => screenshotScrollRef.current?.scrollBy({ left: -screenshotScrollRef.current.clientWidth, behavior: "smooth" })}
-                className="relative z-10 ml-1 flex size-8 items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
-              >
-                <ChevronLeft className="size-5" />
-              </button>
-            </div>
-            <div
-              ref={(node) => { screenshotScrollRef.current = node; screenshotStateRef(node) }}
-              className="hide-scrollbar flex flex-nowrap gap-4 overflow-x-auto pb-2 scroll-smooth"
-            >
-              {screenshots.map((path, index) => (
-                <ScreenshotDialog key={path} path={path} alt={`${t("details.screenshots")} ${index + 1}`} />
-              ))}
-            </div>
-            <div className="pointer-events-none absolute top-0 right-0 bottom-0 z-10 flex w-12 items-center justify-end opacity-0 transition-all duration-500 group-hover/row:opacity-100 sm:pointer-events-auto" style={{ opacity: canScreenshotScrollRight ? undefined : 0, pointerEvents: canScreenshotScrollRight ? undefined : "none" }}>
-              <div className="absolute inset-0 bg-gradient-to-l from-black/70 via-black/30 to-transparent" />
-              <button
-                onClick={() => screenshotScrollRef.current?.scrollBy({ left: screenshotScrollRef.current.clientWidth, behavior: "smooth" })}
-                className="relative z-10 mr-1 flex size-8 items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
-              >
-                <ChevronRight className="size-5" />
-              </button>
-            </div>
-          </div>
-        </section>
-      )}
-      {/* Cast - carousel con botones */}
-      {cast.length > 0 && (
-        <section
-          className="content-container group/row pb-8 sm:pb-10"
-          style={{
-            opacity: castReady ? 1 : 0,
-            transform: castReady ? "translateY(0)" : "translateY(14px)",
-            transition: "opacity 400ms cubic-bezier(0,0,0.2,1), transform 400ms cubic-bezier(0,0,0.2,1)",
-          }}
-        >
-          <h2 className="mb-4 text-lg font-semibold text-white">{t("details.cast")}</h2>
-          <div className="relative">
-            <div className="pointer-events-none absolute top-0 bottom-0 left-0 z-10 flex w-12 items-center opacity-0 transition-all duration-500 group-hover/row:opacity-100 sm:pointer-events-auto" style={{ opacity: canCastScrollLeft ? undefined : 0, pointerEvents: canCastScrollLeft ? undefined : "none" }}>
-              <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent" />
-              <button
-                onClick={() => castScrollRef.current?.scrollBy({ left: -castScrollRef.current.clientWidth, behavior: "smooth" })}
-                className="relative z-10 ml-1 flex size-8 items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
-              >
-                <ChevronLeft className="size-5" />
-              </button>
-            </div>
-            <div
-              ref={(node) => { castScrollRef.current = node; castStateRef(node) }}
-              className="hide-scrollbar flex flex-nowrap gap-4 overflow-x-auto pb-2 scroll-smooth"
-            >
-              {cast.map((actor) => (
-                <div key={actor.id} className="w-28 shrink-0 snap-start sm:w-32">
-                  <div className="mb-2 aspect-[2/3] overflow-hidden rounded-lg bg-neutral-800">
-                    {actor.profile_path ? (
-                      <img
-                        src={`${IMG_URL}/w185${actor.profile_path}`}
-                        alt={actor.name}
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                        decoding="async"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-neutral-600">
-                        <Star className="size-6" />
-                      </div>
-                    )}
-                  </div>
-                  <p className="truncate text-xs font-medium text-white">{actor.name}</p>
-                  <p className="truncate text-[10px] text-neutral-500">{actor.character}</p>
+      <section className="content-container group/row pb-8 sm:pb-10">
+        <h2 className="mb-4 text-lg font-semibold text-white">{t("details.screenshots")}</h2>
+        <div className="relative">
+          {screenshots.length === 0 ? (
+            <div className="hide-scrollbar flex flex-nowrap gap-4 overflow-x-auto pb-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="w-[260px] shrink-0 snap-start sm:w-[320px] lg:w-[400px]">
+                  <Skeleton className="aspect-video w-full rounded-lg bg-neutral-800" />
                 </div>
               ))}
             </div>
-            <div className="pointer-events-none absolute top-0 right-0 bottom-0 z-10 flex w-12 items-center justify-end opacity-0 transition-all duration-500 group-hover/row:opacity-100 sm:pointer-events-auto" style={{ opacity: canCastScrollRight ? undefined : 0, pointerEvents: canCastScrollRight ? undefined : "none" }}>
-              <div className="absolute inset-0 bg-gradient-to-l from-black/70 via-black/30 to-transparent" />
-              <button
-                onClick={() => castScrollRef.current?.scrollBy({ left: castScrollRef.current.clientWidth, behavior: "smooth" })}
-                className="relative z-10 mr-1 flex size-8 items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
+          ) : (
+            <>
+              <div className="pointer-events-none absolute top-0 bottom-0 left-0 z-10 flex w-12 items-center opacity-0 transition-all duration-500 group-hover/row:opacity-100 sm:pointer-events-auto" style={{ opacity: canScreenshotScrollLeft ? undefined : 0, pointerEvents: canScreenshotScrollLeft ? undefined : "none" }}>
+                <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent" />
+                <button
+                  onClick={() => screenshotScrollRef.current?.scrollBy({ left: -screenshotScrollRef.current.clientWidth, behavior: "smooth" })}
+                  className="relative z-10 ml-1 flex size-8 items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
+                >
+                  <ChevronLeft className="size-5" />
+                </button>
+              </div>
+              <div
+                ref={(node) => { screenshotScrollRef.current = node; screenshotStateRef(node) }}
+                className="hide-scrollbar flex flex-nowrap gap-4 overflow-x-auto pb-2 scroll-smooth"
               >
-                <ChevronRight className="size-5" />
-              </button>
+                {screenshots.map((path, index) => (
+                  <ScreenshotDialog key={path} path={path} alt={`${t("details.screenshots")} ${index + 1}`} />
+                ))}
+              </div>
+              <div className="pointer-events-none absolute top-0 right-0 bottom-0 z-10 flex w-12 items-center justify-end opacity-0 transition-all duration-500 group-hover/row:opacity-100 sm:pointer-events-auto" style={{ opacity: canScreenshotScrollRight ? undefined : 0, pointerEvents: canScreenshotScrollRight ? undefined : "none" }}>
+                <div className="absolute inset-0 bg-gradient-to-l from-black/70 via-black/30 to-transparent" />
+                <button
+                  onClick={() => screenshotScrollRef.current?.scrollBy({ left: screenshotScrollRef.current.clientWidth, behavior: "smooth" })}
+                  className="relative z-10 mr-1 flex size-8 items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
+                >
+                  <ChevronRight className="size-5" />
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+      {/* Cast - carousel con botones */}
+      <section
+        className="content-container group/row pb-8 sm:pb-10"
+        style={{
+          opacity: cast.length > 0 && castReady ? 1 : cast.length > 0 ? 0 : 1,
+          transform: cast.length > 0 && castReady ? "translateY(0)" : cast.length > 0 ? "translateY(14px)" : "translateY(0)",
+          transition: "opacity 400ms cubic-bezier(0,0,0.2,1), transform 400ms cubic-bezier(0,0,0.2,1)",
+        }}
+      >
+        <h2 className="mb-4 text-lg font-semibold text-white">{t("details.cast")}</h2>
+        <div className="relative">
+          {cast.length === 0 ? (
+            <div className="hide-scrollbar flex flex-nowrap gap-4 overflow-x-auto pb-2">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="w-28 shrink-0 snap-start sm:w-32">
+                  <Skeleton className="mb-2 aspect-[2/3] w-full rounded-lg bg-neutral-800" />
+                  <Skeleton className="mb-1 h-3 w-3/4 bg-neutral-800" />
+                  <Skeleton className="h-2.5 w-1/2 bg-neutral-800" />
+                </div>
+              ))}
             </div>
-          </div>
-        </section>
-      )}
+          ) : (
+            <>
+              <div className="pointer-events-none absolute top-0 bottom-0 left-0 z-10 flex w-12 items-center opacity-0 transition-all duration-500 group-hover/row:opacity-100 sm:pointer-events-auto" style={{ opacity: canCastScrollLeft ? undefined : 0, pointerEvents: canCastScrollLeft ? undefined : "none" }}>
+                <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent" />
+                <button
+                  onClick={() => castScrollRef.current?.scrollBy({ left: -castScrollRef.current.clientWidth, behavior: "smooth" })}
+                  className="relative z-10 ml-1 flex size-8 items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
+                >
+                  <ChevronLeft className="size-5" />
+                </button>
+              </div>
+              <div
+                ref={(node) => { castScrollRef.current = node; castStateRef(node) }}
+                className="hide-scrollbar flex flex-nowrap gap-4 overflow-x-auto pb-2 scroll-smooth"
+              >
+                {cast.map((actor) => (
+                  <div key={actor.id} className="w-28 shrink-0 snap-start sm:w-32">
+                    <div className="mb-2 aspect-[2/3] overflow-hidden rounded-lg bg-neutral-800">
+                      {actor.profile_path ? (
+                        <img
+                          src={`${IMG_URL}/w185${actor.profile_path}`}
+                          alt={actor.name}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-neutral-600">
+                          <Star className="size-6" />
+                        </div>
+                      )}
+                    </div>
+                    <p className="truncate text-xs font-medium text-white">{actor.name}</p>
+                    <p className="truncate text-[10px] text-neutral-500">{actor.character}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="pointer-events-none absolute top-0 right-0 bottom-0 z-10 flex w-12 items-center justify-end opacity-0 transition-all duration-500 group-hover/row:opacity-100 sm:pointer-events-auto" style={{ opacity: canCastScrollRight ? undefined : 0, pointerEvents: canCastScrollRight ? undefined : "none" }}>
+                <div className="absolute inset-0 bg-gradient-to-l from-black/70 via-black/30 to-transparent" />
+                <button
+                  onClick={() => castScrollRef.current?.scrollBy({ left: castScrollRef.current.clientWidth, behavior: "smooth" })}
+                  className="relative z-10 mr-1 flex size-8 items-center justify-center rounded-full text-neutral-400 transition-all hover:scale-110 hover:bg-white/10 hover:text-white active:scale-95"
+                >
+                  <ChevronRight className="size-5" />
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
 
       {/* Related */}
       {related.length > 0 && (
