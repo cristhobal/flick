@@ -221,16 +221,16 @@ export default function Header({
                 <Menu className="size-5" />
               </Button>
             </DrawerTrigger>
-            <DrawerContent className="inset-y-0 left-0 h-full w-[72vw] max-w-[260px] overflow-hidden rounded-none border-r border-white/[0.06] bg-[#0a0a0a] p-0 text-white shadow-[24px_0_80px_rgba(0,0,0,0.8)]">
+            <DrawerContent className="inset-y-0 left-0 h-full w-[72vw] max-w-[260px] overflow-hidden rounded-none border-r border-sidebar-border bg-sidebar p-0 text-sidebar-foreground shadow-[var(--drawer-shadow)]">
               {/* Header */}
               <DrawerHeader className="px-6 pt-8 pb-6">
                 <div className="flex items-center justify-between">
-                  <DrawerTitle className="text-lg font-bold tracking-tighter text-white">
+                  <DrawerTitle className="text-lg font-bold tracking-tighter text-sidebar-foreground">
                     flick
                   </DrawerTitle>
                   <DrawerClose asChild>
                     <button
-                      className="flex size-7 cursor-pointer items-center justify-center rounded-full text-neutral-600 transition-colors hover:text-neutral-300"
+                      className="flex size-7 cursor-pointer items-center justify-center rounded-full text-sidebar-foreground/60 transition-colors hover:text-sidebar-foreground"
                       aria-label="Cerrar menu"
                     >
                       <X className="size-3.5" />
@@ -257,22 +257,22 @@ export default function Header({
                       link.disabled
                         ? "cursor-not-allowed opacity-25"
                         : currentPage === link.id
-                          ? "bg-white/[0.07] text-white"
-                          : "text-neutral-500 hover:bg-white/[0.04] hover:text-neutral-200"
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                          : "text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                     }`}
                   >
                     <link.icon
                       className={`size-4 shrink-0 transition-colors ${
                         currentPage === link.id
-                          ? "text-white"
-                          : "text-neutral-600 group-hover:text-neutral-300"
+                          ? "text-sidebar-accent-foreground"
+                          : "text-sidebar-foreground/40 group-hover:text-sidebar-foreground/80"
                       }`}
                     />
                     <span className="min-w-0 flex-1 truncate text-left font-medium">
                       {link.label}
                     </span>
                     {currentPage === link.id && (
-                      <span className="size-1 shrink-0 rounded-full bg-white/40" />
+                      <span className="size-1 shrink-0 rounded-full bg-sidebar-accent-foreground/40" />
                     )}
                   </button>
                 ))}
@@ -280,8 +280,8 @@ export default function Header({
 
               {/* Footer line */}
               <div className="absolute bottom-8 left-6 right-6">
-                <div className="h-px bg-white/[0.04]" />
-                <p className="mt-4 text-[10px] font-medium uppercase tracking-[0.18em] text-neutral-700">
+                <div className="h-px bg-sidebar-border" />
+                <p className="mt-4 text-[10px] font-medium uppercase tracking-[0.18em] text-sidebar-foreground/40">
                   {t("nav.main")}
                 </p>
               </div>

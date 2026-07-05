@@ -81,6 +81,7 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 8%);
     --sidebar-ring: oklch(0.55 0 0);
+    --drawer-shadow: 24px 0 80px rgba(0, 0, 0, 0.8);
 
     /* ─── Animation tokens ─────────────────────────────────────── */
     --dur-fast:   150ms;
@@ -126,6 +127,7 @@
     --sidebar-accent-foreground: oklch(0.11 0 0);
     --sidebar-border: oklch(0 0 0 / 8%);
     --sidebar-ring: oklch(0.3 0 0);
+    --drawer-shadow: 24px 0 80px rgba(0, 0, 0, 0.08);
 
     /* ─── Tailwind color token overrides for light mode ──── */
     --color-white: oklch(0.11 0 0);
