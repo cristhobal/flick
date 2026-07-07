@@ -146,7 +146,7 @@ export default function ScrollIndicator() {
         e.preventDefault()
         dragging = true
         animating = false
-        thumb.classList.add("bg-white/45")
+        thumb.classList.add("is-active")
         thumb.setPointerCapture(e.pointerId)
         setVisible(true)
 
@@ -171,7 +171,7 @@ export default function ScrollIndicator() {
         }
         const onPointerUp = () => {
           dragging = false
-          thumb.classList.remove("bg-white/45")
+          thumb.classList.remove("is-active")
           scheduleHide()
           window.removeEventListener("pointermove", onPointerMove)
           window.removeEventListener("pointerup", onPointerUp)
@@ -223,7 +223,7 @@ export default function ScrollIndicator() {
     >
       <div
         ref={thumbRef}
-        className="absolute top-0 right-1 w-1.5 cursor-grab rounded-full bg-white/25 opacity-0 shadow-[0_1px_4px_rgba(0,0,0,0.35)] transition-[opacity,background-color] duration-300 ease-out hover:bg-white/40 active:cursor-grabbing"
+        className="flick-scroll-thumb absolute top-0 right-1 w-1.5 cursor-grab rounded-full opacity-0 transition-[opacity,background-color] duration-300 ease-out active:cursor-grabbing"
         style={{ willChange: "transform" }}
       />
     </div>

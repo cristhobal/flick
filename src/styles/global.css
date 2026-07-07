@@ -592,3 +592,31 @@
 .light html::-webkit-scrollbar-thumb:active {
   background-color: rgba(0, 0, 0, 0.45);
 }
+
+/* ─── Custom floating scroll thumb (ScrollIndicator) ─────────
+   Theme-aware fill + shadow. Dark mode: light thumb on dark
+   content, so a dark drop-shadow reads correctly. Light mode:
+   flipped to a dark thumb with a soft shadow — without this,
+   the dark-mode-only white fill turns nearly invisible on a
+   light background and only its dark shadow remains visible,
+   showing up as an ugly, formless dark smudge. */
+.flick-scroll-thumb {
+  background-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.flick-scroll-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.4);
+}
+.flick-scroll-thumb.is-active {
+  background-color: rgba(255, 255, 255, 0.45);
+}
+.light .flick-scroll-thumb {
+  background-color: rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+.light .flick-scroll-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.35);
+}
+.light .flick-scroll-thumb.is-active {
+  background-color: rgba(0, 0, 0, 0.45);
+}
