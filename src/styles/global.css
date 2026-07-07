@@ -176,15 +176,26 @@
        the page content and the real (outer) scrollbar, on every page. */
     overflow-x: hidden;
     overflow-y: scroll;
-    /* Firefox: a native thin scrollbar, translucent thumb over a transparent
-       track (Firefox has no ::-webkit-scrollbar-* pseudo-elements to style
-       further than this). */
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+    /* The page's real, native vertical scrollbar is fully hidden here —
+       not just styled — because it can't be made to reliably render as a
+       transparent-track floating pill across engines (some browsers keep
+       painting the reserved gutter with an opaque background regardless of
+       `::-webkit-scrollbar-track { background: transparent }`, which shows
+       up as a solid rectangle, especially in light mode). `ScrollIndicator`
+       is a full JS-driven replacement — a slim, theme-aware, floating thumb
+       with matching drag/click behavior — so the native one never needs to
+       be shown at all. */
+    scrollbar-width: none;
   }
-  /* Default scrollbar for all elements: transparent track (shows content
-     underneath) + subtle semi-transparent thumb. Elements that need fully
-     hidden scrollbars should use the `.hide-scrollbar` utility class. */
+  html::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+  /* Default scrollbar for all *other* scrollable elements (modals, sidebars,
+     dropdowns, etc.): transparent track (shows content underneath) + subtle
+     semi-transparent thumb. Elements that need fully hidden scrollbars
+     should use the `.hide-scrollbar` utility class. */
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -200,31 +211,6 @@
   }
   ::-webkit-scrollbar-thumb:hover {
     background-color: rgba(255, 255, 255, 0.25);
-  }
-  /* Chrome/Edge/Safari: the page's real, native vertical scrollbar — styled
-     as a slim, rounded, semi-transparent thumb floating on a transparent
-     track. Being the actual native scrollbar (not a JS-driven stand-in), its
-     drag/inertia/momentum behavior is exactly what the OS/browser provides,
-     so it's always perfectly smooth. */
-  html::-webkit-scrollbar {
-    width: 12px;
-  }
-  html::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  html::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.25);
-    border-radius: 9999px;
-    /* Transparent border + background-clip keeps the hit area a comfortable
-       12px wide while the visible thumb reads as a slim ~6px pill. */
-    border: 3px solid transparent;
-    background-clip: content-box;
-  }
-  html::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(255, 255, 255, 0.4);
-  }
-  html  ::-webkit-scrollbar-thumb:active {
-    background-color: rgba(255, 255, 255, 0.5);
   }
   /* Smooth theme transition */
   html.theme-transitioning *,
@@ -574,23 +560,11 @@
 }
 
 /* ─── Light mode scrollbar overrides ─────────────────────── */
-.light html {
-  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
-}
 .light ::-webkit-scrollbar-thumb {
   background-color: rgba(0, 0, 0, 0.15);
 }
 .light ::-webkit-scrollbar-thumb:hover {
   background-color: rgba(0, 0, 0, 0.25);
-}
-.light html::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.2);
-}
-.light html::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(0, 0, 0, 0.35);
-}
-.light html::-webkit-scrollbar-thumb:active {
-  background-color: rgba(0, 0, 0, 0.45);
 }
 
 /* ─── Custom floating scroll thumb (ScrollIndicator) ─────────
