@@ -79,9 +79,10 @@ export default function CastCard({ actor, index = 0 }: CastCardProps) {
       new CustomEvent<string>(PREVIEW_OPEN_EVENT, { detail: previewIdRef.current })
     )
     if (showExpanded || showTimerRef.current) return
-    const rect = e.currentTarget.getBoundingClientRect()
     showTimerRef.current = setTimeout(() => {
       showTimerRef.current = undefined
+      if (!cardRef.current) return
+      const rect = cardRef.current.getBoundingClientRect()
       const previewWidth = Math.min(360, window.innerWidth - 24)
       const previewHeight = Math.min(460, window.innerHeight - 24)
       const viewportPadding = 12
