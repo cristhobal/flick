@@ -25,6 +25,7 @@ export default function CastCard({ actor, index = 0 }: CastCardProps) {
   const cardRef = useRef<HTMLDivElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const previewIdRef = useRef(`cast-preview-${actor.id}-${index}`)
+  const resizeObserverRef = useRef<ResizeObserver | null>(null)
   const { lang, t } = useI18n()
 
   const cancelHide = useCallback(() => {
@@ -104,8 +105,19 @@ export default function CastCard({ actor, index = 0 }: CastCardProps) {
   }, [person])
 
   useLayoutEffect(() => {
-    if (showExpanded) {
+    if (showExpanded && previewRef.current) {
       calculatePosition()
+
+      resizeObserverRef.current?.disconnect()
+      const observer = new ResizeObserver(() => {
+        calculatePosition()
+      })
+      observer.observe(previewRef.current)
+      resizeObserverRef.current = observer
+    }
+    return () => {
+      resizeObserverRef.current?.disconnect()
+      resizeObserverRef.current = null
     }
   }, [showExpanded, person, calculatePosition])
 
