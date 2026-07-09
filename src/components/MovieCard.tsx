@@ -107,9 +107,9 @@ export default function MovieCard({
   const calculatePosition = useCallback(() => {
     if (!cardRef.current || !previewRef.current) return
     const rect = cardRef.current.getBoundingClientRect()
-    const previewRect = previewRef.current.getBoundingClientRect()
-    const actualPreviewHeight = previewRect.height
-    const actualPreviewWidth = previewRect.width
+    const previewEl = previewRef.current
+    const actualPreviewHeight = previewEl.offsetHeight
+    const actualPreviewWidth = previewEl.offsetWidth
     const viewportPadding = 12
     const gap = 8
     const spaceRight = window.innerWidth - rect.right
@@ -139,7 +139,7 @@ export default function MovieCard({
       )
       setPos({ left, top })
     }
-  }, [])
+  }, [showSynopsis, synopsisHeight])
 
   useLayoutEffect(() => {
     if (synopsisRef.current && movie.description) {
@@ -152,7 +152,7 @@ export default function MovieCard({
     if (showExpanded) {
       calculatePosition()
     }
-  }, [showExpanded, showSynopsis, calculatePosition])
+  }, [showExpanded, showSynopsis, synopsisHeight, calculatePosition])
 
   const scheduleHide = useCallback((delay = 350) => {
     clearTimeout(hideTimerRef.current)

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback, useLayoutEffect } from "react"
 import { createPortal } from "react-dom"
 import { Button } from "@/components/ui/button"
 import { Play, Star } from "lucide-react"
@@ -37,6 +37,7 @@ export default function EpisodeCard({
   const showTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const cardRef = useRef<HTMLDivElement>(null)
+  const previewRef = useRef<HTMLDivElement>(null)
   const previewIdRef = useRef(`episode-preview-${episode.id}-${index}`)
   const { lang, t } = useI18n()
 
@@ -69,6 +70,49 @@ export default function EpisodeCard({
     window.addEventListener("scroll", handleScroll, { once: true })
     return () => window.removeEventListener("scroll", handleScroll)
   }, [showExpanded, cancelHide])
+
+  const calculatePosition = useCallback(() => {
+    if (!cardRef.current || !previewRef.current) return
+    const rect = cardRef.current.getBoundingClientRect()
+    const previewEl = previewRef.current
+    const actualPreviewHeight = previewEl.offsetHeight
+    const actualPreviewWidth = previewEl.offsetWidth
+    const viewportPadding = 12
+    const gap = 8
+    const spaceRight = window.innerWidth - rect.right
+    const rawLeft = spaceRight >= actualPreviewWidth + gap + viewportPadding
+      ? rect.right + gap
+      : rect.left - actualPreviewWidth - gap
+    const left = Math.min(
+      Math.max(viewportPadding, rawLeft),
+      window.innerWidth - actualPreviewWidth - viewportPadding
+    )
+    const spaceAbove = rect.top
+    const spaceBelow = window.innerHeight - rect.bottom
+    const canExpandDown = spaceBelow >= actualPreviewHeight + gap + viewportPadding
+    const canExpandUp = spaceAbove >= actualPreviewHeight + gap + viewportPadding
+    const shouldExpandUp = (!canExpandDown && canExpandUp) || (!canExpandDown && !canExpandUp && spaceAbove >= spaceBelow)
+    setExpandUpward(shouldExpandUp)
+    if (shouldExpandUp) {
+      const bottom = Math.min(
+        Math.max(window.innerHeight - rect.bottom - gap, viewportPadding),
+        window.innerHeight - actualPreviewHeight - viewportPadding
+      )
+      setPos({ left, top: bottom })
+    } else {
+      const top = Math.min(
+        Math.max(rect.top, viewportPadding),
+        window.innerHeight - actualPreviewHeight - viewportPadding
+      )
+      setPos({ left, top })
+    }
+  }, [])
+
+  useLayoutEffect(() => {
+    if (showExpanded) {
+      calculatePosition()
+    }
+  }, [showExpanded, calculatePosition])
 
   const scheduleHide = useCallback((delay = 350) => {
     clearTimeout(hideTimerRef.current)
@@ -228,6 +272,7 @@ export default function EpisodeCard({
 
       {showExpanded && createPortal(
         <article
+          ref={previewRef}
           className="pointer-events-none fixed z-[9999] w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-white/10 bg-neutral-950 shadow-[0_24px_80px_rgba(0,0,0,0.75)] animate-scale-in"
           style={{ left: pos.left, ...(expandUpward ? { bottom: pos.top } : { top: pos.top }) }}
         >
