@@ -47,6 +47,7 @@ export default function MovieCard({
   const synopsisRef = useRef<HTMLDivElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const synopsisTogglingRef = useRef(false)
+  const resizeObserverRef = useRef<ResizeObserver | null>(null)
 
   const cancelHide = useCallback(() => {
     clearTimeout(hideTimerRef.current)
@@ -149,8 +150,19 @@ export default function MovieCard({
   }, [movie.description, showSynopsis])
 
   useLayoutEffect(() => {
-    if (showExpanded) {
+    if (showExpanded && previewRef.current) {
       calculatePosition()
+
+      resizeObserverRef.current?.disconnect()
+      const observer = new ResizeObserver(() => {
+        calculatePosition()
+      })
+      observer.observe(previewRef.current)
+      resizeObserverRef.current = observer
+    }
+    return () => {
+      resizeObserverRef.current?.disconnect()
+      resizeObserverRef.current = null
     }
   }, [showExpanded, showSynopsis, synopsisHeight, calculatePosition])
 
