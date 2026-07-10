@@ -155,10 +155,10 @@
       -webkit-text-size-adjust: 100%;
      text-rendering: optimizeLegibility;
    }
-  /* The scrollbar is always visible (overflow-y: scroll below), so it never
-     needs to be compensated for. Prevent Radix's scroll-lock (used by modal
-     Dialog/Sheet/Select) from adding extra padding-right when it opens,
-     which otherwise makes the page visibly narrower while open. */
+  /* scrollbar-gutter: stable reserves the scrollbar space without forcing a
+     visible scrollbar, so Radix's scroll-lock has nothing to compensate for.
+     Prevent Radix (used by modal Dialog/Sheet/Select) from adding extra
+     padding-right when it opens, which would make the page narrower. */
   html body[data-scroll-locked] {
     padding-right: 0 !important;
     margin-right: 0 !important;
@@ -168,49 +168,38 @@
     /* Prevent iOS font size adjustment on orientation change */
     -webkit-text-size-adjust: 100%;
     scroll-behavior: smooth;
-    /* Own all scroll/overflow behavior on the root element only. Giving
-       `body` its own separate `overflow-y` here too (as before) makes
-       Chrome/Edge treat `body` as an independent nested scroll container
-       instead of the viewport itself, which reserves a second scrollbar
-       gutter inside `body` — visible as a persistent black strip between
-       the page content and the real (outer) scrollbar, on every page. */
+    /* Reserva el espacio del scrollbar siempre, incluso cuando no hay
+       overflow. Evita el "salto" horizontal al navegar entre páginas
+       (cuando pasamos de contenido con scrollbar a sin scrollbar).
+       A diferencia de `overflow-y: scroll`, no fuerza una scrollbar
+       visible permanente. */
     overflow-x: hidden;
-    overflow-y: scroll;
-    /* The page's real, native vertical scrollbar is fully hidden here —
-       not just styled — because it can't be made to reliably render as a
-       transparent-track floating pill across engines (some browsers keep
-       painting the reserved gutter with an opaque background regardless of
-       `::-webkit-scrollbar-track { background: transparent }`, which shows
-       up as a solid rectangle, especially in light mode). `ScrollIndicator`
-       is a full JS-driven replacement — a slim, theme-aware, floating thumb
-       with matching drag/click behavior — so the native one never needs to
-       be shown at all. */
-    scrollbar-width: none;
+    scrollbar-gutter: stable;
   }
-  html::-webkit-scrollbar {
-    display: none;
-    width: 0;
-    height: 0;
+  /* ===== Scrollbar limpio sin artefactos ===== */
+
+  /* Firefox */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
   }
-  /* Default scrollbar for all *other* scrollable elements (modals, sidebars,
-     dropdowns, etc.): transparent track (shows content underneath) + subtle
-     semi-transparent thumb. Elements that need fully hidden scrollbars
-     should use the `.hide-scrollbar` utility class. */
-  ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+
+  /* WebKit */
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
   }
-  ::-webkit-scrollbar-track {
+  *::-webkit-scrollbar-track {
     background: transparent;
   }
-  ::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.15);
+  *::-webkit-scrollbar-thumb {
     border-radius: 9999px;
     border: 2px solid transparent;
     background-clip: content-box;
+    background-color: var(--border);
   }
-  ::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(255, 255, 255, 0.25);
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--foreground);
   }
   /* Smooth theme transition */
   html.theme-transitioning *,
@@ -560,20 +549,16 @@
 }
 
 /* ─── Light mode scrollbar overrides ─────────────────────── */
-.light ::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.15);
-}
-.light ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(0, 0, 0, 0.25);
-}
+  .light *::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+  }
+  .light *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--foreground);
+  }
 
 /* ─── Custom floating scroll thumb (ScrollIndicator) ─────────
-   Theme-aware fill + shadow. Dark mode: light thumb on dark
-   content, so a dark drop-shadow reads correctly. Light mode:
-   flipped to a dark thumb with a soft shadow — without this,
-   the dark-mode-only white fill turns nearly invisible on a
-   light background and only its dark shadow remains visible,
-   showing up as an ugly, formless dark smudge. */
+   Kept for reference; no longer needed as the primary scrollbar
+   since we now show a thin native scrollbar. */
 .flick-scroll-thumb {
   background-color: rgba(255, 255, 255, 0.25);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
