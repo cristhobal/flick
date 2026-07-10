@@ -2,14 +2,9 @@
 
 import { useEffect, useRef } from "react"
 
-// The browser's own scrollbar can't be made to truly float transparent over
-// content — Chrome/Edge paint the track's reserved gutter in its own layer
-// with an opaque background no matter what `::-webkit-scrollbar` says (the
-// native one is fully hidden via `scrollbar-width: none` / `width: 0` in
-// global.css instead). This component is a real replacement: a slim vertical
-// thumb, positioned like a native scrollbar, that lives as a normal
-// semi-transparent element above the page — plus drag-to-scroll and
-// click-to-jump so it behaves like one, not just looks like one.
+// NOTE: The project now uses `scrollbar-gutter: stable` + thin native
+// scrollbar (styled in global.css), so this custom JS replacement is no
+// longer the primary scrollbar. Kept for reference / future use.
 
 const THUMB_MIN_HEIGHT = 32 // px — floor so the thumb stays grabbable on very long pages
 const IDLE_HIDE_DELAY = 900 // ms of no scroll/hover/drag before it fades out
