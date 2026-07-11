@@ -43,7 +43,7 @@ export default function HeroSection({
   const contentAnimation = phase === "enter" ? "hero-content-enter" : "hero-content-exit"
   const seasonCount = Math.max(movie.seasons || 0, movie.totalSeasons || 0, movie.seasonList?.length || 0)
   const heroRuntimeLabel =
-    (movie.type === "series" || movie.type === "anime") && seasonCount > 0
+    movie.type === "series" || movie.type === "anime"
       ? `${seasonCount} ${seasonCount === 1 ? t("common.season") : t("common.seasons")}`
       : resolvedDuration && resolvedDuration !== "-"
         ? resolvedDuration
