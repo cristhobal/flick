@@ -108,7 +108,6 @@ export default function ScreenshotLightbox({
   const [finalRect, setFinalRect] = useState<FinalRect | null>(null)
   const [open, setOpen] = useState(false)
   const [exiting, setExiting] = useState(false)
-  const lastIndexRef = useRef(initialIndex)
 
   // ── Open ──────────────────────────────────────────────────────
 
@@ -207,14 +206,6 @@ export default function ScreenshotLightbox({
       overlayRef.current.style.opacity = "0"
     }
   }, [exiting, initialIndex])
-
-  const handleCarouselApi = useCallback((api: CarouselApi) => {
-    if (!api) return
-    lastIndexRef.current = api.selectedScrollSnap()
-    api.on("select", () => {
-      lastIndexRef.current = api.selectedScrollSnap()
-    })
-  }, [])
 
   const handleTransitionEnd = useCallback(
     (e: React.TransitionEvent) => {
