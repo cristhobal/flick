@@ -44,7 +44,9 @@ export default function HeroSection({
   const contentAnimation = phase === "enter" ? "hero-content-enter" : "hero-content-exit"
   const heroRuntimeLabel =
     movie.type === "series" || movie.type === "anime"
-      ? `${resolvedSeasons} ${resolvedSeasons === 1 ? t("common.season") : t("common.seasons")}`
+      ? resolvedSeasons > 0
+        ? `${resolvedSeasons} ${resolvedSeasons === 1 ? t("common.season") : t("common.seasons")}`
+        : "..."
       : resolvedDuration && resolvedDuration !== "-"
         ? resolvedDuration
         : t("common.noAvailable")
