@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card"
 import MovieCard from "@/components/MovieCard"
 import EpisodeCard from "@/components/EpisodeCard"
 import CastCard from "@/components/CastCard"
+import ImageFlipViewer from "@/components/ImageFlipViewer"
 import {
   Carousel,
   CarouselContent,
@@ -586,13 +587,14 @@ export default function MovieDetailPage({
             {/* Poster — hidden on mobile, visible sm+ */}
             {posterSrc && (
               <div className="hidden w-36 shrink-0 animate-fade-up stagger-1 sm:block sm:w-44 md:w-52 lg:w-56">
-                <div className="aspect-[2/3] w-full overflow-hidden rounded-xl shadow-2xl">
-                  <img
-                    src={posterSrc}
-                    alt={movie.title}
-                    className="h-full w-full object-cover"
-                  />
-                </div>
+                <ImageFlipViewer
+                  src={posterSrc}
+                  alt={movie.title}
+                  wrapperClassName="aspect-[2/3] w-full overflow-hidden rounded-xl shadow-2xl"
+                  imgClassName="h-full w-full object-cover"
+                  expandLabel={t("details.expandCover", { title: movie.title })}
+                  closeLabel={t("details.closeCover")}
+                />
               </div>
             )}
 

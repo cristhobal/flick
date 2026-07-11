@@ -93,6 +93,10 @@
     --ease-decel:    cubic-bezier(0, 0, 0.2, 1);
     --ease-accel:    cubic-bezier(0.4, 0, 1, 1);
     --ease-bounce:   cubic-bezier(0.34, 1.56, 0.64, 1);
+
+    /* Netflix/Apple TV/Google Photos-style cover expand (FLIP transition) */
+    --dur-expand:  460ms;
+    --ease-expand: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .light {
