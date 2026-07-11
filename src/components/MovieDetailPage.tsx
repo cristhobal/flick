@@ -9,12 +9,8 @@ import MovieCard from "@/components/MovieCard"
 import EpisodeCard from "@/components/EpisodeCard"
 import CastCard from "@/components/CastCard"
 import ImageFlipViewer from "@/components/ImageFlipViewer"
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-} from "@/components/ui/carousel"
-import type { CarouselApi } from "@/components/ui/carousel"
+import ScreenshotLightbox from "@/components/ScreenshotLightbox"
+
 import {
   posterUrl,
   backdropUrl,
@@ -39,7 +35,6 @@ import {
   Building2,
   UserRound,
   Tag,
-  XIcon,
 } from "lucide-react"
 import {
   Select,
@@ -48,132 +43,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-
-function ScreenshotDialog({ screenshots, index: initialIndex }: { screenshots: string[]; index: number }) {
-  const [open, setOpen] = useState(false)
-  const [isMobile, setIsMobile] = useState(false)
-  const [api, setApi] = useState<CarouselApi>()
-
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 767px)")
-    const handler = (e: MediaQueryListEvent | MediaQueryList) => setIsMobile(e.matches)
-    handler(mq)
-    mq.addEventListener("change", handler)
-    return () => mq.removeEventListener("change", handler)
-  }, [])
-
-  useEffect(() => {
-    if (open) {
-      document.documentElement.style.overflow = "hidden"
-    } else {
-      document.documentElement.style.overflow = ""
-    }
-    return () => { document.documentElement.style.overflow = "" }
-  }, [open])
-
-  useEffect(() => {
-    if (open) {
-      screenshots.forEach((p) => {
-        const img = new Image()
-        img.src = `${IMG_URL}/original${p}`
-      })
-    }
-  }, [open, screenshots])
-
-  const handleOpenChange = (isOpen: boolean) => {
-    setOpen(isOpen)
-    if (isOpen && api) {
-      api.scrollTo(initialIndex)
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <div className="w-[260px] shrink-0 snap-start cursor-pointer sm:w-[320px] lg:w-[400px]">
-          <div className="aspect-video overflow-hidden rounded-lg bg-neutral-800 transition-opacity hover:opacity-90">
-            <img
-              src={`${IMG_URL}/w1280${screenshots[initialIndex]}`}
-              alt={`Screenshot ${initialIndex + 1}`}
-              className="h-full w-full object-cover"
-              loading="lazy"
-              decoding="async"
-            />
-          </div>
-        </div>
-      </DialogTrigger>
-      <DialogContent
-        className="flex max-w-none items-center justify-center border-0 bg-transparent p-0 shadow-none ring-0 outline-none sm:max-w-none"
-        showCloseButton={false}
-      >
-        <div className="relative flex w-full items-center justify-center">
-          <Carousel
-            setApi={setApi}
-            opts={{ startIndex: initialIndex, loop: false }}
-            className="w-full"
-          >
-            <CarouselContent className="-ml-0">
-              {screenshots.map((p, i) => (
-                <CarouselItem key={p} className="flex items-center justify-center pl-0">
-                  <div className="relative inline-flex items-center justify-center">
-                    <img
-                      src={`${IMG_URL}/original${p}`}
-                      alt={`Screenshot ${i + 1}`}
-                      className="transition-opacity duration-500"
-                      style={{
-                        ...(isMobile
-                          ? { height: "93dvh", width: "calc(100dvw - 7dvw)", objectFit: "cover", borderRadius: "0.5rem" }
-                          : { maxWidth: "95dvw", maxHeight: "95dvh", width: "auto", height: "auto", objectFit: "contain", borderRadius: "0.5rem" }
-                        ),
-                      }}
-                      fetchPriority={i === initialIndex ? "high" : "auto"}
-                      decoding="async"
-                    />
-                    <DialogClose asChild>
-                    <button
-                      className="absolute top-3 right-3 z-10 flex size-8 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-black/80"
-                        aria-label="Close"
-                      >
-                        <XIcon className="size-4" />
-                      </button>
-                    </DialogClose>
-                    <div className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-xs text-white backdrop-blur-sm pointer-events-none">
-                      {i + 1} / {screenshots.length}
-                    </div>
-                  </div>
-                </CarouselItem>
-              ))}
-            </CarouselContent>
-          </Carousel>
-
-                <button
-                  onClick={() => api?.scrollPrev()}
-                  className="absolute left-3 top-1/2 z-10 flex size-10 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-black/80 disabled:opacity-30"
-            disabled={!api?.canScrollPrev()}
-            aria-label="Previous screenshot"
-          >
-            <ChevronLeft className="size-5" />
-          </button>
-                <button
-                  onClick={() => api?.scrollNext()}
-                  className="absolute right-3 top-1/2 z-10 flex size-10 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition-colors hover:bg-black/80 disabled:opacity-30"
-            disabled={!api?.canScrollNext()}
-            aria-label="Next screenshot"
-          >
-            <ChevronRight className="size-5" />
-          </button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 function runtimeStr(minutes: number | null | undefined): string {
   if (!minutes || minutes <= 0) return "-"
   const h = Math.floor(minutes / 60)
@@ -849,7 +718,19 @@ export default function MovieDetailPage({
                 className="hide-scrollbar flex flex-nowrap gap-4 overflow-x-auto pb-2 scroll-smooth"
               >
                 {screenshots.map((path, index) => (
-                  <ScreenshotDialog key={path} screenshots={screenshots} index={index} />
+                  <ScreenshotLightbox key={path} screenshots={screenshots} initialIndex={index}>
+                    <div className="w-[260px] shrink-0 snap-start sm:w-[320px] lg:w-[400px]">
+                      <div className="aspect-video overflow-hidden rounded-lg bg-neutral-800 transition-opacity hover:opacity-90">
+                        <img
+                          src={`${IMG_URL}/w1280${path}`}
+                          alt={`Screenshot ${index + 1}`}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      </div>
+                    </div>
+                  </ScreenshotLightbox>
                 ))}
               </div>
               <div className="pointer-events-none absolute top-0 right-0 bottom-0 z-10 flex w-12 items-center justify-end opacity-0 transition-all duration-500 group-hover/row:opacity-100 sm:pointer-events-auto" style={{ opacity: canScreenshotScrollRight ? undefined : 0, pointerEvents: canScreenshotScrollRight ? undefined : "none" }}>
