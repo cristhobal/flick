@@ -34,6 +34,7 @@ export default function HeroSection({
   const [imgLoaded, setImgLoaded] = useState(false)
   const [resolvedTrailerUrl, setResolvedTrailerUrl] = useState<string | null | undefined>(movie.trailerUrl)
   const [resolvedDuration, setResolvedDuration] = useState(movie.duration)
+  const [resolvedSeasons, setResolvedSeasons] = useState(Math.max(movie.seasons || 0, movie.totalSeasons || 0, movie.seasonList?.length || 0))
   const { lang, t } = useI18n()
   const bgSrc = backdropUrl(movie.backdropPath, "original")
   const playableMovie = resolvedTrailerUrl
@@ -41,10 +42,9 @@ export default function HeroSection({
     : movie
   const canPlay = isPlayableMovie(playableMovie)
   const contentAnimation = phase === "enter" ? "hero-content-enter" : "hero-content-exit"
-  const seasonCount = Math.max(movie.seasons || 0, movie.totalSeasons || 0, movie.seasonList?.length || 0)
   const heroRuntimeLabel =
     movie.type === "series" || movie.type === "anime"
-      ? `${seasonCount} ${seasonCount === 1 ? t("common.season") : t("common.seasons")}`
+      ? `${resolvedSeasons} ${resolvedSeasons === 1 ? t("common.season") : t("common.seasons")}`
       : resolvedDuration && resolvedDuration !== "-"
         ? resolvedDuration
         : t("common.noAvailable")
@@ -52,7 +52,8 @@ export default function HeroSection({
   useEffect(() => {
     setResolvedTrailerUrl(movie.trailerUrl)
     setResolvedDuration(movie.duration)
-  }, [movie.id, movie.trailerUrl, movie.duration])
+    setResolvedSeasons(Math.max(movie.seasons || 0, movie.totalSeasons || 0, movie.seasonList?.length || 0))
+  }, [movie.id, movie.trailerUrl, movie.duration, movie.seasons, movie.totalSeasons, movie.seasonList])
 
   useEffect(() => {
     if (resolvedTrailerUrl !== undefined || movie.tmdbId <= 0) return
@@ -64,6 +65,9 @@ export default function HeroSection({
           const detailRuntime = result.detail?.runtime || result.detail?.episode_run_time?.find((minutes) => minutes > 0) || result.detail?.last_episode_to_air?.runtime
           setResolvedTrailerUrl(result.trailerUrl || null)
           setResolvedDuration(runtimeStr(detailRuntime))
+          if ((movie.type === "series" || movie.type === "anime") && result.detail?.number_of_seasons) {
+            setResolvedSeasons(result.detail.number_of_seasons)
+          }
         }
       })
       .catch(() => {
