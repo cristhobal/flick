@@ -1,21 +1,23 @@
 "use client"
 
-import { useState, useMemo, useCallback, useEffect } from "react"
+import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react"
 import Header from "@/components/Header"
 import HeroSection from "@/components/HeroSection"
 import MovieCarousel from "@/components/MovieCarousel"
-import MovieDetailsModal from "@/components/MovieDetailsModal"
 import FlickTextLoader from "@/components/FlickTextLoader"
-import SearchPage from "@/components/SearchPage"
-import LibraryPage from "@/components/LibraryPage"
-import PlayerPage from "@/components/PlayerPage"
-import CategoryPage from "@/components/CategoryPage"
-import MovieDetailPage from "@/components/MovieDetailPage"
+import { Spinner } from "@/components/ui/spinner"
 import { useTMDB } from "@/lib/use-tmdb"
 import { getPlayableMovie, type Movie } from "@/lib/data"
 import { categoryPath, contentPath, parseBrowseRoute, parseContentRoute, samePath, sectionPath, slugifyTitle, watchPath, type ParsedContentRoute } from "@/lib/routes"
 import { useI18n } from "@/i18n/I18nProvider"
 import { translateGenre } from "@/i18n/translations"
+
+const SearchPage = lazy(() => import("@/components/SearchPage"))
+const LibraryPage = lazy(() => import("@/components/LibraryPage"))
+const PlayerPage = lazy(() => import("@/components/PlayerPage"))
+const CategoryPage = lazy(() => import("@/components/CategoryPage"))
+const MovieDetailPage = lazy(() => import("@/components/MovieDetailPage"))
+const MovieDetailsModal = lazy(() => import("@/components/MovieDetailsModal"))
 
 type PageView = "home" | "search" | "library" | "player" | "category" | "detail"
 
@@ -541,13 +543,15 @@ export default function HomePage() {
   if (view === "detail" && selectedMovie) {
     return (
       <PageTransition key="detail">
-        <MovieDetailPage
-          movie={selectedMovie}
-          related={relatedMovies}
-          onBack={() => goHome()}
-          onPlay={handlePlay}
-          onMovieClick={handleMovieClick}
-        />
+        <Suspense fallback={<PageFallback />}>
+          <MovieDetailPage
+            movie={selectedMovie}
+            related={relatedMovies}
+            onBack={() => goHome()}
+            onPlay={handlePlay}
+            onMovieClick={handleMovieClick}
+          />
+        </Suspense>
       </PageTransition>
     )
   }
@@ -555,13 +559,15 @@ export default function HomePage() {
   if (view === "player" && selectedMovie) {
     return (
       <PageTransition key="player">
-        <PlayerPage
-          movie={selectedMovie}
-          related={relatedMovies}
-          episodes={episodeList}
-          onBack={() => goHome()}
-          onPlayMovie={handlePlay}
-        />
+        <Suspense fallback={<PageFallback />}>
+          <PlayerPage
+            movie={selectedMovie}
+            related={relatedMovies}
+            episodes={episodeList}
+            onBack={() => goHome()}
+            onPlayMovie={handlePlay}
+          />
+        </Suspense>
       </PageTransition>
     )
   }
@@ -569,16 +575,22 @@ export default function HomePage() {
   if (view === "category") {
     return (
       <PageTransition key="category">
-        <CategoryPage
-          type={categoryType}
-          title={categoryTitles[categoryType]}
-          items={categoryItems}
-          onClose={() => goHome()}
-          onPlay={handlePlay}
-          onDetails={handleDetails}
-          initialGenre={categoryGenre}
-        />
-        <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} />
+        <Suspense fallback={<PageFallback />}>
+          <CategoryPage
+            type={categoryType}
+            title={categoryTitles[categoryType]}
+            items={categoryItems}
+            onClose={() => goHome()}
+            onPlay={handlePlay}
+            onDetails={handleDetails}
+            initialGenre={categoryGenre}
+          />
+        </Suspense>
+        {detailsOpen && (
+          <Suspense fallback={null}>
+            <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} />
+          </Suspense>
+        )}
       </PageTransition>
     )
   }
@@ -586,31 +598,37 @@ export default function HomePage() {
   if (view === "search") {
     return (
       <PageTransition key="search">
-        <SearchPage
-          query={searchQuery}
-          onQueryChange={setSearchQuery}
-          results={searchResults}
-          isLoading={searchLoading}
-          onClose={() => {
-            setSearchQuery("")
-            setSearchResults([])
-            goHome()
-          }}
-          onPlay={handlePlay}
-          onDetails={handleDetails}
-          selectedGenres={selectedGenres}
-          onGenreToggle={handleGenreToggle}
-          selectedQualities={selectedQualities}
-          onQualityToggle={handleQualityToggle}
-          selectedTypes={selectedTypes}
-          onTypeToggle={handleTypeToggle}
-          sortBy={sortBy}
-          onSortChange={setSortBy}
-          onReset={handleFilterReset}
-          filterOpen={filterOpen}
-          onFilterOpenChange={setFilterOpen}
-        />
-        <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} />
+        <Suspense fallback={<PageFallback />}>
+          <SearchPage
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
+            results={searchResults}
+            isLoading={searchLoading}
+            onClose={() => {
+              setSearchQuery("")
+              setSearchResults([])
+              goHome()
+            }}
+            onPlay={handlePlay}
+            onDetails={handleDetails}
+            selectedGenres={selectedGenres}
+            onGenreToggle={handleGenreToggle}
+            selectedQualities={selectedQualities}
+            onQualityToggle={handleQualityToggle}
+            selectedTypes={selectedTypes}
+            onTypeToggle={handleTypeToggle}
+            sortBy={sortBy}
+            onSortChange={setSortBy}
+            onReset={handleFilterReset}
+            filterOpen={filterOpen}
+            onFilterOpenChange={setFilterOpen}
+          />
+        </Suspense>
+        {detailsOpen && (
+          <Suspense fallback={null}>
+            <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} />
+          </Suspense>
+        )}
       </PageTransition>
     )
   }
@@ -626,18 +644,24 @@ export default function HomePage() {
           hasSeries={series.length > 0}
           hasAnime={anime.length > 0}
         />
-        <LibraryPage
-          onClose={() => {
-            goHome()
-          }}
-          movies={moviesByType.movies}
-          series={moviesByType.series}
-          anime={moviesByType.anime}
-          allItems={allMovies}
-          onPlay={handlePlay}
-          onDetails={handleDetails}
-        />
-        <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} />
+        <Suspense fallback={<PageFallback />}>
+          <LibraryPage
+            onClose={() => {
+              goHome()
+            }}
+            movies={moviesByType.movies}
+            series={moviesByType.series}
+            anime={moviesByType.anime}
+            allItems={allMovies}
+            onPlay={handlePlay}
+            onDetails={handleDetails}
+          />
+        </Suspense>
+        {detailsOpen && (
+          <Suspense fallback={null}>
+            <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} />
+          </Suspense>
+        )}
       </PageTransition>
     )
   }
@@ -699,7 +723,11 @@ export default function HomePage() {
           </div>
         </main>
 
-        <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} />
+        {detailsOpen && (
+          <Suspense fallback={null}>
+            <MovieDetailsModal movie={selectedMovie} open={detailsOpen} onOpenChange={setDetailsOpen} onPlay={handlePlay} />
+          </Suspense>
+        )}
       </div>
     </PageTransition>
   )
@@ -707,6 +735,14 @@ export default function HomePage() {
 
 function PageTransition({ children }: { children: React.ReactNode }) {
   return <div className="animate-fade-in">{children}</div>
+}
+
+function PageFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-black">
+      <Spinner className="size-6 text-neutral-500" />
+    </div>
+  )
 }
 
 function LoadingScreen() {

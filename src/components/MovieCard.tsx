@@ -268,7 +268,7 @@ export default function MovieCard({
     <>
       <div
         ref={cardRef}
-        className="group/card animate-fade-up"
+        className="group/card cv-card animate-fade-up"
         onMouseEnter={handleCardEnter}
         onMouseLeave={handleCardLeave}
         style={{ animationDelay: `${index * 50}ms` }}
