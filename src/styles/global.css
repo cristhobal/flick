@@ -282,6 +282,20 @@
   50%       { box-shadow: 0 0 0 8px rgba(255,255,255,0); }
 }
 
+/* FlickTextLoader — per-letter breathing pulse */
+@keyframes letter-pulse {
+  0%, 100% { opacity: 1; transform: translateY(0); }
+  50%      { opacity: 0.35; transform: translateY(-3px); }
+}
+
+/* FlickTextLoader — underline sweeps in from the left, out to the right */
+@keyframes underline-sweep {
+  0%   { transform: scaleX(0); transform-origin: 0% 50%; }
+  48%  { transform: scaleX(1); transform-origin: 0% 50%; }
+  52%  { transform: scaleX(1); transform-origin: 100% 50%; }
+  100% { transform: scaleX(0); transform-origin: 100% 50%; }
+}
+
 @keyframes hero-cinematic-enter {
   from {
     opacity: 0;
@@ -351,6 +365,15 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(8.25rem, 100%), 1fr));
     gap: 0.75rem;
+  }
+
+  /* Skips layout/paint for offscreen poster cards in long carousels and
+     grids (home rows, category/search grids can mount 100+ cards at once).
+     `auto` on the inline axis keeps the grid/flex-assigned width; the block
+     estimate is only used until the card is first measured. */
+  .cv-card {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 320px;
   }
 
   .responsive-episode-grid {
@@ -497,6 +520,15 @@
   /* Pulse glow (infinite badge / highlight) */
   .animate-pulse-glow {
     animation: pulse-glow 2s var(--ease-standard) infinite;
+  }
+
+  /* FlickTextLoader */
+  .animate-letter-pulse {
+    animation: letter-pulse 1.6s var(--ease-standard) infinite both;
+  }
+
+  .animate-underline-sweep {
+    animation: underline-sweep 2.4s var(--ease-standard) infinite;
   }
 
   .hero-cinematic-enter {

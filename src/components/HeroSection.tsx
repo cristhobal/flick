@@ -36,7 +36,7 @@ export default function HeroSection({
   const [resolvedDuration, setResolvedDuration] = useState(movie.duration)
   const [resolvedSeasons, setResolvedSeasons] = useState(Math.max(movie.seasons || 0, movie.totalSeasons || 0, movie.seasonList?.length || 0))
   const { lang, t } = useI18n()
-  const bgSrc = backdropUrl(movie.backdropPath, "original")
+  const bgSrc = backdropUrl(movie.backdropPath, "w1280")
   const playableMovie = resolvedTrailerUrl
     ? { ...movie, trailerUrl: resolvedTrailerUrl }
     : movie
@@ -98,6 +98,9 @@ export default function HeroSection({
           }`}
           style={{ transition: imgLoaded ? undefined : "opacity 1s ease" }}
           onLoad={() => setImgLoaded(true)}
+          {...(phase === "enter"
+            ? { fetchPriority: "high" as const, loading: "eager" as const, decoding: "async" as const }
+            : { loading: "eager" as const, decoding: "async" as const })}
         />
       )}
 
