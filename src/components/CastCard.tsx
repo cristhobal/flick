@@ -7,6 +7,7 @@ import type { TMDbCast, TMDbPerson } from "@/lib/tmdb"
 import { fetchPersonDetails } from "@/lib/tmdb"
 import { IMG_URL } from "@/lib/tmdb"
 import { useI18n } from "@/i18n/I18nProvider"
+import { useScrollViewport } from "@/lib/scroll-container"
 
 const PREVIEW_OPEN_EVENT = "flick:movie-preview-open"
 
@@ -48,15 +49,16 @@ export default function CastCard({ actor, index = 0 }: CastCardProps) {
     }
   }, [])
 
+  const scrollViewport = useScrollViewport()
   useEffect(() => {
-    if (!showExpanded) return
+    if (!showExpanded || !scrollViewport) return
     const handleScroll = () => {
       cancelHide()
       setShowExpanded(false)
     }
-    window.addEventListener("scroll", handleScroll, { once: true })
-    return () => window.removeEventListener("scroll", handleScroll)
-  }, [showExpanded, cancelHide])
+    scrollViewport.addEventListener("scroll", handleScroll, { once: true })
+    return () => scrollViewport.removeEventListener("scroll", handleScroll)
+  }, [showExpanded, cancelHide, scrollViewport])
 
   useEffect(() => {
     if (!showExpanded || person !== null) return

@@ -312,7 +312,8 @@ export default function MovieDetailPage({
 
   const bgSrc = backdropUrl(movie.backdropPath, "original")
   const posterSrc = posterUrl(movie.posterPath, "w500")
-  const detailMovie = creativeCredits?.trailerUrl
+  const isLocalPlayback = movie.trailerUrl?.startsWith("/api/local-video/") ?? false
+  const detailMovie = creativeCredits?.trailerUrl && !isLocalPlayback
     ? { ...movie, trailerUrl: creativeCredits.trailerUrl }
     : movie
   const canPlay = isPlayableMovie(detailMovie)

@@ -3,6 +3,12 @@
 import { Component, type ErrorInfo, type ReactNode } from "react"
 import HomePage from "@/components/HomePage"
 import { I18nProvider } from "@/i18n/I18nProvider"
+import { ScrollViewportProvider } from "@/lib/scroll-container"
+import { installPreloadErrorRecovery } from "@/lib/lazy-with-reload"
+
+// Registered at module scope so it's listening before any lazy-loaded page
+// (MovieDetailPage, PlayerPage, ...) gets a chance to fail its dynamic import.
+installPreloadErrorRecovery()
 
 class AppErrorBoundary extends Component<{ children: ReactNode }, { message: string | null }> {
   state: { message: string | null } = { message: null }
@@ -42,7 +48,9 @@ export default function App() {
   return (
     <AppErrorBoundary>
       <I18nProvider>
-        <HomePage />
+        <ScrollViewportProvider>
+          <HomePage />
+        </ScrollViewportProvider>
       </I18nProvider>
     </AppErrorBoundary>
   )

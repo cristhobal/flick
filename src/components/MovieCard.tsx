@@ -15,6 +15,7 @@ import {
   isPlayableMovie,
 } from "@/lib/data"
 import { fetchDetailWithVideos } from "@/lib/tmdb"
+import { useScrollViewport } from "@/lib/scroll-container"
 
 
 const PREVIEW_OPEN_EVENT = "flick:movie-preview-open"
@@ -94,16 +95,17 @@ export default function MovieCard({
   }, [])
 
   // Close expanded on scroll
+  const scrollViewport = useScrollViewport()
   useEffect(() => {
-    if (!showExpanded) return
+    if (!showExpanded || !scrollViewport) return
     const handleScroll = () => {
       cancelHide()
       setShowExpanded(false)
       setShowSynopsis(false)
     }
-    window.addEventListener("scroll", handleScroll, { once: true })
-    return () => window.removeEventListener("scroll", handleScroll)
-  }, [showExpanded, cancelHide])
+    scrollViewport.addEventListener("scroll", handleScroll, { once: true })
+    return () => scrollViewport.removeEventListener("scroll", handleScroll)
+  }, [showExpanded, cancelHide, scrollViewport])
 
   const calculatePosition = useCallback(() => {
     if (!cardRef.current || !previewRef.current) return

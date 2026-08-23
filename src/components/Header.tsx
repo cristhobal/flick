@@ -23,6 +23,7 @@ import {
 } from "lucide-react"
 import { useI18n } from "@/i18n/I18nProvider"
 import ThemeToggle from "@/components/ThemeToggle"
+import { useScrollViewport } from "@/lib/scroll-container"
 
 interface HeaderProps {
   searchQuery: string
@@ -47,13 +48,15 @@ export default function Header({
   const { t } = useI18n()
   const searchInputRef = useRef<HTMLInputElement>(null)
   const mobileSearchInputRef = useRef<HTMLInputElement>(null)
+  const scrollViewport = useScrollViewport()
 
   useEffect(() => {
-    const onScroll = () => setIsScrolled(window.scrollY > 50)
+    if (!scrollViewport) return
+    const onScroll = () => setIsScrolled(scrollViewport.scrollTop > 50)
     onScroll()
-    window.addEventListener("scroll", onScroll, { passive: true })
-    return () => window.removeEventListener("scroll", onScroll)
-  }, [])
+    scrollViewport.addEventListener("scroll", onScroll, { passive: true })
+    return () => scrollViewport.removeEventListener("scroll", onScroll)
+  }, [scrollViewport])
 
   useEffect(() => {
     if (!searchOpen) return

@@ -171,7 +171,7 @@ function fallbackDescription(overview: string, fallback: string): string {
   return fallback
 }
 
-function toMovie(
+export function toMovie(
   item: TMDbMovie,
   detail: TMDbMovieDetail | null,
   genreNames: string,
@@ -209,7 +209,10 @@ function toMovie(
     description: desc,
     longDescription: longDesc,
     type,
-    ...((type === "series" || type === "anime") && detail
+    // Only a TV-shaped detail actually carries season/episode counts — an anime
+    // *movie* (type "anime" but fetched from the /movie endpoint, as local-mode
+    // anime films are) has neither, and defaulting to "1 Temporada" mislabels it.
+    ...((type === "series" || type === "anime") && detail && detail.number_of_seasons !== undefined
       ? {
           seasons: detail.number_of_seasons ?? 1,
           episodes: detail.number_of_episodes ?? 10,
