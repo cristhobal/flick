@@ -209,6 +209,9 @@ export function toMovie(
     description: desc,
     longDescription: longDesc,
     type,
+    // The real TMDB shape, independent of `type` — "anime" can be a TV show or a
+    // standalone film, and `item.media_type` (set by every caller) says which.
+    mediaType: item.media_type === "tv" ? "tv" : "movie",
     // Only a TV-shaped detail actually carries season/episode counts — an anime
     // *movie* (type "anime" but fetched from the /movie endpoint, as local-mode
     // anime films are) has neither, and defaulting to "1 Temporada" mislabels it.

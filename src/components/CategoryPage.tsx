@@ -109,8 +109,8 @@ export default function CategoryPage({
 
   return (
     <div className="min-h-screen bg-black">
-      {/* Header */}
-      <div className="fixed top-0 right-0 left-0 z-40 border-b border-white/5 bg-black/80 backdrop-blur-xl">
+      {/* Header — scrolls away with the page, not pinned */}
+      <div className="z-40 border-b border-white/5 bg-black/80 backdrop-blur-xl">
         <div className="content-container flex h-14 items-center gap-2 sm:h-16 sm:gap-3">
           <Button
             variant="ghost"
@@ -178,9 +178,9 @@ export default function CategoryPage({
       </div>
 
       {/* Body */}
-      <div className="pt-14 sm:pt-16">
-        {/* Genre + Sort bar */}
-        <div className="sticky top-14 z-30 border-b border-white/5 bg-neutral-950/90 backdrop-blur-md sm:top-16">
+      <div>
+        {/* Genre + Sort bar — also scrolls away, not pinned */}
+        <div className="z-30 border-b border-white/5 bg-neutral-950/90 backdrop-blur-md">
           <div className="content-container py-2.5 sm:py-3">
             <div className="flex flex-col gap-2.5 sm:gap-3">
               <div className="flex items-center gap-2 sm:gap-3">

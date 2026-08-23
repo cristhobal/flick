@@ -30,6 +30,8 @@ import { useAssSubtitle } from "@/lib/ass-renderer"
 import {
   Pause,
   Play,
+  Volume,
+  Volume1,
   Volume2,
   VolumeX,
   Maximize,
@@ -37,12 +39,17 @@ import {
   Languages,
   Subtitles as SubtitlesIcon,
   Gauge,
+  RotateCcw,
+  RotateCw,
 } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 const VIDEO_API_PREFIX = "/api/local-video/"
 const OFF_VALUE = "off"
 const SEEK_RELOAD_DEBOUNCE_MS = 250
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
+const CONTROLS_IDLE_MS = 2800
+const SKIP_SECONDS = 10
 
 interface Track {
   index: number
@@ -80,6 +87,15 @@ function formatTime(seconds: number): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
 }
 
+// lucide-react only ships 0/1/2-bar speaker icons (no 3-bar variant), so the
+// ladder is muted → 0 bars → 1 bar → 2 bars for low/medium/high respectively.
+function VolumeIcon({ muted, volume, className }: { muted: boolean; volume: number; className?: string }) {
+  if (muted || volume <= 0) return <VolumeX className={className} />
+  if (volume <= 1 / 3) return <Volume className={className} />
+  if (volume <= 2 / 3) return <Volume1 className={className} />
+  return <Volume2 className={className} />
+}
+
 interface LocalVideoPlayerProps {
   src: string
   title: string
@@ -107,6 +123,10 @@ export default function LocalVideoPlayer({ src, title }: LocalVideoPlayerProps) 
   const [muted, setMuted] = useState(false)
   const [rate, setRate] = useState(1)
   const [fullscreen, setFullscreen] = useState(false)
+  const [showControls, setShowControls] = useState(true)
+  const [hoverPreview, setHoverPreview] = useState<{ x: number; time: number } | null>(null)
+  const playingRef = useRef(false)
+  const activityTimerRef = useRef<number | null>(null)
 
   const [debugSync] = useState(
     () => typeof window !== "undefined" && window.localStorage.getItem("flick:debug-sync") === "1"
@@ -222,21 +242,33 @@ export default function LocalVideoPlayer({ src, title }: LocalVideoPlayerProps) 
   useAssSubtitle(videoRef, assSubUrl, fontUrls)
 
   // ---- Transport controls ----
-  const togglePlay = useCallback(() => {
+  const startPlayback = useCallback(() => {
     const video = videoRef.current
     const audio = audioRef.current
     if (!video) return
-    if (video.paused) {
-      if (!audioInitializedRef.current) {
-        audioInitializedRef.current = true
-        reloadAudio(video.currentTime, selectedAudioRef.current)
-      }
-      video.play().catch(() => {})
-      audio?.play().catch(() => {})
-    } else {
-      video.pause()
+    if (!audioInitializedRef.current) {
+      audioInitializedRef.current = true
+      reloadAudio(video.currentTime, selectedAudioRef.current)
     }
+    video.play().catch(() => {})
+    audio?.play().catch(() => {})
   }, [reloadAudio])
+
+  const togglePlay = useCallback(() => {
+    const video = videoRef.current
+    if (!video) return
+    if (video.paused) startPlayback()
+    else video.pause()
+  }, [startPlayback])
+
+  // Autoplay on load — the click that got the user here (a movie's "Reproducir"
+  // button, from the hero or a hover card) is still within the browser's user
+  // activation window when this effect runs right after mount, so starting
+  // playback here doesn't get blocked as an unprompted autoplay.
+  useEffect(() => {
+    startPlayback()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src])
 
   const seekTo = useCallback((absoluteSeconds: number) => {
     const video = videoRef.current
@@ -245,6 +277,12 @@ export default function LocalVideoPlayer({ src, title }: LocalVideoPlayerProps) 
     video.currentTime = clamped
     setCurrentTime(clamped)
   }, [duration])
+
+  const skip = useCallback((delta: number) => {
+    const video = videoRef.current
+    if (!video) return
+    seekTo(video.currentTime + delta)
+  }, [seekTo])
 
   const toggleMute = useCallback(() => {
     const audio = audioRef.current
@@ -283,13 +321,42 @@ export default function LocalVideoPlayer({ src, title }: LocalVideoPlayerProps) 
     return () => document.removeEventListener("fullscreenchange", onFsChange)
   }, [])
 
+  // ---- Auto-hide controls (Netflix/YouTube-style) while playing and idle ----
+  useEffect(() => {
+    playingRef.current = playing
+  }, [playing])
+
+  const registerActivity = useCallback(() => {
+    setShowControls(true)
+    if (activityTimerRef.current !== null) window.clearTimeout(activityTimerRef.current)
+    activityTimerRef.current = window.setTimeout(() => {
+      if (playingRef.current) setShowControls(false)
+    }, CONTROLS_IDLE_MS)
+  }, [])
+
+  useEffect(() => {
+    if (playing) registerActivity()
+    else setShowControls(true)
+  }, [playing, registerActivity])
+
+  useEffect(() => () => {
+    if (activityTimerRef.current !== null) window.clearTimeout(activityTimerRef.current)
+  }, [])
+
   const audioOptions = info?.audioTracks || []
   const portalContainer = fullscreen ? containerRef.current : undefined
+  const progressPct = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0
+  const chromeVisible = showControls || !playing || buffering
 
   return (
     <ContextMenu>
     <ContextMenuTrigger asChild>
-    <div ref={containerRef} className="group relative h-full w-full bg-black">
+    <div
+      ref={containerRef}
+      className={cn("group relative h-full w-full overflow-hidden bg-black", playing && !showControls && "cursor-none")}
+      onMouseMove={registerActivity}
+      onTouchStart={registerActivity}
+    >
       <video
         ref={videoRef}
         src={src}
@@ -325,62 +392,153 @@ export default function LocalVideoPlayer({ src, title }: LocalVideoPlayerProps) 
         setMuted(event.currentTarget.muted)
       }} />
 
+      {/* Top gradient — only for depth/contrast when the chrome is showing */}
+      <div
+        className={cn(
+          "pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/50 to-transparent transition-opacity duration-300",
+          chromeVisible ? "opacity-100" : "opacity-0"
+        )}
+      />
+
       {buffering && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <Spinner className="size-8 text-white" />
+          <div className="flex size-16 items-center justify-center rounded-full bg-black/40 backdrop-blur-sm">
+            <Spinner className="size-7 text-white" />
+          </div>
         </div>
       )}
 
-      {!playing && !buffering && (
-        <button
-          onClick={togglePlay}
-          className="absolute inset-0 flex items-center justify-center bg-black/20 transition-opacity"
-          aria-label={t("player.trailer")}
+      {/* Center transport cluster — big play button when paused, skip/play/skip when playing+idle-visible */}
+      {!buffering && chromeVisible && (
+        <div
+          className={cn(
+            "pointer-events-none absolute inset-0 flex items-center justify-center gap-6 transition-opacity duration-300 sm:gap-10",
+            !playing && "bg-black/10"
+          )}
         >
-          <Play className="size-16 text-white/90" fill="currentColor" />
-        </button>
+          <button
+            onClick={() => skip(-SKIP_SECONDS)}
+            aria-label={`-${SKIP_SECONDS}s`}
+            className="group/skip pointer-events-auto flex size-11 items-center justify-center rounded-full border border-white/5 bg-white/10 text-white/90 shadow-lg backdrop-blur-xl transition-all hover:scale-105 hover:bg-white/20 hover:text-white active:scale-95 sm:size-12"
+          >
+            <RotateCcw className="size-5" />
+          </button>
+
+          <button
+            onClick={togglePlay}
+            aria-label="Play/Pause"
+            className="pointer-events-auto flex size-16 items-center justify-center rounded-full border border-white/10 bg-white/10 text-white shadow-xl backdrop-blur-xl transition-all hover:scale-105 hover:bg-white/20 active:scale-95 sm:size-20"
+          >
+            {playing ? (
+              <Pause className="size-7 sm:size-8" fill="currentColor" />
+            ) : (
+              <Play className="ml-1 size-7 sm:size-8" fill="currentColor" />
+            )}
+          </button>
+
+          <button
+            onClick={() => skip(SKIP_SECONDS)}
+            aria-label={`+${SKIP_SECONDS}s`}
+            className="group/skip pointer-events-auto flex size-11 items-center justify-center rounded-full border border-white/5 bg-white/10 text-white/90 shadow-lg backdrop-blur-xl transition-all hover:scale-105 hover:bg-white/20 hover:text-white active:scale-95 sm:size-12"
+          >
+            <RotateCw className="size-5" />
+          </button>
+        </div>
       )}
 
-      <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 bg-gradient-to-t from-black/85 to-transparent px-3 pb-2 pt-8 sm:px-4 sm:pb-3">
-        <input
-          type="range"
-          min={0}
-          max={Math.max(duration, 1)}
-          step={0.5}
-          value={Math.min(currentTime, duration || currentTime)}
-          onChange={(event) => setCurrentTime(Number(event.target.value))}
-          onPointerDown={() => { scrubbingRef.current = true }}
-          onPointerUp={(event) => {
-            scrubbingRef.current = false
-            seekTo(Number((event.target as HTMLInputElement).value))
+      {/* Bottom control bar */}
+      <div
+        className={cn(
+          "absolute inset-x-0 bottom-0 flex flex-col gap-1.5 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-3 pb-3 pt-12 transition-opacity duration-300 sm:px-5 sm:pb-4",
+          chromeVisible ? "opacity-100" : "pointer-events-none opacity-0"
+        )}
+      >
+        {/* Seek bar — thin track that grows on hover, with a fill, a draggable thumb, and a hover time preview */}
+        <div
+          className="group/seek relative -mx-1 flex h-4 items-center px-1"
+          onMouseMove={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect()
+            const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
+            setHoverPreview({ x: ratio * rect.width, time: ratio * duration })
           }}
-          className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/25 accent-white"
-        />
-
-        <div className="flex items-center gap-2 sm:gap-3">
-          <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 hover:text-white" onClick={togglePlay}>
-            {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
-          </Button>
-
-          <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 hover:text-white" onClick={toggleMute}>
-            {muted || volume === 0 ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
-          </Button>
+          onMouseLeave={() => setHoverPreview(null)}
+        >
+          {hoverPreview && (
+            <div
+              className="pointer-events-none absolute bottom-5 -translate-x-1/2 rounded-md bg-black/85 px-2 py-1 text-[11px] font-medium tabular-nums text-white shadow-lg"
+              style={{ left: `${hoverPreview.x}px` }}
+            >
+              {formatTime(hoverPreview.time)}
+            </div>
+          )}
+          <div className="relative h-[3px] w-full overflow-hidden rounded-full bg-white/25 transition-all duration-150 group-hover/seek:h-1.5">
+            <div className="absolute inset-y-0 left-0 rounded-full bg-white" style={{ width: `${progressPct}%` }} />
+          </div>
+          <div
+            className="pointer-events-none absolute top-1/2 size-3 -translate-y-1/2 rounded-full bg-white opacity-0 shadow-md transition-opacity duration-150 group-hover/seek:opacity-100"
+            style={{ left: `calc(${progressPct}% - 6px)` }}
+          />
           <input
             type="range"
             min={0}
-            max={1}
-            step={0.05}
-            value={muted ? 0 : volume}
-            onChange={handleVolumeChange}
-            className="hidden h-1.5 w-20 cursor-pointer appearance-none rounded-full bg-white/25 accent-white sm:block"
+            max={Math.max(duration, 1)}
+            step={0.5}
+            value={Math.min(currentTime, duration || currentTime)}
+            onChange={(event) => setCurrentTime(Number(event.target.value))}
+            onPointerDown={() => { scrubbingRef.current = true }}
+            onPointerUp={(event) => {
+              scrubbingRef.current = false
+              seekTo(Number((event.target as HTMLInputElement).value))
+            }}
+            className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent opacity-0"
           />
+        </div>
 
-          <span className="text-xs tabular-nums text-white/80 sm:text-sm">
-            {formatTime(currentTime)} / {formatTime(duration)}
+        <div className="flex items-center gap-1 sm:gap-2">
+          <Button variant="ghost" size="icon" className="rounded-md text-white hover:bg-white/10 hover:text-white" onClick={togglePlay}>
+            {playing ? <Pause className="size-4" fill="currentColor" /> : <Play className="size-4" fill="currentColor" />}
+          </Button>
+
+          <Button variant="ghost" size="icon" className="hidden rounded-md text-white hover:bg-white/10 hover:text-white sm:inline-flex" onClick={() => skip(-SKIP_SECONDS)}>
+            <RotateCcw className="size-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="hidden rounded-md text-white hover:bg-white/10 hover:text-white sm:inline-flex" onClick={() => skip(SKIP_SECONDS)}>
+            <RotateCw className="size-4" />
+          </Button>
+
+          <div className="group/volume flex items-center">
+            <Button variant="ghost" size="icon" className="rounded-md text-white hover:bg-white/10 hover:text-white" onClick={toggleMute}>
+              <VolumeIcon muted={muted} volume={volume} className="size-4" />
+            </Button>
+            {/* Hidden until hover — reveals a filled track (painted = current volume, left of the thumb) */}
+            <div className="hidden w-0 items-center overflow-hidden transition-all duration-200 ease-out group-hover/volume:w-[74px] sm:flex">
+              <div className="relative mx-[5px] flex h-4 w-16 shrink-0 items-center">
+                <div className="relative h-1 w-full overflow-hidden rounded-full bg-white/25">
+                  <div className="absolute inset-y-0 left-0 rounded-full bg-white" style={{ width: `${(muted ? 0 : volume) * 100}%` }} />
+                </div>
+                <div
+                  className="pointer-events-none absolute top-1/2 size-2.5 -translate-y-1/2 rounded-full bg-white shadow"
+                  style={{ left: `calc(${(muted ? 0 : volume) * 100}% - 5px)` }}
+                />
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={muted ? 0 : volume}
+                  onChange={handleVolumeChange}
+                  className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-transparent opacity-0"
+                />
+              </div>
+            </div>
+          </div>
+
+          <span className="ml-1 text-xs tabular-nums text-white/85 sm:text-sm">
+            {formatTime(currentTime)} <span className="text-white/45">/ {formatTime(duration)}</span>
           </span>
 
-          <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
-            <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 hover:text-white" onClick={toggleFullscreen}>
+          <div className="ml-auto flex items-center gap-1 sm:gap-1.5">
+            <Button variant="ghost" size="icon" className="rounded-md text-white hover:bg-white/10 hover:text-white" onClick={toggleFullscreen}>
               {fullscreen ? <Minimize className="size-4" /> : <Maximize className="size-4" />}
             </Button>
           </div>

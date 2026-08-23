@@ -16,6 +16,7 @@ import {
   backdropUrl,
   getGenreGradient,
   isPlayableMovie,
+  tmdbMediaType,
 } from "@/lib/data"
 import type { Movie } from "@/lib/data"
 import { fetchCreativeCredits, fetchTvEpisodeGroupSeasons, fetchTvSeasonEpisodes, fetchImages, IMG_URL } from "@/lib/tmdb"
@@ -137,10 +138,10 @@ export default function MovieDetailPage({
     setTmdbEpisodeGroupSeasons([])
     if (!movie.tmdbId) return
     let cancelled = false
-    const tmdbType = movie.type === "series" || movie.type === "anime" ? "tv" : "movie"
+    const tmdbType = tmdbMediaType(movie)
     fetchCreativeCredits(movie.tmdbId, tmdbType, lang).then((data) => {
       if (cancelled) return
-      setCast(data.cast)
+      setCast(data.cast.filter((actor) => Boolean(actor.profile_path)))
       setCreativeCredits(data)
       // One rAF so the DOM node exists before we trigger the CSS animation
       requestAnimationFrame(() => {
@@ -157,7 +158,7 @@ export default function MovieDetailPage({
   useEffect(() => {
     if (!movie.tmdbId) return
     let cancelled = false
-    const tmdbType = movie.type === "series" || movie.type === "anime" ? "tv" : "movie"
+    const tmdbType = tmdbMediaType(movie)
     fetchImages(movie.tmdbId, tmdbType).then((paths) => {
       if (cancelled) return
       setScreenshots(paths)
@@ -747,7 +748,10 @@ export default function MovieDetailPage({
           )}
         </div>
       </section>
-      {/* Cast - carousel con botones */}
+      {/* Cast - carousel con botones. `cast` only ever holds actors with a photo
+          (filtered on fetch), so once loading finishes with none, skip the
+          section entirely instead of showing an empty "Reparto" heading. */}
+      {(cast.length > 0 || !castReady) && (
       <section
         className="content-container group/row pb-8 sm:pb-10"
         style={{
@@ -758,7 +762,7 @@ export default function MovieDetailPage({
       >
         <h2 className="mb-4 text-lg font-semibold text-white">{t("details.cast")}</h2>
         <div className="relative">
-          {cast.length === 0 ? (
+          {!castReady ? (
             <div className="hide-scrollbar flex flex-nowrap gap-4 overflow-x-auto pb-2">
               {Array.from({ length: 8 }).map((_, i) => (
                 <div key={i} className="w-28 shrink-0 snap-start sm:w-32">
@@ -800,6 +804,7 @@ export default function MovieDetailPage({
           )}
         </div>
       </section>
+      )}
 
       {/* Related */}
       {related.length > 0 && (
