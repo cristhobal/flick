@@ -639,14 +639,6 @@ export default function HomePage() {
   if (view === "library") {
     return (
       <PageTransition key="library">
-        <Header
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          onNavigate={handleNavigate}
-          currentPage={currentPage}
-          hasSeries={series.length > 0}
-          hasAnime={anime.length > 0}
-        />
         <Suspense fallback={<PageFallback />}>
           <LibraryPage
             onClose={() => {
@@ -737,7 +729,7 @@ export default function HomePage() {
 }
 
 function PageTransition({ children }: { children: React.ReactNode }) {
-  return <div className="animate-fade-in">{children}</div>
+  return <div className="animate-page-fade">{children}</div>
 }
 
 function PageFallback() {

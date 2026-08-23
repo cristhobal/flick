@@ -2,17 +2,17 @@
 
 import { useState, useRef, useEffect, useCallback, useLayoutEffect } from "react"
 import { createPortal } from "react-dom"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Play, ChevronDown, Star } from "lucide-react"
 import type { Movie } from "@/lib/data"
 import { useI18n } from "@/i18n/I18nProvider"
-import { translateGenre, translateGenres } from "@/i18n/translations"
+import { translateGenre } from "@/i18n/translations"
 import {
   posterUrl,
   backdropUrl,
   getGenreGradient,
   isPlayableMovie,
+  tmdbMediaType,
 } from "@/lib/data"
 import { fetchDetailWithVideos } from "@/lib/tmdb"
 import { useScrollViewport } from "@/lib/scroll-container"
@@ -40,7 +40,6 @@ export default function MovieCard({
   const [synopsisHeight, setSynopsisHeight] = useState(0)
   const [resolvedTrailerUrl, setResolvedTrailerUrl] = useState<string | null | undefined>(movie.trailerUrl)
   const [pos, setPos] = useState({ left: 0, top: 0 })
-  const [expandUpward, setExpandUpward] = useState(false)
   const showTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const cardRef = useRef<HTMLDivElement>(null)
@@ -61,7 +60,7 @@ export default function MovieCard({
   useEffect(() => {
     if ((!isHoveringCard && !showExpanded) || resolvedTrailerUrl !== undefined || !movie.tmdbId) return
     let cancelled = false
-    const tmdbType = movie.type === "series" || movie.type === "anime" ? "tv" : "movie"
+    const tmdbType = tmdbMediaType(movie)
     fetchDetailWithVideos(movie.tmdbId, tmdbType, lang)
       .then((result) => {
         if (!cancelled) setResolvedTrailerUrl(result.trailerUrl || null)
@@ -123,25 +122,15 @@ export default function MovieCard({
       Math.max(viewportPadding, rawLeft),
       window.innerWidth - actualPreviewWidth - viewportPadding
     )
-    const spaceAbove = rect.top
-    const spaceBelow = window.innerHeight - rect.bottom
-    const canExpandDown = spaceBelow >= actualPreviewHeight + gap + viewportPadding
-    const canExpandUp = spaceAbove >= actualPreviewHeight + gap + viewportPadding
-    const shouldExpandUp = (!canExpandDown && canExpandUp) || (!canExpandDown && !canExpandUp && spaceAbove >= spaceBelow)
-    setExpandUpward(shouldExpandUp)
-    if (shouldExpandUp) {
-      const bottom = Math.min(
-        Math.max(window.innerHeight - rect.bottom - gap, viewportPadding),
-        window.innerHeight - actualPreviewHeight - viewportPadding
-      )
-      setPos({ left, top: bottom })
-    } else {
-      const top = Math.min(
-        Math.max(rect.top, viewportPadding),
-        window.innerHeight - actualPreviewHeight - viewportPadding
-      )
-      setPos({ left, top })
-    }
+    // Always align the preview's top edge to the card's top edge so every hovercard
+    // opens at the same height as its card — only nudged up if it would overflow the
+    // bottom of the viewport, never bottom-anchored (that made cards near the bottom
+    // of a row pop up lower than cards elsewhere in the same row).
+    const top = Math.min(
+      Math.max(rect.top, viewportPadding),
+      window.innerHeight - actualPreviewHeight - viewportPadding
+    )
+    setPos({ left, top })
   }, [showSynopsis, synopsisHeight])
 
   useLayoutEffect(() => {
@@ -202,25 +191,11 @@ export default function MovieCard({
           Math.max(viewportPadding, rawLeft),
           window.innerWidth - previewWidth - viewportPadding
         )
-        const spaceAbove = rect.top
-        const spaceBelow = window.innerHeight - rect.bottom
-        const canExpandDown = spaceBelow >= previewHeight + gap + viewportPadding
-        const canExpandUp = spaceAbove >= previewHeight + gap + viewportPadding
-        const shouldExpandUp = (!canExpandDown && canExpandUp) || (!canExpandDown && !canExpandUp && spaceAbove >= spaceBelow)
-        setExpandUpward(shouldExpandUp)
-        if (shouldExpandUp) {
-          const bottom = Math.min(
-            Math.max(window.innerHeight - rect.bottom - gap, viewportPadding),
-            window.innerHeight - previewHeight - viewportPadding
-          )
-          setPos({ left, top: bottom })
-        } else {
-          const top = Math.min(
-            Math.max(rect.top, viewportPadding),
-            window.innerHeight - previewHeight - viewportPadding
-          )
-          setPos({ left, top })
-        }
+        const top = Math.min(
+          Math.max(rect.top, viewportPadding),
+          window.innerHeight - previewHeight - viewportPadding
+        )
+        setPos({ left, top })
       }
       setShowExpanded(true)
     }, 120)
@@ -264,7 +239,6 @@ export default function MovieCard({
       : ""
   const hasRuntime = Boolean(movie.duration && movie.duration !== "-")
   const runtimeLabel = seasonInfo || (hasRuntime ? movie.duration : episodeInfo || "...")
-  const genreLabel = translateGenres(movie.genre, lang).join(", ")
 
   return (
     <>
@@ -275,63 +249,59 @@ export default function MovieCard({
         onMouseLeave={handleCardLeave}
         style={{ animationDelay: `${index * 50}ms` }}
       >
-        {/* Original poster card — no scale on wrapper */}
+        {/* Poster with title/info overlaid at the bottom, inside the same frame. The scrim
+            uses a literal rgba() gradient (not a theme token) so it never gets inverted
+            by light mode, and its many stops avoid the banding a plain 2-stop
+            black-to-transparent gradient shows. */}
         <div
-          className="relative cursor-pointer overflow-hidden rounded-xl bg-neutral-900 shadow-lg transition-all duration-300 ease-out hover:shadow-2xl active:shadow-md"
+          className="relative aspect-[2/3] w-full cursor-pointer overflow-hidden bg-neutral-900 shadow-md transition-shadow duration-300 ease-out group-hover/card:shadow-xl light:shadow-[0_2px_10px_-2px_rgba(0,0,0,0.25)] light:group-hover/card:shadow-[0_16px_36px_-8px_rgba(0,0,0,0.35)]"
           onClick={handleClick}
         >
-          <div className="relative aspect-[2/3] w-full overflow-hidden bg-neutral-900">
-            {imgSrc ? (
-              <img
-                src={imgSrc}
-                alt={movie.title}
-                className="h-full w-full object-cover transition-transform duration-500 ease-out will-change-transform group-hover/card:scale-110"
-                loading="lazy"
-              />
-            ) : (
-              <div
-                className={`h-full w-full bg-gradient-to-b ${getGenreGradient(movie.genre)}`}
-              />
-            )}
-
-            <div
-              className={`absolute inset-0 bg-black/40 transition-opacity duration-300 ${
-                showExpanded ? "opacity-100" : "opacity-0"
-              }`}
+          {imgSrc ? (
+            <img
+              src={imgSrc}
+              alt={movie.title}
+              className="h-full w-full object-cover transition-transform duration-500 ease-out will-change-transform group-hover/card:scale-105"
+              loading="lazy"
             />
+          ) : (
+            <div className={`h-full w-full bg-gradient-to-b ${getGenreGradient(movie.genre)}`} />
+          )}
 
-            <div className="absolute right-0 bottom-0 left-0 h-1/2 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+          {/* Flat-color dim on hover (not a gradient) — nothing to interpolate unevenly
+              against the rounded clip, so no corner seam regardless of theme or opacity. */}
+          <div
+            className={`absolute inset-0 bg-[rgba(0,0,0,0.45)] opacity-0 transition-opacity duration-300 group-hover/card:opacity-100 ${
+              showExpanded ? "opacity-100" : ""
+            }`}
+          />
 
-            <div className="absolute top-2 right-2 left-2 z-10 flex min-w-0 items-center justify-between gap-1.5 transition-transform duration-300 group-hover/card:scale-90">
-              <span
-                className="min-w-0 truncate rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-neutral-300 backdrop-blur-sm"
-                title={genreLabel}
-              >
-                {genreLabel}
+          {movie.quality && (
+            <span className="absolute top-2 right-2 rounded-md bg-[rgba(0,0,0,0.6)] px-1.5 py-0.5 text-[9px] font-semibold text-[rgba(255,255,255,0.9)] backdrop-blur-md">
+              {movie.quality}
+            </span>
+          )}
+
+          {/* Bottom scrim + info — always visible, no gradient banding thanks to the
+              eased multi-stop rgba gradient instead of a flat black→transparent one. */}
+          <div
+            className="absolute right-0 bottom-0 left-0 flex h-4/5 flex-col justify-end px-2.5 pb-2"
+            style={{
+              backgroundImage:
+                "linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.97) 12%, rgba(0,0,0,0.88) 24%, rgba(0,0,0,0.74) 36%, rgba(0,0,0,0.56) 48%, rgba(0,0,0,0.38) 60%, rgba(0,0,0,0.22) 72%, rgba(0,0,0,0.1) 84%, rgba(0,0,0,0) 100%)",
+            }}
+          >
+            <p className="line-clamp-1 text-sm font-medium text-[#fff]" title={movie.title}>
+              {movie.title}
+            </p>
+            <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-[rgba(255,255,255,0.75)]">
+              <span className="shrink-0">{movie.year}</span>
+              <span className="shrink-0 text-[rgba(255,255,255,0.4)]">•</span>
+              <span className="truncate">{runtimeLabel}</span>
+              <span className="ml-auto flex shrink-0 items-center gap-0.5 font-medium text-amber-400">
+                <Star className="size-3 fill-amber-400" />
+                {movie.rating}
               </span>
-              {movie.quality && (
-                <Badge className="shrink-0 border-0 bg-white/10 text-[10px] text-white backdrop-blur-sm">
-                  {movie.quality}
-                </Badge>
-              )}
-            </div>
-
-
-            <div className="absolute right-0 bottom-0 left-0 flex min-h-24 flex-col justify-end p-3">
-              <p className="line-clamp-2 text-sm font-medium leading-[1.125rem] text-white drop-shadow-lg transition-transform duration-300 group-hover/card:translate-y-[-2px]">
-                {movie.title}
-              </p>
-              <div className="mt-2 flex min-w-0 items-center justify-between gap-2 text-[11px] text-neutral-300 transition-opacity duration-300 group-hover/card:opacity-80">
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className="shrink-0">{movie.year}</span>
-                  <span className="h-3 w-px shrink-0 bg-neutral-600" />
-                  <span className="truncate">{runtimeLabel}</span>
-                </span>
-                <span className="flex shrink-0 items-center gap-1">
-                  <Star className="size-3 fill-neutral-300 text-neutral-300" />
-                  <span>{movie.rating}</span>
-                </span>
-              </div>
             </div>
           </div>
         </div>
@@ -341,8 +311,8 @@ export default function MovieCard({
       {showExpanded && createPortal(
         <article
           ref={previewRef}
-          className="pointer-events-none fixed z-[9999] w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-white/10 bg-neutral-950 shadow-[0_24px_80px_rgba(0,0,0,0.75)] animate-scale-in"
-          style={{ left: pos.left, ...(expandUpward ? { bottom: pos.top } : { top: pos.top }) }}
+          className="pointer-events-none fixed z-[9999] w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-md bg-neutral-950/95 shadow-[0_24px_80px_rgba(0,0,0,0.75)] backdrop-blur-2xl animate-scale-in"
+          style={{ left: pos.left, top: pos.top }}
         >
           <div className="relative aspect-[16/9] w-full overflow-hidden bg-neutral-900">
             {bgSrc ? (
@@ -352,11 +322,11 @@ export default function MovieCard({
             ) : (
               <div className={`h-full w-full bg-gradient-to-br ${getGenreGradient(movie.genre)}`} />
             )}
-            <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-black/20 to-black/10" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[rgba(0,0,0,0.2)] to-[rgba(0,0,0,0.1)]" />
 
             <div className="absolute top-3 right-3 flex items-center gap-2">
               {movie.quality && (
-                <span className="rounded-md border border-white/10 bg-black/55 px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-white backdrop-blur-md">
+                <span className="rounded-md border border-[rgba(255,255,255,0.1)] bg-[rgba(0,0,0,0.55)] px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-[#fff] backdrop-blur-md">
                   {movie.quality}
                 </span>
               )}
@@ -367,14 +337,14 @@ export default function MovieCard({
               onMouseEnter={handlePreviewInteractiveEnter}
               onMouseLeave={handlePreviewInteractiveLeave}
             >
-              <h3 className="line-clamp-2 text-lg font-semibold leading-tight text-white drop-shadow-lg">
+              <h3 className="line-clamp-2 text-lg font-semibold leading-tight text-[#fff] drop-shadow-lg">
                 {movie.title}
               </h3>
-              <div className="mt-2 flex items-center gap-2 text-[11px] text-neutral-300">
+              <div className="mt-2 flex items-center gap-2 text-[11px] text-[rgba(255,255,255,0.75)]">
                 <span>{movie.year}</span>
-                <span className="size-1 rounded-full bg-neutral-500" />
+                <span className="size-1 rounded-full bg-[rgba(255,255,255,0.4)]" />
                 <span>{runtimeLabel}</span>
-                <span className="ml-auto flex items-center gap-1 font-medium text-white">
+                <span className="ml-auto flex items-center gap-1 font-medium text-[#fff]">
                   <Star className="size-3 fill-amber-400 text-amber-400" />
                   {movie.rating}
                 </span>
@@ -391,7 +361,7 @@ export default function MovieCard({
               {canPlay && (
                 <Button
                   size="sm"
-                  className="h-9 flex-1 rounded-lg bg-white text-xs font-semibold text-black hover:bg-neutral-200"
+                  className="h-9 flex-1 rounded-md bg-white text-xs font-semibold text-black hover:bg-neutral-200"
                   onClick={(e) => {
                     e.stopPropagation()
                     onPlay?.(playableMovie)
@@ -406,7 +376,7 @@ export default function MovieCard({
                   size="icon-sm"
                   variant="ghost"
                   title={t("common.details")}
-                  className="size-9 shrink-0 rounded-lg text-neutral-400 hover:bg-white/[0.06] hover:text-white"
+                  className="size-9 shrink-0 rounded-md text-neutral-400 hover:bg-white/[0.06] hover:text-white"
                   onClick={(e) => {
                     e.stopPropagation()
                     synopsisTogglingRef.current = true
@@ -421,14 +391,14 @@ export default function MovieCard({
 
             <div className="mt-4 flex flex-wrap items-center gap-2 text-[10px] text-neutral-400">
               {movie.contentRating && (
-                <span className="rounded border border-white/10 bg-white/[0.04] px-2 py-1 font-medium text-neutral-200">
+                <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 font-medium text-neutral-200">
                   {movie.contentRating}
                 </span>
               )}
-              <span className="rounded border border-white/10 px-2 py-1">
+              <span className="rounded-md border border-white/10 px-2 py-1">
                 {runtimeLabel}
               </span>
-              <span className="rounded border border-white/10 px-2 py-1">
+              <span className="rounded-md border border-white/10 px-2 py-1">
                 {movie.type === "movie" ? t("common.movies") : movie.type === "series" ? t("common.series") : t("common.anime")}
               </span>
             </div>

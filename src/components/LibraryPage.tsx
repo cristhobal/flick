@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react"
 import { Button } from "@/components/ui/button"
 import MovieCard from "@/components/MovieCard"
-import { Search, ArrowLeft, X } from "lucide-react"
+import { Search, ArrowLeft, X, LayoutGrid, Clapperboard, Tv, Sparkles } from "lucide-react"
 import type { Movie } from "@/lib/data"
 import { useI18n } from "@/i18n/I18nProvider"
 
@@ -39,10 +39,12 @@ export default function LibraryPage({
   const loadMoreRef = useRef<HTMLDivElement>(null)
 
   const availableTabs = useMemo(() => {
-    const tabs: { id: Tab; label: string }[] = [{ id: "all", label: t("library.everything") }]
-    if (movies.length > 0) tabs.push({ id: "movies", label: t("common.movies") })
-    if (series.length > 0) tabs.push({ id: "series", label: t("common.series") })
-    if (anime.length > 0) tabs.push({ id: "anime", label: t("common.anime") })
+    const tabs: { id: Tab; label: string; icon: typeof LayoutGrid }[] = [
+      { id: "all", label: t("library.everything"), icon: LayoutGrid },
+    ]
+    if (movies.length > 0) tabs.push({ id: "movies", label: t("common.movies"), icon: Clapperboard })
+    if (series.length > 0) tabs.push({ id: "series", label: t("common.series"), icon: Tv })
+    if (anime.length > 0) tabs.push({ id: "anime", label: t("common.anime"), icon: Sparkles })
     return tabs
   }, [movies.length, series.length, anime.length, t])
 
@@ -115,7 +117,7 @@ export default function LibraryPage({
 
   return (
     <div className="min-h-screen bg-black pb-16">
-      <div className="sticky top-14 z-30 border-b border-white/5 bg-black/80 backdrop-blur-xl sm:top-16">
+      <div className="sticky top-0 z-30 border-b border-white/5 bg-black/80 backdrop-blur-xl">
         <div className="content-container py-3 sm:py-4">
           <div className="flex h-10 items-center gap-2 sm:h-11 sm:gap-3">
             <Button
@@ -189,12 +191,13 @@ export default function LibraryPage({
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all whitespace-nowrap sm:px-4 cursor-pointer ${
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all whitespace-nowrap sm:px-4 cursor-pointer ${
                   activeTab === tab.id
                     ? "bg-neutral-800 text-white"
                     : "text-neutral-400 hover:text-white"
                 }`}
               >
+                <tab.icon className="size-3.5" />
                 {tab.label}
               </button>
             ))}

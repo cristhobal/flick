@@ -13,6 +13,11 @@
   description: string
   longDescription: string
   type: "movie" | "series" | "anime"
+  // The TMDB shape backing this item — independent of `type`, since "anime" covers
+  // both TV shows *and* standalone films (e.g. a local anime movie file matched
+  // against TMDB's /movie endpoint). Falls back to the old type-based guess where
+  // unset, for any construction path that predates this field.
+  mediaType?: "movie" | "tv"
   director?: string
   contentRating: string
   seasons?: number
@@ -37,6 +42,14 @@
 export interface Category {
   title: string
   items: Movie[]
+}
+
+// The TMDB endpoint shape ("movie" vs "tv") backing an item — use this instead of
+// guessing from `type` alone, since "anime" covers both TV shows and standalone
+// films. Falls back to the old type-based guess for items built before `mediaType`
+// existed.
+export function tmdbMediaType(movie: Movie): "movie" | "tv" {
+  return movie.mediaType || (movie.type === "series" || movie.type === "anime" ? "tv" : "movie")
 }
 
 export function getPlayableMovie(movie: Movie): Movie | null {

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Play, Info, Star } from "lucide-react"
 import type { Movie } from "@/lib/data"
-import { backdropUrl, getGenreGradient, isPlayableMovie } from "@/lib/data"
+import { backdropUrl, getGenreGradient, isPlayableMovie, tmdbMediaType } from "@/lib/data"
 import { fetchDetailWithVideos } from "@/lib/tmdb"
 import { useI18n } from "@/i18n/I18nProvider"
 import { displayLanguage } from "@/i18n/translations"
@@ -43,7 +43,7 @@ export default function HeroSection({
   const canPlay = isPlayableMovie(playableMovie)
   const contentAnimation = phase === "enter" ? "hero-content-enter" : "hero-content-exit"
   const heroRuntimeLabel =
-    movie.type === "series" || movie.type === "anime"
+    tmdbMediaType(movie) === "tv"
       ? resolvedSeasons > 0
         ? `${resolvedSeasons} ${resolvedSeasons === 1 ? t("common.season") : t("common.seasons")}`
         : "..."
@@ -60,7 +60,7 @@ export default function HeroSection({
   useEffect(() => {
     if (resolvedTrailerUrl !== undefined || movie.tmdbId <= 0) return
     let cancelled = false
-    const tmdbType = movie.type === "series" || movie.type === "anime" ? "tv" : "movie"
+    const tmdbType = tmdbMediaType(movie)
     fetchDetailWithVideos(movie.tmdbId, tmdbType, lang)
       .then((result) => {
         if (!cancelled) {
