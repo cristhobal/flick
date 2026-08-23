@@ -1,23 +1,25 @@
 "use client"
 
-import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react"
+import { useState, useMemo, useCallback, useEffect, Suspense } from "react"
 import Header from "@/components/Header"
 import HeroSection from "@/components/HeroSection"
 import MovieCarousel from "@/components/MovieCarousel"
 import FlickTextLoader from "@/components/FlickTextLoader"
 import { Spinner } from "@/components/ui/spinner"
-import { useTMDB } from "@/lib/use-tmdb"
+import { useCatalog } from "@/lib/use-catalog"
 import { getPlayableMovie, type Movie } from "@/lib/data"
 import { categoryPath, contentPath, parseBrowseRoute, parseContentRoute, samePath, sectionPath, slugifyTitle, watchPath, type ParsedContentRoute } from "@/lib/routes"
 import { useI18n } from "@/i18n/I18nProvider"
 import { translateGenre } from "@/i18n/translations"
+import { useScrollViewport } from "@/lib/scroll-container"
+import { lazyWithReload } from "@/lib/lazy-with-reload"
 
-const SearchPage = lazy(() => import("@/components/SearchPage"))
-const LibraryPage = lazy(() => import("@/components/LibraryPage"))
-const PlayerPage = lazy(() => import("@/components/PlayerPage"))
-const CategoryPage = lazy(() => import("@/components/CategoryPage"))
-const MovieDetailPage = lazy(() => import("@/components/MovieDetailPage"))
-const MovieDetailsModal = lazy(() => import("@/components/MovieDetailsModal"))
+const SearchPage = lazyWithReload(() => import("@/components/SearchPage"))
+const LibraryPage = lazyWithReload(() => import("@/components/LibraryPage"))
+const PlayerPage = lazyWithReload(() => import("@/components/PlayerPage"))
+const CategoryPage = lazyWithReload(() => import("@/components/CategoryPage"))
+const MovieDetailPage = lazyWithReload(() => import("@/components/MovieDetailPage"))
+const MovieDetailsModal = lazyWithReload(() => import("@/components/MovieDetailsModal"))
 
 type PageView = "home" | "search" | "library" | "player" | "category" | "detail"
 
@@ -127,8 +129,9 @@ function buildViewAll(
 
 export default function HomePage() {
   const { lang, t } = useI18n()
-  const tmdb = useTMDB()
+  const tmdb = useCatalog()
   const { allMovies, loading, error, hero: tmdbHero, categories, trendingTmdbIds } = tmdb
+  const scrollViewport = useScrollViewport()
 
   const [currentPage, setCurrentPage] = useState("home")
   const [view, setView] = useState<PageView>("home")
@@ -160,8 +163,8 @@ export default function HomePage() {
     setCurrentPage("home")
     setSelectedMovie(null)
     setPath("/", replace)
-    window.scrollTo({ top: 0, behavior: "instant" })
-  }, [setPath])
+    scrollViewport?.scrollTo({ top: 0, behavior: "instant" })
+  }, [setPath, scrollViewport])
 
   const hasHeroSynopsis = useCallback((item: Movie | null | undefined) => {
     const description = (item?.description || item?.longDescription || "").trim()
@@ -345,7 +348,7 @@ export default function HomePage() {
           setView(contentRoute.view === "watch" ? "player" : "detail")
           setCurrentPage(contentRoute.type === "movie" ? "movies" : contentRoute.type)
           setPendingContentRoute(null)
-          window.scrollTo({ top: 0, behavior: "instant" })
+          scrollViewport?.scrollTo({ top: 0, behavior: "instant" })
           return
         }
         // Not in catalog — fetch on-demand instead of falling through to browse route
@@ -361,7 +364,7 @@ export default function HomePage() {
         setCategoryGenre(genreFromSlug(routeItems, browseRoute.genreSlug))
         setCurrentPage(browseRoute.type === "movie" ? "movies" : browseRoute.type)
         setView("category")
-        window.scrollTo({ top: 0, behavior: "instant" })
+        scrollViewport?.scrollTo({ top: 0, behavior: "instant" })
         return
       }
 
@@ -377,7 +380,7 @@ export default function HomePage() {
     applyRoute()
     window.addEventListener("popstate", applyRoute)
     return () => window.removeEventListener("popstate", applyRoute)
-  }, [allMovies, genreFromSlug, tmdb.anime, tmdb.movies, tmdb.series])
+  }, [allMovies, genreFromSlug, tmdb.anime, tmdb.movies, tmdb.series, scrollViewport])
 
   // Fetch content on demand when navigating directly to a URL not in the catalog
   useEffect(() => {
@@ -390,11 +393,11 @@ export default function HomePage() {
       setView(pendingContentRoute.view === "watch" ? "player" : "detail")
       setCurrentPage(pendingContentRoute.type === "movie" ? "movies" : pendingContentRoute.type)
       setPendingContentRoute(null)
-      window.scrollTo({ top: 0, behavior: "instant" })
+      scrollViewport?.scrollTo({ top: 0, behavior: "instant" })
     }
     fetchContent()
     return () => { cancelled = true }
-  }, [pendingContentRoute, tmdb.loadDetail])
+  }, [pendingContentRoute, tmdb.loadDetail, scrollViewport])
 
   const handleNavigate = useCallback((page: string) => {
     if (page === "home") {
@@ -436,24 +439,24 @@ export default function HomePage() {
     setSelectedMovie(playable)
     setView("player")
     setPath(watchPath(playable))
-    window.scrollTo({ top: 0, behavior: "instant" })
-  }, [setPath, trackGenreView])
+    scrollViewport?.scrollTo({ top: 0, behavior: "instant" })
+  }, [setPath, trackGenreView, scrollViewport])
 
   const handleDetails = useCallback((movie: Movie) => {
     trackGenreView(movie.genre)
     setSelectedMovie(movie)
     setView("detail")
     setPath(contentPath(movie))
-    window.scrollTo({ top: 0, behavior: "instant" })
-  }, [setPath, trackGenreView])
+    scrollViewport?.scrollTo({ top: 0, behavior: "instant" })
+  }, [setPath, trackGenreView, scrollViewport])
 
   const handleMovieClick = useCallback((movie: Movie) => {
     trackGenreView(movie.genre)
     setSelectedMovie(movie)
     setView("detail")
     setPath(contentPath(movie))
-    window.scrollTo({ top: 0, behavior: "instant" })
-  }, [setPath, trackGenreView])
+    scrollViewport?.scrollTo({ top: 0, behavior: "instant" })
+  }, [setPath, trackGenreView, scrollViewport])
 
 
   const handleFilterReset = useCallback(() => {
@@ -746,21 +749,24 @@ function PageFallback() {
 }
 
 function LoadingScreen() {
+  const scrollViewport = useScrollViewport()
+
+  // Block scrolling while loading. This used to toggle overflow on
+  // html/body, which drops the native scrollbar and shifts all content
+  // sideways by its width for as long as loading takes — the ScrollArea
+  // viewport has its own custom (non-native, layout-neutral) scrollbar, so
+  // locking overflow here never moves anything.
   useEffect(() => {
-    const htmlOverflow = document.documentElement.style.overflow
-    const bodyOverflow = document.body.style.overflow
-    const bodyOverscroll = document.body.style.overscrollBehavior
-
-    document.documentElement.style.overflow = "hidden"
-    document.body.style.overflow = "hidden"
-    document.body.style.overscrollBehavior = "none"
-
+    if (!scrollViewport) return
+    const previousOverflow = scrollViewport.style.overflow
+    const previousOverscroll = scrollViewport.style.overscrollBehavior
+    scrollViewport.style.overflow = "hidden"
+    scrollViewport.style.overscrollBehavior = "none"
     return () => {
-      document.documentElement.style.overflow = htmlOverflow
-      document.body.style.overflow = bodyOverflow
-      document.body.style.overscrollBehavior = bodyOverscroll
+      scrollViewport.style.overflow = previousOverflow
+      scrollViewport.style.overscrollBehavior = previousOverscroll
     }
-  }, [])
+  }, [scrollViewport])
 
   return (
     <div className="fixed inset-0 z-50 h-[100dvh] max-h-[100dvh] w-full overflow-hidden bg-black text-center overscroll-none touch-none">

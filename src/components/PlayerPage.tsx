@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button"
 import MovieCard from "@/components/MovieCard"
+import LocalVideoPlayer from "@/components/LocalVideoPlayer"
 import type { Movie } from "@/lib/data"
 import { backdropUrl, posterUrl } from "@/lib/data"
 import { useI18n } from "@/i18n/I18nProvider"
@@ -15,13 +16,16 @@ export default function PlayerPage({
   const title = movie.seriesTitle || movie.title
   const image = backdropUrl(movie.backdropPath) || posterUrl(movie.posterPath)
   const trailerUrl = movie.trailerUrl || ""
+  const isLocalVideo = trailerUrl.startsWith("/api/local-video/")
 
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Video player — 16:9 ratio with safe bounds */}
       <div className="relative h-[clamp(220px,56.25vw,80svh)] w-full bg-zinc-950">
         <div className="absolute inset-0">
-          {trailerUrl ? (
+          {trailerUrl && isLocalVideo ? (
+            <LocalVideoPlayer key={trailerUrl} src={trailerUrl} title={title} />
+          ) : trailerUrl ? (
             <iframe
               key={trailerUrl}
               src={trailerUrl}
@@ -60,7 +64,9 @@ export default function PlayerPage({
 
       <div className="content-container py-6 sm:py-8">
         <div className="max-w-3xl">
-          <p className="text-xs font-medium uppercase tracking-[0.2em] text-white/45 sm:text-sm">{t("player.trailer")}</p>
+          {!isLocalVideo && (
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-white/45 sm:text-sm">{t("player.trailer")}</p>
+          )}
           <h1 className="mt-2 text-2xl font-bold sm:text-3xl md:text-4xl">{title}</h1>
           {movie.description && (
             <p className="mt-3 text-sm leading-6 text-white/70 sm:mt-4 md:text-base">{movie.description}</p>

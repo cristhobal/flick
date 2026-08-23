@@ -5,14 +5,18 @@ import { cn } from "@/lib/utils"
 
 const ScrollArea = React.forwardRef<
   React.ComponentRef<typeof ScrollAreaPrimitive.Root>,
-  React.ComponentProps<typeof ScrollAreaPrimitive.Root>
->(({ className, children, ...props }, ref) => (
+  React.ComponentProps<typeof ScrollAreaPrimitive.Root> & {
+    /** Access to the actual scrolling element — needed by anything that used to read/drive `window`/`document` scroll (scroll-position effects, `scrollTo`, "close on scroll", etc.) and now needs the Viewport instead. */
+    viewportRef?: React.Ref<HTMLDivElement>
+    viewportClassName?: string
+  }
+>(({ className, viewportClassName, children, viewportRef, ...props }, ref) => (
   <ScrollAreaPrimitive.Root
     ref={ref}
     className={cn("relative overflow-hidden", className)}
     {...props}
   >
-    <ScrollAreaPrimitive.Viewport className="size-full rounded-[inherit] outline-none">
+    <ScrollAreaPrimitive.Viewport ref={viewportRef} className={cn("size-full rounded-[inherit] outline-none", viewportClassName)}>
       {children}
     </ScrollAreaPrimitive.Viewport>
     <ScrollBar />

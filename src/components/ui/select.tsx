@@ -52,10 +52,14 @@ function SelectContent({
   className,
   children,
   position = "popper",
+  container,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Content>) {
+}: React.ComponentProps<typeof SelectPrimitive.Content> & {
+  /** Portal target — pass the fullscreen element when the trigger lives inside one, since content portaled to `document.body` is invisible/inert outside it. Defaults to `document.body`. */
+  container?: React.ComponentProps<typeof SelectPrimitive.Portal>["container"]
+}) {
   return (
-    <SelectPrimitive.Portal>
+    <SelectPrimitive.Portal container={container}>
       <SelectPrimitive.Content
         data-slot="select-content"
         className={cn(

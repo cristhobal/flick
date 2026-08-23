@@ -4,6 +4,7 @@ allowBuilds:
   esbuild: true
   sharp: true
   msw: false
+  lfa-ponyfill: false
 
 minimumReleaseAgeExclude:
   - '@openai/codex'

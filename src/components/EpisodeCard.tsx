@@ -7,6 +7,7 @@ import { Play, Star } from "lucide-react"
 import type { Movie } from "@/lib/data"
 import { useI18n } from "@/i18n/I18nProvider"
 import { translateGenre } from "@/i18n/translations"
+import { useScrollViewport } from "@/lib/scroll-container"
 import {
   posterUrl,
   backdropUrl,
@@ -62,15 +63,16 @@ export default function EpisodeCard({
     }
   }, [])
 
+  const scrollViewport = useScrollViewport()
   useEffect(() => {
-    if (!showExpanded) return
+    if (!showExpanded || !scrollViewport) return
     const handleScroll = () => {
       cancelHide()
       setShowExpanded(false)
     }
-    window.addEventListener("scroll", handleScroll, { once: true })
-    return () => window.removeEventListener("scroll", handleScroll)
-  }, [showExpanded, cancelHide])
+    scrollViewport.addEventListener("scroll", handleScroll, { once: true })
+    return () => scrollViewport.removeEventListener("scroll", handleScroll)
+  }, [showExpanded, cancelHide, scrollViewport])
 
   const calculatePosition = useCallback(() => {
     if (!cardRef.current || !previewRef.current) return
