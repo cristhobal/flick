@@ -115,7 +115,7 @@ export default function HeroSection({
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.04)_0%,transparent_60%)]" />
       <div className="absolute inset-0 bg-black/45 sm:bg-transparent" />
       <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/45 to-black/15 sm:from-black/90 sm:via-black/50 sm:to-transparent lg:w-1/2" />
-      <div className="absolute right-0 bottom-0 left-0 h-3/4 bg-gradient-to-t from-black via-black/70 to-transparent sm:h-3/5 sm:via-black/60" />
+      <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,1)_0%,rgba(0,0,0,0.986)_5%,rgba(0,0,0,0.945)_10%,rgba(0,0,0,0.879)_15%,rgba(0,0,0,0.789)_20%,rgba(0,0,0,0.68)_25%,rgba(0,0,0,0.557)_30%,rgba(0,0,0,0.426)_35%,rgba(0,0,0,0.294)_40%,rgba(0,0,0,0.169)_45%,rgba(0,0,0,0.058)_50%,rgba(0,0,0,0)_58%,transparent_100%)] sm:bg-[linear-gradient(to_top,rgba(0,0,0,1)_0%,rgba(0,0,0,0.986)_4%,rgba(0,0,0,0.945)_8%,rgba(0,0,0,0.879)_12%,rgba(0,0,0,0.789)_16%,rgba(0,0,0,0.68)_20%,rgba(0,0,0,0.557)_24%,rgba(0,0,0,0.426)_28%,rgba(0,0,0,0.294)_32%,rgba(0,0,0,0.169)_36%,rgba(0,0,0,0.058)_40%,rgba(0,0,0,0)_46%,transparent_100%)]" />
 
       {/* Content — vertically centered, safe padding for header */}
       <div className="absolute inset-0 z-10 flex flex-col justify-center py-14 sm:pb-[8vh] sm:pt-16 lg:pb-[10vh]">

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useCallback, useEffect, Suspense } from "react"
+import { useState, useMemo, useCallback, useEffect, Suspense, Fragment } from "react"
 import Header from "@/components/Header"
 import HeroSection from "@/components/HeroSection"
 import MovieCarousel from "@/components/MovieCarousel"
@@ -785,29 +785,32 @@ export default function HomePage() {
           )}
 
           <div className="relative z-20 -mt-12 space-y-5 sm:-mt-14 sm:space-y-10">
-            {continueWatchingItems.length > 0 && (
-              <MovieCarousel
-                title={t("home.continue")}
-                items={continueWatchingItems.map(({ movie }) => movie)}
-                onPlay={handlePlay}
-                onDetails={handleDetails}
-                getProgressRatio={(movie) => continueWatchingProgressById.get(movie.id)}
-              />
-            )}
-            {homeCategories.map((category) => {
+            {homeCategories.map((category, index) => {
               const onViewAll = buildViewAll(
                 category,
                 { t, movies, series, anime, categoryTitles, setCategoryType, setCategoryGenre, setCurrentPage, setPath, setView }
               )
               return (
-                <MovieCarousel
-                  key={category.title}
-                  title={category.title}
-                  items={category.items}
-                  onPlay={handlePlay}
-                  onDetails={handleDetails}
-                  onViewAll={onViewAll}
-                />
+                <Fragment key={category.title}>
+                  <MovieCarousel
+                    title={category.title}
+                    items={category.items}
+                    onPlay={handlePlay}
+                    onDetails={handleDetails}
+                    onViewAll={onViewAll}
+                  />
+                  {/* "Continue watching" sits right after the first row (Películas) rather
+                      than above everything, so it doesn't compete with the hero for attention. */}
+                  {index === 0 && continueWatchingItems.length > 0 && (
+                    <MovieCarousel
+                      title={t("home.continue")}
+                      items={continueWatchingItems.map(({ movie }) => movie)}
+                      onPlay={handlePlay}
+                      onDetails={handleDetails}
+                      getProgressRatio={(movie) => continueWatchingProgressById.get(movie.id)}
+                    />
+                  )}
+                </Fragment>
               )
             })}
           </div>

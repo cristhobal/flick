@@ -6,6 +6,7 @@
 // lets LocalVideoPlayer.tsx stay untouched; only this one edge to jassub is cut.
 export function useAssSubtitle(
   _videoRef: React.RefObject<HTMLVideoElement | null>,
+  _canvasRef: React.RefObject<HTMLCanvasElement | null>,
   _subUrl: string | null,
   _fontUrls: string[]
 ): void {}
