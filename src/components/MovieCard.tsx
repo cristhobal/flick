@@ -302,6 +302,11 @@ export default function MovieCard({
                 "linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.97) 12%, rgba(0,0,0,0.88) 24%, rgba(0,0,0,0.74) 36%, rgba(0,0,0,0.56) 48%, rgba(0,0,0,0.38) 60%, rgba(0,0,0,0.22) 72%, rgba(0,0,0,0.1) 84%, rgba(0,0,0,0) 100%)",
             }}
           >
+            {movie.episodeNumber != null && (
+              <p className="line-clamp-1 text-[10px] font-semibold tracking-wide text-[rgba(255,255,255,0.65)] uppercase">
+                {movie.seasonNumber ? `T${movie.seasonNumber} · E${movie.episodeNumber}` : `E${movie.episodeNumber}`}
+              </p>
+            )}
             <p className="line-clamp-1 text-sm font-medium text-[#fff]" title={movie.title}>
               {movie.title}
             </p>

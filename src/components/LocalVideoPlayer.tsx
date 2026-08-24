@@ -171,6 +171,7 @@ export default function LocalVideoPlayer({
 }: LocalVideoPlayerProps) {
   const { t } = useI18n()
   const videoRef = useRef<HTMLVideoElement>(null)
+  const assCanvasRef = useRef<HTMLCanvasElement>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const scrubbingRef = useRef(false)
@@ -386,7 +387,7 @@ export default function LocalVideoPlayer({
       : [],
     [info, relPath]
   )
-  useAssSubtitle(videoRef, assSubUrl, fontUrls)
+  useAssSubtitle(videoRef, assCanvasRef, assSubUrl, fontUrls)
 
   // ---- Next episode: card appears once credits actually start, auto-advance
   // AUTOPLAY_DELAY_S later (or sooner if the video ends first). LocalVideoPlayer
@@ -684,6 +685,10 @@ export default function LocalVideoPlayer({
           />
         ))}
       </video>
+
+      {/* JASSUB (ASS/SSA subtitle renderer) paints into this canvas — kept as a real
+          React child (not spliced in by JASSUB itself) so re-renders never drop it. */}
+      <canvas ref={assCanvasRef} className="pointer-events-none absolute" />
 
       {/* Sound source — hidden, kept in sync with the video above via useMediaSync */}
       <audio ref={audioRef} className="hidden" onVolumeChange={(event) => {
