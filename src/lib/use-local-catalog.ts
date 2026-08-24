@@ -7,7 +7,7 @@
 // import.meta.env.DEV is true — see use-catalog.ts.
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { Movie, Category } from "@/lib/data"
-import { searchMulti, fetchDetail, type TMDbMovie, type TMDbMovieDetail } from "@/lib/tmdb"
+import { searchMulti, fetchDetail, mapGenres, type TMDbMovie, type TMDbMovieDetail } from "@/lib/tmdb"
 import { toMovie, type TMDbState } from "@/lib/use-tmdb"
 import { useI18n } from "@/i18n/I18nProvider"
 import type { Lang } from "@/i18n/translations"
@@ -264,11 +264,49 @@ export function useLocalCatalog(): TMDbState {
     [allMovies]
   )
 
+  // Anything reached from outside the local library (e.g. a filmography credit on
+  // an actor page) is purely informational — pull it straight from TMDB rather than
+  // requiring a matching local file, same as production TMDB mode does.
   const loadDetail = useCallback(
     async (tmdbId: number, type: Movie["type"]): Promise<Movie | null> => {
-      return allMovies.find((movie) => movie.tmdbId === tmdbId && movie.type === type) || null
+      const local = allMovies.find((movie) => movie.tmdbId === tmdbId && movie.type === type)
+      if (local) return local
+      const mediaType = type === "series" || type === "anime" ? "tv" : "movie"
+      try {
+        const detail = await fetchDetail(tmdbId, mediaType, lang)
+        const genreNames = await mapGenres((detail.genres || []).map((g) => g.id), lang)
+        const item: TMDbMovie = {
+          id: tmdbId,
+          title: detail.title,
+          name: detail.name,
+          poster_path: detail.poster_path,
+          backdrop_path: detail.backdrop_path,
+          overview: detail.overview,
+          vote_average: detail.vote_average,
+          release_date: detail.release_date,
+          first_air_date: detail.first_air_date,
+          genre_ids: [],
+          original_language: "",
+          popularity: detail.popularity,
+          media_type: mediaType,
+        }
+        return toMovie(
+          item,
+          detail,
+          genreNames,
+          type,
+          0,
+          undefined,
+          translate("movie.unknown"),
+          translate("movie.fallback"),
+          translate("common.general"),
+          lang
+        )
+      } catch {
+        return null
+      }
     },
-    [allMovies]
+    [allMovies, lang, translate]
   )
 
   return {

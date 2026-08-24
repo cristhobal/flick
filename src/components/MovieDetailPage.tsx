@@ -316,7 +316,11 @@ export default function MovieDetailPage({
   const bgSrc = backdropUrl(movie.backdropPath, "original")
   const posterSrc = posterUrl(movie.posterPath, "w500")
   const isLocalPlayback = movie.trailerUrl?.startsWith("/api/local-video/") ?? false
-  const detailMovie = creativeCredits?.trailerUrl && !isLocalPlayback
+  // In local dev mode, a title reached from outside the library (e.g. a filmography
+  // credit) is informational only — never offer to "play" a YouTube trailer for it,
+  // only an actual local file counts as playable. Production/TMDB mode keeps the
+  // trailer fallback as-is.
+  const detailMovie = creativeCredits?.trailerUrl && !isLocalPlayback && !import.meta.env.DEV
     ? { ...movie, trailerUrl: creativeCredits.trailerUrl }
     : movie
   const canPlay = isPlayableMovie(detailMovie)
