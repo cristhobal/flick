@@ -25,6 +25,9 @@ interface MovieCardProps {
   onPlay?: (movie: Movie) => void
   onDetails?: (movie: Movie) => void
   index?: number
+  // "Continue Watching" progress, 0-1 — draws a thin filled bar along the
+  // poster's bottom edge when set.
+  progressRatio?: number
 }
 
 export default function MovieCard({
@@ -32,6 +35,7 @@ export default function MovieCard({
   onPlay,
   onDetails,
   index = 0,
+  progressRatio,
 }: MovieCardProps) {
   const [showExpanded, setShowExpanded] = useState(false)
   const [isHoveringCard, setIsHoveringCard] = useState(false)
@@ -282,6 +286,13 @@ export default function MovieCard({
             </span>
           )}
 
+          {progressRatio !== undefined && (
+            <span className="absolute top-2 left-2 flex items-center gap-1 rounded-md bg-[rgba(0,0,0,0.6)] px-1.5 py-0.5 text-[9px] font-semibold text-white backdrop-blur-md">
+              <Play className="size-2.5 fill-white" />
+              {t("common.resume")}
+            </span>
+          )}
+
           {/* Bottom scrim + info — always visible, no gradient banding thanks to the
               eased multi-stop rgba gradient instead of a flat black→transparent one. */}
           <div
@@ -303,6 +314,15 @@ export default function MovieCard({
                 {movie.rating}
               </span>
             </div>
+
+            {progressRatio !== undefined && (
+              <div className="mt-2.5 h-[3px] overflow-hidden rounded-full bg-white/20">
+                <div
+                  className="h-full rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.6)]"
+                  style={{ width: `${Math.min(100, Math.max(0, progressRatio * 100))}%` }}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -368,7 +388,7 @@ export default function MovieCard({
                   }}
                 >
                   <Play className="size-4 fill-black" />
-                  {t("common.play")}
+                  {progressRatio !== undefined ? t("common.resume") : t("common.play")}
                 </Button>
               )}
               {movie.description && (

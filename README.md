@@ -138,7 +138,10 @@ Local mode only runs under `pnpm dev`. A Vite dev-only plugin (`scripts/local-me
 DATA_SOURCE=local
 PUBLIC_DATA_SOURCE=local
 
-# Optional — defaults to a hardcoded path in local-media-server.mjs if unset
+# Optional — if unset, Flick looks for a "Peliculas" folder automatically:
+# any drive letter on Windows (D:\Peliculas, E:\Peliculas, ...), mounted
+# volumes on Linux/macOS (/run/media, /media, /mnt, /Volumes), and common
+# home-folder locations (~/Peliculas, ~/Videos/Peliculas, ~/Movies/Peliculas).
 LOCAL_MOVIES_DIR=/path/to/your/movies/library
 ```
 
