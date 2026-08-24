@@ -8,7 +8,7 @@ import FlickTextLoader from "@/components/FlickTextLoader"
 import { Spinner } from "@/components/ui/spinner"
 import { useCatalog } from "@/lib/use-catalog"
 import { getPlayableMovie, type Movie } from "@/lib/data"
-import { categoryPath, contentPath, parseBrowseRoute, parseContentRoute, samePath, sectionPath, slugifyTitle, watchPath, type ParsedContentRoute } from "@/lib/routes"
+import { actorPath, categoryPath, contentPath, creditContentPath, parseActorRoute, parseBrowseRoute, parseContentRoute, samePath, sectionPath, slugifyTitle, watchPath, type ParsedContentRoute } from "@/lib/routes"
 import { useI18n } from "@/i18n/I18nProvider"
 import { translateGenre } from "@/i18n/translations"
 import { useScrollViewport } from "@/lib/scroll-container"
@@ -20,8 +20,9 @@ const PlayerPage = lazyWithReload(() => import("@/components/PlayerPage"))
 const CategoryPage = lazyWithReload(() => import("@/components/CategoryPage"))
 const MovieDetailPage = lazyWithReload(() => import("@/components/MovieDetailPage"))
 const MovieDetailsModal = lazyWithReload(() => import("@/components/MovieDetailsModal"))
+const ActorPage = lazyWithReload(() => import("@/components/ActorPage"))
 
-type PageView = "home" | "search" | "library" | "player" | "category" | "detail"
+type PageView = "home" | "search" | "library" | "player" | "category" | "detail" | "actor"
 
 const HERO_ROTATION_MS = 15_000
 const HERO_EXIT_MS = 720
@@ -141,6 +142,7 @@ export default function HomePage() {
   const [searchResults, setSearchResults] = useState<Movie[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null)
+  const [selectedActorId, setSelectedActorId] = useState<number | null>(null)
   const [pendingContentRoute, setPendingContentRoute] = useState<ParsedContentRoute | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [filterOpen, setFilterOpen] = useState(false)
@@ -335,6 +337,14 @@ export default function HomePage() {
 
   useEffect(() => {
     const applyRoute = () => {
+      const actorRoute = parseActorRoute(window.location.pathname)
+      if (actorRoute) {
+        setSelectedActorId(actorRoute.id)
+        setView("actor")
+        scrollViewport?.scrollTo({ top: 0, behavior: "instant" })
+        return
+      }
+
       const contentRoute = parseContentRoute(window.location.pathname)
       if (contentRoute) {
         const baseItem = allMovies.find((movie) => movie.tmdbId === contentRoute.tmdbId && movie.type === contentRoute.type)
@@ -458,6 +468,31 @@ export default function HomePage() {
     scrollViewport?.scrollTo({ top: 0, behavior: "instant" })
   }, [setPath, trackGenreView, scrollViewport])
 
+  const handleActorClick = useCallback((id: number, name: string) => {
+    setSelectedActorId(id)
+    setView("actor")
+    setPath(actorPath(id, name))
+    scrollViewport?.scrollTo({ top: 0, behavior: "instant" })
+  }, [setPath, scrollViewport])
+
+  // A filmography credit isn't a full local Movie object — find it in the loaded
+  // catalog if it's there, otherwise reuse the same on-demand TMDB fetch the URL
+  // router falls back to for a direct link to something outside the catalog.
+  const handleCreditClick = useCallback((mediaType: "movie" | "tv", id: number, title: string) => {
+    const path = creditContentPath(mediaType, id, title)
+    const route = parseContentRoute(path)
+    if (!route) return
+    setPath(path)
+    const item = allMovies.find((movie) => movie.tmdbId === route.tmdbId && movie.type === route.type)
+    if (item) {
+      setSelectedMovie(item)
+      setView("detail")
+    } else {
+      setPendingContentRoute(route)
+    }
+    scrollViewport?.scrollTo({ top: 0, behavior: "instant" })
+  }, [setPath, scrollViewport, allMovies])
+
 
   const handleFilterReset = useCallback(() => {
     setSelectedGenres([])
@@ -553,6 +588,21 @@ export default function HomePage() {
             onBack={() => goHome()}
             onPlay={handlePlay}
             onMovieClick={handleMovieClick}
+            onActorClick={handleActorClick}
+          />
+        </Suspense>
+      </PageTransition>
+    )
+  }
+
+  if (view === "actor" && selectedActorId) {
+    return (
+      <PageTransition key="actor">
+        <Suspense fallback={<PageFallback />}>
+          <ActorPage
+            actorId={selectedActorId}
+            onBack={() => goHome()}
+            onCreditClick={handleCreditClick}
           />
         </Suspense>
       </PageTransition>

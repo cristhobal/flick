@@ -308,21 +308,54 @@ async function probeTracks(filePath) {
 function streamAudioOnly(res, filePath, audioIndex, startSeconds) {
   const args = [
     "-hide_banner", "-loglevel", "error",
+    // Survive malformed/unusual streams (odd timestamps, truncated frames) instead
+    // of aborting the whole transcode over a single bad packet.
+    "-err_detect", "ignore_err",
+    "-fflags", "+genpts+igndts",
     ...(startSeconds > 0 ? ["-ss", startSeconds.toFixed(3)] : []),
     "-i", filePath,
     "-map", `0:a:${audioIndex}`,
     "-vn", "-sn",
-    "-c:a", "aac", "-ac", "2", "-b:a", "192k",
+    // Force a sample rate AAC always accepts — some sources (48kHz DTS-HD cores,
+    // 44.1kHz commentary tracks, odd downsampled dubs) would otherwise occasionally
+    // produce an encoder we silently couldn't play back.
+    "-ar", "48000", "-ac", "2", "-c:a", "aac", "-b:a", "192k",
     "-avoid_negative_ts", "make_zero",
     "-f", "adts",
     "pipe:1",
   ]
   const child = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] })
-  res.statusCode = 200
-  res.setHeader("Content-Type", "audio/aac")
-  child.stdout.pipe(res)
-  child.stderr.on("data", () => {}) // drain to avoid backpressure on stderr
-  child.on("error", () => { if (!res.headersSent) { res.statusCode = 500 } res.end() })
+  let headersSent = false
+  let stderr = ""
+  const sendHeaders = () => {
+    if (headersSent || res.headersSent) return
+    headersSent = true
+    res.statusCode = 200
+    res.setHeader("Content-Type", "audio/aac")
+  }
+  child.stdout.on("data", (chunk) => {
+    sendHeaders()
+    res.write(chunk)
+  })
+  child.stdout.on("end", () => {
+    sendHeaders() // ffmpeg produced zero bytes but exited 0 — still close the response cleanly
+    res.end()
+  })
+  child.stderr.on("data", (chunk) => { stderr += chunk.toString() })
+  child.on("error", () => {
+    if (!res.headersSent) { res.statusCode = 500 }
+    res.end()
+  })
+  child.on("close", (code) => {
+    // ffmpeg died before producing any audio at all (bad track index, undecodable
+    // codec, corrupt file) — surface a real error instead of a silent empty 200 so
+    // the player can detect it and retry/fall back instead of just staying muted.
+    if (code !== 0 && !headersSent) {
+      res.statusCode = 500
+      res.setHeader("Content-Type", "text/plain")
+      res.end(stderr.slice(0, 500) || `ffmpeg exited with ${code}`)
+    }
+  })
   res.on("close", () => child.kill("SIGKILL"))
 }
 

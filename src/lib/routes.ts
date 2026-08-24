@@ -104,3 +104,23 @@ export function parseBrowseRoute(pathname: string): ParsedBrowseRoute | null {
 export function samePath(path: string): boolean {
   return typeof window !== "undefined" && window.location.pathname === path
 }
+
+export function actorPath(id: number, name: string): string {
+  return `/actor/${id}-${slugifyTitle(name)}`
+}
+
+export function parseActorRoute(pathname: string): { id: number } | null {
+  const parts = pathname.split("/").filter(Boolean)
+  if (parts[0] !== "actor" || !parts[1]) return null
+  const idMatch = parts[1].match(/^(\d+)/)
+  if (!idMatch) return null
+  return { id: Number(idMatch[1]) }
+}
+
+// combined_credits from /person/{id} only distinguishes "movie" vs "tv" — map "tv"
+// to the app's "series" route type since there's no reliable signal there to tell
+// a series from an anime.
+export function creditContentPath(mediaType: "movie" | "tv", id: number, title: string): string {
+  const type: ContentRouteType = mediaType === "tv" ? "series" : "movie"
+  return `${sectionPath(type)}/${id}-${slugifyTitle(title)}`
+}

@@ -14,9 +14,10 @@ const PREVIEW_OPEN_EVENT = "flick:movie-preview-open"
 interface CastCardProps {
   actor: TMDbCast
   index?: number
+  onActorClick?: (id: number, name: string) => void
 }
 
-export default function CastCard({ actor, index = 0 }: CastCardProps) {
+export default function CastCard({ actor, index = 0, onActorClick }: CastCardProps) {
   const [showExpanded, setShowExpanded] = useState(false)
   const [person, setPerson] = useState<TMDbPerson | null>(null)
   const [pos, setPos] = useState({ left: 0, top: 0 })
@@ -208,6 +209,7 @@ export default function CastCard({ actor, index = 0 }: CastCardProps) {
         ref={cardRef}
         onMouseEnter={handleCardEnter}
         onMouseLeave={handleCardLeave}
+        onClick={() => onActorClick?.(actor.id, actor.name)}
         className="w-28 shrink-0 snap-start cursor-pointer sm:w-32"
       >
         <div className="mb-2 aspect-[2/3] overflow-hidden rounded-lg bg-neutral-800">

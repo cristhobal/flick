@@ -199,6 +199,55 @@ export async function fetchPersonDetails(id: number, lang: Lang = "en"): Promise
   }
 }
 
+export interface TMDbPersonCredit {
+  id: number
+  mediaType: "movie" | "tv"
+  title: string
+  character: string
+  posterPath: string | null
+  year: number
+  voteAverage: number
+}
+interface TMDbCombinedCreditsResponse {
+  cast?: {
+    id: number
+    media_type: "movie" | "tv"
+    title?: string
+    name?: string
+    character?: string
+    poster_path: string | null
+    release_date?: string
+    first_air_date?: string
+    vote_average?: number
+  }[]
+}
+export async function fetchPersonCombinedCredits(id: number, lang: Lang = "en"): Promise<TMDbPersonCredit[]> {
+  try {
+    const data = await apiFetch<TMDbCombinedCreditsResponse>(`/person/${id}/combined_credits?language=${locale(lang)}`)
+    const seen = new Set<string>()
+    const credits: TMDbPersonCredit[] = []
+    for (const item of data.cast || []) {
+      if (item.media_type !== "movie" && item.media_type !== "tv") continue
+      const key = `${item.media_type}-${item.id}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      const date = item.release_date || item.first_air_date || ""
+      credits.push({
+        id: item.id,
+        mediaType: item.media_type,
+        title: item.title || item.name || "",
+        character: item.character || "",
+        posterPath: item.poster_path,
+        year: date ? Number(date.slice(0, 4)) || 0 : 0,
+        voteAverage: item.vote_average || 0,
+      })
+    }
+    return credits.sort((a, b) => b.year - a.year)
+  } catch {
+    return []
+  }
+}
+
 export interface TMDbEpisode {
   id: number
   name: string
