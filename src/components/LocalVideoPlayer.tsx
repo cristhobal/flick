@@ -156,8 +156,17 @@ export default function LocalVideoPlayer({ src, title }: LocalVideoPlayerProps) 
   useEffect(() => {
     selectedAudioRef.current = selectedAudio
   }, [selectedAudio])
+  const audioOptionsRef = useRef<Track[]>([])
+  useEffect(() => {
+    audioOptionsRef.current = info?.audioTracks || []
+  }, [info])
 
-  const reloadAudio = useCallback((absoluteSeconds: number, trackIndex: number) => {
+  // Some source files fail to transcode on the first attempt (a transient ffmpeg
+  // hiccup, or a track/codec the server can't decode) and the <audio> element would
+  // otherwise just sit there forever with no sound and no indication anything went
+  // wrong. Retry once, and if that also fails, fall back to any other available
+  // track so the movie is never silently mute.
+  const reloadAudio = useCallback((absoluteSeconds: number, trackIndex: number, isRetry = false) => {
     const audio = audioRef.current
     if (!audio || !relPath) return
     const generation = ++audioGenerationRef.current
@@ -167,11 +176,28 @@ export default function LocalVideoPlayer({ src, title }: LocalVideoPlayerProps) 
     audio.load()
     const onReady = () => {
       if (audioGenerationRef.current !== generation) return // a newer switch/seek already won
+      audio.removeEventListener("error", onError)
       audioOffsetRef.current = start
       const video = videoRef.current
       if (video && !video.paused) audio.play().catch(() => {})
     }
+    const onError = () => {
+      if (audioGenerationRef.current !== generation) return
+      audio.removeEventListener("canplay", onReady)
+      if (!isRetry) {
+        window.setTimeout(() => {
+          if (audioGenerationRef.current === generation) reloadAudio(absoluteSeconds, trackIndex, true)
+        }, 500)
+        return
+      }
+      const fallback = audioOptionsRef.current.find((track) => track.index !== trackIndex)
+      if (fallback) {
+        setSelectedAudio(fallback.index)
+        reloadAudio(absoluteSeconds, fallback.index)
+      }
+    }
     audio.addEventListener("canplay", onReady, { once: true })
+    audio.addEventListener("error", onError, { once: true })
   }, [relPath])
 
   useMediaSync(videoRef, audioRef, audioOffsetRef, true, debugSync)
@@ -200,6 +226,46 @@ export default function LocalVideoPlayer({ src, title }: LocalVideoPlayerProps) 
       video.removeEventListener("seeking", onSeeking)
       video.removeEventListener("seeked", onSeeked)
       if (debounceId !== null) window.clearTimeout(debounceId)
+    }
+  }, [reloadAudio])
+
+  // Watchdog for the audio stream itself: after a large seek, or if the ffmpeg
+  // transcode falls behind / dies partway through (the file lives on an external
+  // drive, so a big jump means a real disk seek), the <audio> element can stall or
+  // end early while the <video> (a plain static file) keeps playing fine. Nothing
+  // else would ever notice, so the movie would just go silent for good. If the
+  // audio stalls or ends while the video is still playing, request a fresh stream
+  // from the current position.
+  useEffect(() => {
+    const video = videoRef.current
+    const audio = audioRef.current
+    if (!video || !audio) return
+    let recoverTimer: number | null = null
+    const scheduleRecover = () => {
+      if (recoverTimer !== null) return
+      recoverTimer = window.setTimeout(() => {
+        recoverTimer = null
+        if (!audioInitializedRef.current || video.paused || video.seeking) return
+        reloadAudio(video.currentTime, selectedAudioRef.current)
+      }, 600)
+    }
+    const cancelRecover = () => {
+      if (recoverTimer !== null) {
+        window.clearTimeout(recoverTimer)
+        recoverTimer = null
+      }
+    }
+    const onStalled = () => scheduleRecover()
+    const onAudioEnded = () => scheduleRecover()
+    const onAudioPlaying = () => cancelRecover()
+    audio.addEventListener("stalled", onStalled)
+    audio.addEventListener("ended", onAudioEnded)
+    audio.addEventListener("playing", onAudioPlaying)
+    return () => {
+      cancelRecover()
+      audio.removeEventListener("stalled", onStalled)
+      audio.removeEventListener("ended", onAudioEnded)
+      audio.removeEventListener("playing", onAudioPlaying)
     }
   }, [reloadAudio])
 
@@ -419,7 +485,7 @@ export default function LocalVideoPlayer({ src, title }: LocalVideoPlayerProps) 
           <button
             onClick={() => skip(-SKIP_SECONDS)}
             aria-label={`-${SKIP_SECONDS}s`}
-            className="group/skip pointer-events-auto flex size-11 items-center justify-center rounded-full border border-white/5 bg-white/10 text-white/90 shadow-lg backdrop-blur-xl transition-all hover:scale-105 hover:bg-white/20 hover:text-white active:scale-95 sm:size-12"
+            className="group/skip pointer-events-auto flex size-11 cursor-pointer items-center justify-center rounded-full bg-white/[0.04] text-white/90 shadow-lg backdrop-blur-sm transition-all hover:scale-105 hover:bg-white/15 hover:text-white active:scale-95 sm:size-12"
           >
             <RotateCcw className="size-5" />
           </button>
@@ -427,7 +493,7 @@ export default function LocalVideoPlayer({ src, title }: LocalVideoPlayerProps) 
           <button
             onClick={togglePlay}
             aria-label="Play/Pause"
-            className="pointer-events-auto flex size-16 items-center justify-center rounded-full border border-white/10 bg-white/10 text-white shadow-xl backdrop-blur-xl transition-all hover:scale-105 hover:bg-white/20 active:scale-95 sm:size-20"
+            className="pointer-events-auto flex size-16 cursor-pointer items-center justify-center rounded-full bg-white/[0.04] text-white shadow-xl backdrop-blur-sm transition-all hover:scale-105 hover:bg-white/15 active:scale-95 sm:size-20"
           >
             {playing ? (
               <Pause className="size-7 sm:size-8" fill="currentColor" />
@@ -439,7 +505,7 @@ export default function LocalVideoPlayer({ src, title }: LocalVideoPlayerProps) 
           <button
             onClick={() => skip(SKIP_SECONDS)}
             aria-label={`+${SKIP_SECONDS}s`}
-            className="group/skip pointer-events-auto flex size-11 items-center justify-center rounded-full border border-white/5 bg-white/10 text-white/90 shadow-lg backdrop-blur-xl transition-all hover:scale-105 hover:bg-white/20 hover:text-white active:scale-95 sm:size-12"
+            className="group/skip pointer-events-auto flex size-11 cursor-pointer items-center justify-center rounded-full bg-white/[0.04] text-white/90 shadow-lg backdrop-blur-sm transition-all hover:scale-105 hover:bg-white/15 hover:text-white active:scale-95 sm:size-12"
           >
             <RotateCw className="size-5" />
           </button>

@@ -97,6 +97,7 @@ interface MovieDetailPageProps {
   onBack: () => void
   onPlay: (movie: Movie) => void
   onMovieClick: (movie: Movie) => void
+  onActorClick?: (id: number, name: string) => void
 }
 
 export default function MovieDetailPage({
@@ -105,6 +106,7 @@ export default function MovieDetailPage({
   onBack,
   onPlay,
   onMovieClick,
+  onActorClick,
 }: MovieDetailPageProps) {
   const [imgLoaded, setImgLoaded] = useState(false)
   const { lang, t } = useI18n()
@@ -788,7 +790,7 @@ export default function MovieDetailPage({
                 className="hide-scrollbar flex flex-nowrap gap-4 overflow-x-auto pb-2 scroll-smooth"
               >
           {cast.map((actor) => (
-            <CastCard key={actor.id} actor={actor} index={actor.order} />
+            <CastCard key={actor.id} actor={actor} index={actor.order} onActorClick={onActorClick} />
           ))}
               </div>
               <div className="pointer-events-none absolute top-0 right-0 bottom-0 z-10 flex w-12 items-center justify-end opacity-0 transition-all duration-500 group-hover/row:opacity-100 sm:pointer-events-auto" style={{ opacity: canCastScrollRight ? undefined : 0, pointerEvents: canCastScrollRight ? undefined : "none" }}>
