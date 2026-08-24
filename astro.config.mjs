@@ -30,12 +30,45 @@ function assRendererProdStubPlugin() {
   }
 }
 
+// In production, vercel.json rewrites every non-asset path to `/` so a hard refresh
+// or direct link on a client-only route (e.g. /watch/series/...) still boots the SPA
+// shell instead of a host-level 404. `astro dev` has no such rewrite in front of it —
+// this mirrors it for local dev only, since output: "static" has no adapter/SSR
+// route to serve those paths itself.
+function spaFallbackDevPlugin() {
+  /** @type {import("vite").Plugin} */
+  const plugin = {
+    name: "flick-spa-fallback-dev",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.method !== "GET" && req.method !== "HEAD") return next()
+        const url = req.url || ""
+        if (
+          url.startsWith("/api/") ||
+          url.startsWith("/@") ||
+          url.startsWith("/src/") ||
+          url.startsWith("/node_modules/") ||
+          url.startsWith("/.well-known/")
+        ) {
+          return next()
+        }
+        // A real static file (asset, favicon, source map, ...) — leave it to Vite.
+        if (/\.[a-zA-Z0-9]+($|\?)/.test(url)) return next()
+        req.url = "/"
+        next()
+      })
+    },
+  }
+  return plugin
+}
+
 export default defineConfig({
   output: "static",
   vite: {
-    // localMediaDevPlugin uses apply: "serve", so it only attaches to `astro dev`
-    // and is fully absent from `astro build` / the production bundle.
-    plugins: [tailwindcss(), localMediaDevPlugin(), assRendererProdStubPlugin()],
+    // localMediaDevPlugin and spaFallbackDevPlugin both use apply: "serve", so they
+    // only attach to `astro dev` and are fully absent from `astro build` / prod.
+    plugins: [tailwindcss(), localMediaDevPlugin(), assRendererProdStubPlugin(), spaFallbackDevPlugin()],
   },
   integrations: [react()],
 })

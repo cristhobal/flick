@@ -377,10 +377,14 @@
   /* Skips layout/paint for offscreen poster cards in long carousels and
      grids (home rows, category/search grids can mount 100+ cards at once).
      `auto` on the inline axis keeps the grid/flex-assigned width; the block
-     estimate is only used until the card is first measured. */
+     estimate is only used until the card is first measured. Must track the
+     card widths in MovieCarousel.tsx (aspect-[2/3] poster, so height = width
+     * 1.5) — a taller-than-real placeholder inflates the whole flex row's
+     height for every card scrolled off-screen to the right, not just the
+     skipped one, which showed up as a large empty gap below mobile rows. */
   .cv-card {
     content-visibility: auto;
-    contain-intrinsic-size: auto 320px;
+    contain-intrinsic-size: auto 210px;
   }
 
   .responsive-episode-grid {
@@ -425,6 +429,25 @@
     overflow-wrap: anywhere;
     word-break: normal;
   }
+
+  /* Smooth open/close for content whose height isn't known ahead of time (an
+     expandable episode list, an accordion section, ...). Animates
+     grid-template-rows between 0fr and 1fr instead of guessing a max-height, so
+     it always matches the real content — stays mounted (and lazy-loaded images
+     inside stay unloaded) while collapsed rather than unmounting, which is what
+     lets it animate on the way back out too. */
+  .collapsible-rows {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 280ms var(--ease-decel);
+  }
+  .collapsible-rows[data-open="true"] {
+    grid-template-rows: 1fr;
+  }
+  .collapsible-rows > .collapsible-rows-inner {
+    overflow: hidden;
+    min-height: 0;
+  }
   @media (min-width: 640px) {
     .content-container {
       padding-inline: 1.5rem;
@@ -438,6 +461,16 @@
       grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
       gap: 1rem;
     }
+
+    .cv-card {
+      contain-intrinsic-size: auto 240px;
+    }
+  }
+
+  @media (min-width: 768px) {
+    .cv-card {
+      contain-intrinsic-size: auto 270px;
+    }
   }
 
   @media (min-width: 1024px) {
@@ -448,11 +481,25 @@
     .responsive-card-grid {
       grid-template-columns: repeat(auto-fill, minmax(11.25rem, 1fr));
     }
+
+    .cv-card {
+      contain-intrinsic-size: auto 300px;
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .cv-card {
+      contain-intrinsic-size: auto 315px;
+    }
   }
 
   @media (min-width: 1536px) {
     .responsive-card-grid {
       grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+    }
+
+    .cv-card {
+      contain-intrinsic-size: auto 330px;
     }
   }
 

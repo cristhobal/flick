@@ -58,7 +58,19 @@ export function useMediaSync(
 
     const onPlay = () => resumeIfPlaying()
     const onPause = () => audio.pause()
-    const onWaiting = () => audio.pause()
+    // Chromium throttles decode on a <video> that's both muted and not visible
+    // (backgrounded/minimized tab) to save power — since this video is always
+    // muted (it's just the sync clock; real sound is `audio`), that throttling
+    // makes it stall and refire "waiting" repeatedly even though nothing is
+    // actually broken. Pausing the real, audible audio track in response would
+    // silence playback for the whole time the tab is hidden. Audio elements
+    // aren't subject to that same throttling, so just let it keep playing —
+    // onTimeUpdate's hard-drift correction resyncs it in one tick once the tab
+    // is visible again and the video's timeupdate events resume.
+    const onWaiting = () => {
+      if (document.hidden) return
+      audio.pause()
+    }
     const onPlaying = () => resumeIfPlaying()
     const onRateChange = () => {
       if (!softCorrecting) audio.playbackRate = video.playbackRate

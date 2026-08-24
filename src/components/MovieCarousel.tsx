@@ -14,6 +14,8 @@ interface MovieCarouselProps {
   onPlay?: (movie: Movie) => void
   onDetails?: (movie: Movie) => void
   onViewAll?: () => void
+  // "Continue Watching" progress bar per card — undefined/omitted means no bar.
+  getProgressRatio?: (movie: Movie) => number | undefined
 }
 
 export default function MovieCarousel({
@@ -22,6 +24,7 @@ export default function MovieCarousel({
   onPlay,
   onDetails,
   onViewAll,
+  getProgressRatio,
 }: MovieCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const { canScrollLeft, canScrollRight, ref: scrollStateRef } = useScrollState()
@@ -69,7 +72,7 @@ export default function MovieCarousel({
 
         <div
           ref={(node) => { scrollRef.current = node; scrollStateRef(node) }}
-          className="hide-scrollbar flex flex-nowrap gap-2 overflow-x-auto pb-4 scroll-smooth sm:gap-3"
+          className="hide-scrollbar flex flex-nowrap gap-2 overflow-x-auto pb-2 scroll-smooth sm:gap-3 sm:pb-4"
         >
           {items.map((movie, i) => (
             <div
@@ -81,6 +84,7 @@ export default function MovieCarousel({
                 onPlay={onPlay}
                 onDetails={onDetails}
                 index={i}
+                progressRatio={getProgressRatio?.(movie)}
               />
             </div>
           ))}

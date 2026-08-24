@@ -7,7 +7,7 @@
 // import.meta.env.DEV is true — see use-catalog.ts.
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { Movie, Category } from "@/lib/data"
-import { searchMulti, fetchDetail, mapGenres, type TMDbMovie, type TMDbMovieDetail } from "@/lib/tmdb"
+import { searchMulti, fetchDetail, fetchTvSeasonEpisodes, mapGenres, type TMDbMovie, type TMDbMovieDetail, type TMDbEpisode } from "@/lib/tmdb"
 import { toMovie, type TMDbState } from "@/lib/use-tmdb"
 import { useI18n } from "@/i18n/I18nProvider"
 import type { Lang } from "@/i18n/translations"
@@ -123,13 +123,41 @@ async function buildMovie(
   return { ...movie, year: local.year || movie.year }
 }
 
-function buildEpisodeMovie(parent: Movie, ep: LocalEpisodeEntry): Movie {
+// One TMDB season fetch per season present in the local file set (usually just
+// one), so each local episode can carry its real still/overview/runtime instead
+// of falling back to the show's own poster and synopsis for every episode.
+async function fetchEpisodesBySeason(
+  tmdbId: number,
+  seasons: number[],
+  lang: Lang
+): Promise<Map<number, Map<number, TMDbEpisode>>> {
+  const bySeasonNumber = new Map<number, Map<number, TMDbEpisode>>()
+  await Promise.all(
+    seasons.map(async (season) => {
+      const episodes = await fetchTvSeasonEpisodes(tmdbId, season, lang)
+      if (episodes.length === 0) return
+      const byEpisodeNumber = new Map(episodes.map((episode) => [episode.episode_number, episode]))
+      bySeasonNumber.set(season, byEpisodeNumber)
+    })
+  )
+  return bySeasonNumber
+}
+
+function buildEpisodeMovie(parent: Movie, ep: LocalEpisodeEntry, tmdbEpisode?: TMDbEpisode): Movie {
+  const overview = tmdbEpisode?.overview || ""
+  const stillPath = tmdbEpisode?.still_path || null
   return {
     ...parent,
     id: `${parent.id}-s${ep.season}e${ep.episode}`,
+    seriesTitle: parent.title,
     episodeTitle: ep.title,
     episodeNumber: ep.episode,
     seasonNumber: ep.season,
+    ...(overview ? { description: overview, longDescription: overview, episodeSynopsis: overview } : {}),
+    ...(tmdbEpisode?.runtime ? { duration: `${tmdbEpisode.runtime}m`, durationSeconds: tmdbEpisode.runtime * 60 } : {}),
+    ...(tmdbEpisode?.vote_average ? { rating: Math.round(tmdbEpisode.vote_average * 10) / 10 } : {}),
+    posterPath: stillPath || parent.posterPath,
+    backdropPath: stillPath || parent.backdropPath,
     trailerUrl: localVideoUrl(ep.relPath),
     seriesEpisodes: undefined,
     seasonList: undefined,
@@ -168,8 +196,13 @@ async function buildShow(
     lang
   )
   const withYear = { ...base, year: local.year || base.year }
-  const seriesEpisodes = local.episodes.map((ep) => buildEpisodeMovie(withYear, ep))
   const seasons = [...new Set(local.episodes.map((ep) => ep.season))].sort((a, b) => a - b)
+  const tmdbEpisodesBySeason = match
+    ? await fetchEpisodesBySeason(match.id, seasons, lang).catch(() => new Map<number, Map<number, TMDbEpisode>>())
+    : new Map<number, Map<number, TMDbEpisode>>()
+  const seriesEpisodes = local.episodes.map((ep) =>
+    buildEpisodeMovie(withYear, ep, tmdbEpisodesBySeason.get(ep.season)?.get(ep.episode))
+  )
   const seasonList = seasons.map((season) => ({
     season,
     title: `${translate("common.season")} ${season}`,

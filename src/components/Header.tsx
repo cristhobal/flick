@@ -224,19 +224,19 @@ export default function Header({
                 <Menu className="size-5" />
               </Button>
             </DrawerTrigger>
-            <DrawerContent className="inset-y-0 left-0 h-full w-[72vw] max-w-[260px] overflow-hidden rounded-none border-r border-sidebar-border bg-sidebar p-0 text-sidebar-foreground shadow-[var(--drawer-shadow)]">
+            <DrawerContent className="inset-y-0 left-0 flex h-full w-[78vw] max-w-[280px] flex-col overflow-hidden rounded-none border-r border-sidebar-border bg-sidebar p-0 text-sidebar-foreground shadow-[var(--drawer-shadow)]">
               {/* Header */}
-              <DrawerHeader className="px-6 pt-8 pb-6">
+              <DrawerHeader className="shrink-0 border-b border-sidebar-border/60 px-5 pt-7 pb-5">
                 <div className="flex items-center justify-between">
-                  <DrawerTitle className="text-lg font-bold tracking-tighter text-sidebar-foreground">
+                  <DrawerTitle className="text-xl font-bold tracking-tighter text-sidebar-foreground">
                     flick
                   </DrawerTitle>
                   <DrawerClose asChild>
                     <button
-                      className="flex size-7 cursor-pointer items-center justify-center rounded-full text-sidebar-foreground/60 transition-colors hover:text-sidebar-foreground"
+                      className="flex size-8 cursor-pointer items-center justify-center rounded-full text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                       aria-label="Cerrar menu"
                     >
-                      <X className="size-3.5" />
+                      <X className="size-4" />
                     </button>
                   </DrawerClose>
                 </div>
@@ -246,46 +246,47 @@ export default function Header({
               </DrawerHeader>
 
               {/* Nav */}
-              <nav className="flex flex-col gap-0.5 px-3">
-                {navLinks.map((link) => (
-                  <button
-                    key={link.id}
-                    disabled={link.disabled}
-                    title={link.disabled ? t("common.availableSoon") : undefined}
-                    onClick={() => {
-                      onNavigate?.(link.id)
-                      setMobileMenuOpen(false)
-                    }}
-                    className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-150 cursor-pointer ${
-                      link.disabled
-                        ? "cursor-not-allowed opacity-25"
-                        : currentPage === link.id
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : "text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                    }`}
-                  >
-                    <link.icon
-                      className={`size-4 shrink-0 transition-colors ${
-                        currentPage === link.id
-                          ? "text-sidebar-accent-foreground"
-                          : "text-sidebar-foreground/40 group-hover:text-sidebar-foreground/80"
+              <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
+                {navLinks.map((link) => {
+                  const active = currentPage === link.id
+                  return (
+                    <button
+                      key={link.id}
+                      disabled={link.disabled}
+                      title={link.disabled ? t("common.availableSoon") : undefined}
+                      onClick={() => {
+                        onNavigate?.(link.id)
+                        setMobileMenuOpen(false)
+                      }}
+                      className={`group flex items-center gap-3 rounded-lg px-3 py-3 text-sm transition-all duration-150 cursor-pointer ${
+                        link.disabled
+                          ? "cursor-not-allowed opacity-25"
+                          : active
+                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                            : "text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                       }`}
-                    />
-                    <span className="min-w-0 flex-1 truncate text-left font-medium">
-                      {link.label}
-                    </span>
-                    {currentPage === link.id && (
-                      <span className="size-1 shrink-0 rounded-full bg-sidebar-accent-foreground/40" />
-                    )}
-                  </button>
-                ))}
+                    >
+                      <span
+                        className={`flex size-8 shrink-0 items-center justify-center rounded-md transition-colors ${
+                          active
+                            ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                            : "bg-sidebar-accent/40 text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80"
+                        }`}
+                      >
+                        <link.icon className="size-4" />
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-left font-medium">
+                        {link.label}
+                      </span>
+                    </button>
+                  )
+                })}
               </nav>
 
-              {/* Footer line */}
-              <div className="absolute bottom-8 left-6 right-6">
-                <div className="h-px bg-sidebar-border" />
-                <p className="mt-4 text-[10px] font-medium uppercase tracking-[0.18em] text-sidebar-foreground/40">
-                  {t("nav.main")}
+              {/* Footer */}
+              <div className="shrink-0 border-t border-sidebar-border/60 px-5 py-4">
+                <p className="text-[11px] font-medium text-sidebar-foreground/35">
+                  flick &middot; {new Date().getFullYear()}
                 </p>
               </div>
             </DrawerContent>

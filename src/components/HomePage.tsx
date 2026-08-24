@@ -8,6 +8,7 @@ import FlickTextLoader from "@/components/FlickTextLoader"
 import { Spinner } from "@/components/ui/spinner"
 import { useCatalog } from "@/lib/use-catalog"
 import { getPlayableMovie, type Movie } from "@/lib/data"
+import { listWatchProgress } from "@/lib/watch-progress"
 import { actorPath, categoryPath, contentPath, creditContentPath, parseActorRoute, parseBrowseRoute, parseContentRoute, samePath, sectionPath, slugifyTitle, watchPath, type ParsedContentRoute } from "@/lib/routes"
 import { useI18n } from "@/i18n/I18nProvider"
 import { translateGenre } from "@/i18n/translations"
@@ -28,6 +29,18 @@ const HERO_ROTATION_MS = 15_000
 const HERO_EXIT_MS = 720
 const HERO_MIN_RATING = 6.5
 
+
+// Resolves a watch-progress entry's id back to the actual playable Movie —
+// either a standalone catalog item, or one specific episode nested inside a
+// series/anime's seriesEpisodes.
+function findPlayableById(allMovies: Movie[], id: string): Movie | null {
+  for (const item of allMovies) {
+    if (item.id === id) return item
+    const episode = item.seriesEpisodes?.find((ep) => ep.id === id)
+    if (episode) return episode
+  }
+  return null
+}
 
 interface ViewAllCtx {
   t: (key: string) => string
@@ -153,6 +166,29 @@ export default function HomePage() {
   const [heroMovieId, setHeroMovieId] = useState<string | null>(null)
   const [visibleHero, setVisibleHero] = useState<Movie | null>(null)
   const [exitingHero, setExitingHero] = useState<Movie | null>(null)
+  const [watchProgressEntries, setWatchProgressEntries] = useState<ReturnType<typeof listWatchProgress>>([])
+
+  // Re-read progress every time the user lands back on the home view (e.g.
+  // after watching something) so "Continue Watching" reflects the latest
+  // position without needing a full page reload.
+  useEffect(() => {
+    if (view === "home") setWatchProgressEntries(listWatchProgress())
+  }, [view])
+
+  const continueWatchingItems = useMemo(() => {
+    return watchProgressEntries
+      .map((entry) => {
+        const movie = findPlayableById(allMovies, entry.id)
+        if (!movie) return null
+        return { movie, progressRatio: entry.duration > 0 ? entry.currentTime / entry.duration : 0 }
+      })
+      .filter((item): item is { movie: Movie; progressRatio: number } => item !== null)
+  }, [watchProgressEntries, allMovies])
+
+  const continueWatchingProgressById = useMemo(
+    () => new Map(continueWatchingItems.map(({ movie, progressRatio }) => [movie.id, progressRatio])),
+    [continueWatchingItems]
+  )
 
   const setPath = useCallback((path: string, replace = false) => {
     if (typeof window === "undefined" || samePath(path)) return
@@ -615,8 +651,8 @@ export default function HomePage() {
         <Suspense fallback={<PageFallback />}>
           <PlayerPage
             movie={selectedMovie}
-            related={relatedMovies}
             episodes={episodeList}
+            seriesId={selectedSeries?.id}
             onBack={() => goHome()}
             onPlayMovie={handlePlay}
           />
@@ -748,7 +784,16 @@ export default function HomePage() {
             </div>
           )}
 
-          <div className="relative z-20 -mt-12 space-y-8 sm:-mt-14 sm:space-y-10">
+          <div className="relative z-20 -mt-12 space-y-5 sm:-mt-14 sm:space-y-10">
+            {continueWatchingItems.length > 0 && (
+              <MovieCarousel
+                title={t("home.continue")}
+                items={continueWatchingItems.map(({ movie }) => movie)}
+                onPlay={handlePlay}
+                onDetails={handleDetails}
+                getProgressRatio={(movie) => continueWatchingProgressById.get(movie.id)}
+              />
+            )}
             {homeCategories.map((category) => {
               const onViewAll = buildViewAll(
                 category,
