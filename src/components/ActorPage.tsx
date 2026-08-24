@@ -115,13 +115,14 @@ export default function ActorPage({ actorId, onBack, onCreditClick }: ActorPageP
                       onClick={() => onCreditClick(credit.mediaType, credit.id, credit.title)}
                       className="group cursor-pointer text-left"
                     >
-                      <div className="aspect-[2/3] w-full overflow-hidden rounded-md bg-neutral-900 shadow-md ring-1 ring-white/10 transition-transform duration-300 group-hover:scale-105">
+                      <div className="relative aspect-[2/3] w-full overflow-hidden rounded-md bg-neutral-900 shadow-md ring-1 ring-white/10">
                         <img
                           src={`${IMG_URL}/w342${credit.posterPath}`}
                           alt={credit.title}
-                          className="h-full w-full object-cover"
+                          className="h-full w-full object-cover transition-transform duration-500 ease-out will-change-transform group-hover:scale-105"
                           loading="lazy"
                         />
+                        <div className="absolute inset-0 bg-[rgba(0,0,0,0.45)] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                       </div>
                       <p className="mt-1.5 line-clamp-1 text-xs font-medium text-white">{credit.title}</p>
                       <p className="text-[11px] text-neutral-500">
