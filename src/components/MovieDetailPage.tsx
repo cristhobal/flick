@@ -24,6 +24,7 @@ import type { TMDbCast, TMDbCreativeCredits, TMDbEpisodeGroupSeason } from "@/li
 import { useI18n } from "@/i18n/I18nProvider"
 import { displayLanguage, translateGenre } from "@/i18n/translations"
 import { useScrollState } from "@/hooks/useScrollState"
+import { useWatchState } from "@/lib/use-watch-state"
 import {
   ChevronLeft,
   ChevronRight,
@@ -324,6 +325,7 @@ export default function MovieDetailPage({
     ? { ...movie, trailerUrl: creativeCredits.trailerUrl }
     : movie
   const canPlay = isPlayableMovie(detailMovie)
+  const watchState = useWatchState(detailMovie.id)
   const detailRuntime = creativeCredits?.detail?.runtime
     || creativeCredits?.detail?.episode_run_time?.find((minutes) => minutes > 0)
     || creativeCredits?.detail?.last_episode_to_air?.runtime
@@ -562,7 +564,7 @@ export default function MovieDetailPage({
                     onClick={() => onPlay(detailMovie)}
                   >
                     <Play className="size-4 fill-black sm:size-5" />
-                    {t("common.play")}
+                    {watchState.inProgress ? t("common.resume") : t("common.play")}
                   </Button>
                 )}
               </div>
@@ -726,7 +728,7 @@ export default function MovieDetailPage({
                 className="hide-scrollbar flex flex-nowrap gap-4 overflow-x-auto pb-2 scroll-smooth"
               >
                 {screenshots.map((path, index) => (
-                  <ScreenshotLightbox key={path} screenshots={screenshots} initialIndex={index}>
+                  <ScreenshotLightbox key={`${path}-${index}`} screenshots={screenshots} initialIndex={index}>
                     <div className="w-[260px] shrink-0 snap-start sm:w-[320px] lg:w-[400px]">
                       <div className="aspect-video overflow-hidden rounded-lg bg-neutral-800 transition-opacity hover:opacity-90">
                         <img

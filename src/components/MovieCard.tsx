@@ -16,6 +16,7 @@ import {
 } from "@/lib/data"
 import { fetchDetailWithVideos } from "@/lib/tmdb"
 import { useScrollViewport } from "@/lib/scroll-container"
+import { useWatchState } from "@/lib/use-watch-state"
 
 
 const PREVIEW_OPEN_EVENT = "flick:movie-preview-open"
@@ -35,7 +36,7 @@ export default function MovieCard({
   onPlay,
   onDetails,
   index = 0,
-  progressRatio,
+  progressRatio: progressRatioProp,
 }: MovieCardProps) {
   const [showExpanded, setShowExpanded] = useState(false)
   const [isHoveringCard, setIsHoveringCard] = useState(false)
@@ -232,6 +233,11 @@ export default function MovieCard({
     ? { ...movie, trailerUrl: resolvedTrailerUrl }
     : movie
   const canPlay = isPlayableMovie(playableMovie)
+  // The "Continue Watching" row passes an authoritative ratio; everywhere else,
+  // fall back to this title's own stored progress so the card and its button
+  // read "Reanudar" wherever the title appears, not just in that one row.
+  const ownWatchState = useWatchState(progressRatioProp === undefined ? movie.id : null)
+  const progressRatio = progressRatioProp ?? (ownWatchState.inProgress ? ownWatchState.ratio : undefined)
   const seasonCount = Math.max(movie.seasons || 0, movie.totalSeasons || 0, movie.seasonList?.length || 0)
   const episodeCount = movie.episodes || movie.seriesEpisodes?.length || 0
   const episodeInfo = episodeCount

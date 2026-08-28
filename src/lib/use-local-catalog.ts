@@ -143,12 +143,20 @@ async function fetchEpisodesBySeason(
   return bySeasonNumber
 }
 
-function buildEpisodeMovie(parent: Movie, ep: LocalEpisodeEntry, tmdbEpisode?: TMDbEpisode): Movie {
+function buildEpisodeMovie(
+  parent: Movie,
+  ep: LocalEpisodeEntry,
+  tmdbEpisode?: TMDbEpisode,
+  // Disambiguator for the rare case two files resolve to the same season/episode
+  // (e.g. a ".5" special a stricter filename parser folded into the base number).
+  // Empty for the first/only file at that number — keeps existing ids stable.
+  idSuffix = ""
+): Movie {
   const overview = tmdbEpisode?.overview || ""
   const stillPath = tmdbEpisode?.still_path || null
   return {
     ...parent,
-    id: `${parent.id}-s${ep.season}e${ep.episode}`,
+    id: `${parent.id}-s${ep.season}e${ep.episode}${idSuffix}`,
     seriesTitle: parent.title,
     episodeTitle: ep.title,
     episodeNumber: ep.episode,
@@ -197,12 +205,29 @@ async function buildShow(
   )
   const withYear = { ...base, year: local.year || base.year }
   const seasons = [...new Set(local.episodes.map((ep) => ep.season))].sort((a, b) => a - b)
+  // Only ask TMDB for seasons it actually lists — a local "Temporada 2" folder
+  // for a show TMDB only has one season of would otherwise fire a guaranteed
+  // 404 (noisy in the console, though already caught). Those episodes still get
+  // built, just with the show's own art/synopsis instead of per-episode data.
+  const tmdbSeasonNumbers = new Set((detail?.seasons || []).map((s) => s.season_number))
+  const seasonsToFetch = tmdbSeasonNumbers.size > 0
+    ? seasons.filter((s) => tmdbSeasonNumbers.has(s))
+    : seasons
   const tmdbEpisodesBySeason = match
-    ? await fetchEpisodesBySeason(match.id, seasons, lang).catch(() => new Map<number, Map<number, TMDbEpisode>>())
+    ? await fetchEpisodesBySeason(match.id, seasonsToFetch, lang).catch(() => new Map<number, Map<number, TMDbEpisode>>())
     : new Map<number, Map<number, TMDbEpisode>>()
-  const seriesEpisodes = local.episodes.map((ep) =>
-    buildEpisodeMovie(withYear, ep, tmdbEpisodesBySeason.get(ep.season)?.get(ep.episode))
-  )
+  const episodeNumberSeen = new Map<string, number>()
+  const seriesEpisodes = local.episodes.map((ep) => {
+    const key = `${ep.season}-${ep.episode}`
+    const seen = episodeNumberSeen.get(key) ?? 0
+    episodeNumberSeen.set(key, seen + 1)
+    return buildEpisodeMovie(
+      withYear,
+      ep,
+      tmdbEpisodesBySeason.get(ep.season)?.get(ep.episode),
+      seen === 0 ? "" : `-${seen + 1}`
+    )
+  })
   const seasonList = seasons.map((season) => ({
     season,
     title: `${translate("common.season")} ${season}`,

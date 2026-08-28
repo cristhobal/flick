@@ -11,15 +11,27 @@
 // stream's zero-point corresponds to — and always reasons in "absolute" time as
 // `offsetRef.current + audio.currentTime`.
 //
+// Background-tab behaviour (the "why is it not seamless like YouTube" problem):
+// Chromium throttles — and often outright pauses — a *muted* <video> in a hidden
+// tab to save power. Our video is always muted (it's just the clock; real sound is
+// `audio`, which stays audible and is therefore never throttled). So the model is:
+//   - The audio element is the source of truth for "where playback actually is".
+//   - A pause/stall on the *video* is only honoured when the user actually asked
+//     for it (`intentPlayingRef` is false). A browser-imposed one is ignored — the
+//     audio keeps playing untouched.
+//   - When the tab becomes visible again, the video is snapped to the audio's
+//     position and resumed. That catch-up is a single frame, not an audible gap.
+//
 // Seeking is deliberately NOT handled here: a real seek can jump far outside the
 // currently-buffered audio stream, which requires requesting a brand new stream (see
 // LocalVideoPlayer's reloadAudio) rather than a plain currentTime nudge. This hook
-// only owns *continuous* sync — play/pause propagation and drift correction — and the
-// owner is expected to pause the audio element itself while a seek-triggered reload
-// is in flight.
+// only owns *continuous* sync — play/pause propagation and drift correction.
 import { useEffect } from "react"
 
-const HARD_DRIFT_SECONDS = 0.25 // beyond this, snap audio.currentTime to match video
+// Beyond this, jump-correct instead of nudging: catch the (muted, silent) video up
+// when audio is ahead, or jump audio forward when it's behind. Never drag audio
+// backward — the video is the disposable clock, the audio is what's actually heard.
+const HARD_DRIFT_SECONDS = 0.25
 const SOFT_DRIFT_SECONDS = 0.08 // beyond this, nudge playbackRate briefly instead of jumping
 const SOFT_CORRECTION_RATE = 0.06 // +/- 6% playback speed while nudging back into sync
 const SOFT_CORRECTION_MAX_MS = 2000
@@ -29,6 +41,7 @@ export function useMediaSync(
   videoRef: React.RefObject<HTMLVideoElement | null>,
   audioRef: React.RefObject<HTMLAudioElement | null>,
   offsetRef: React.RefObject<number>,
+  intentPlayingRef: React.RefObject<boolean>,
   enabled: boolean,
   debug = false
 ) {
@@ -57,20 +70,37 @@ export function useMediaSync(
     }
 
     const onPlay = () => resumeIfPlaying()
-    const onPause = () => audio.pause()
-    // Chromium throttles decode on a <video> that's both muted and not visible
-    // (backgrounded/minimized tab) to save power — since this video is always
-    // muted (it's just the sync clock; real sound is `audio`), that throttling
-    // makes it stall and refire "waiting" repeatedly even though nothing is
-    // actually broken. Pausing the real, audible audio track in response would
-    // silence playback for the whole time the tab is hidden. Audio elements
-    // aren't subject to that same throttling, so just let it keep playing —
-    // onTimeUpdate's hard-drift correction resyncs it in one tick once the tab
-    // is visible again and the video's timeupdate events resume.
-    const onWaiting = () => {
-      if (document.hidden) return
+
+    // Only mirror a pause the user actually asked for. A hidden/throttled tab
+    // pausing the muted clock-video on its own (or a transient "waiting" while it
+    // re-buffers) must never silence the still-audible audio — drift correction
+    // and the visibility resync below put the video back in step.
+    const onPause = () => {
+      if (intentPlayingRef.current) return
       audio.pause()
+      stopSoftCorrection()
     }
+
+    // Coming back to a visible tab: the video may be frozen seconds behind (or
+    // paused outright) while the audio kept playing. Snap the video to where the
+    // audio actually is and resume it — deferred a frame so the browser has
+    // lifted its background decode throttle first. One-frame catch-up, no gap.
+    const onVisibilityChange = () => {
+      if (document.hidden || !intentPlayingRef.current) return
+      requestAnimationFrame(() => {
+        if (document.hidden || audio.paused || audio.ended) return
+        const target = offsetRef.current + audio.currentTime
+        if (Math.abs(video.currentTime - target) > SOFT_DRIFT_SECONDS) {
+          try {
+            video.currentTime = target
+          } catch {
+            // Ignore — onTimeUpdate's drift correction will catch it up.
+          }
+        }
+        if (video.paused && !video.ended) video.play().catch(() => {})
+      })
+    }
+
     const onPlaying = () => resumeIfPlaying()
     const onRateChange = () => {
       if (!softCorrecting) audio.playbackRate = video.playbackRate
@@ -85,7 +115,21 @@ export function useMediaSync(
       const drift = audioAbsolute - video.currentTime
       const absDrift = Math.abs(drift)
 
-      if (absDrift > HARD_DRIFT_SECONDS) {
+      if (drift > HARD_DRIFT_SECONDS) {
+        // Audio is ahead — the video (muted, so a jump is silent and barely
+        // visible) fell behind, typically coming back from a throttled hidden
+        // tab. Always catch the video up to where the listener actually is,
+        // never drag the audible audio backward through what was already heard.
+        stopSoftCorrection()
+        try {
+          video.currentTime = audioAbsolute
+        } catch {
+          // Ignore — next tick retries.
+        }
+      } else if (drift < -HARD_DRIFT_SECONDS) {
+        // Audio is behind by more than a soft nudge can fix — jump it forward.
+        // Unavoidably a touch audible, but it's the only track that can't just
+        // be re-seeked for free.
         stopSoftCorrection()
         const target = video.currentTime - offsetRef.current
         if (target >= 0) {
@@ -118,21 +162,21 @@ export function useMediaSync(
 
     video.addEventListener("play", onPlay)
     video.addEventListener("pause", onPause)
-    video.addEventListener("waiting", onWaiting)
     video.addEventListener("playing", onPlaying)
     video.addEventListener("ratechange", onRateChange)
     video.addEventListener("timeupdate", onTimeUpdate)
     video.addEventListener("ended", onEnded)
+    document.addEventListener("visibilitychange", onVisibilityChange)
 
     return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange)
       video.removeEventListener("play", onPlay)
       video.removeEventListener("pause", onPause)
-      video.removeEventListener("waiting", onWaiting)
       video.removeEventListener("playing", onPlaying)
       video.removeEventListener("ratechange", onRateChange)
       video.removeEventListener("timeupdate", onTimeUpdate)
       video.removeEventListener("ended", onEnded)
       stopSoftCorrection()
     }
-  }, [videoRef, audioRef, offsetRef, enabled, debug])
+  }, [videoRef, audioRef, offsetRef, intentPlayingRef, enabled, debug])
 }
