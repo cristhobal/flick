@@ -1311,16 +1311,16 @@ export default function LocalVideoPlayer({
 
       {/* Next episode — countdown card in the closing seconds, auto-advance on end */}
       {showNextCard && nextEpisode && (
-        <div className="absolute bottom-24 right-3 z-30 w-[min(300px,calc(100vw-24px))] overflow-hidden rounded-lg bg-neutral-950/95 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl animate-scale-in sm:bottom-28 sm:right-6 sm:w-80">
+        <div className="absolute bottom-24 right-3 z-30 h-[127px] w-[min(412px,calc(100vw-24px))] overflow-hidden rounded-lg bg-neutral-950/95 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl animate-scale-in sm:bottom-28 sm:right-6">
           <button
             onClick={dismissNextEpisode}
             aria-label={t("player.cancelAutoplay")}
-            className="absolute right-2 top-2 z-10 flex size-6 cursor-pointer items-center justify-center rounded-full bg-black/50 text-white/80 transition-colors hover:bg-black/70 hover:text-white"
+            className="absolute right-1.5 top-1.5 z-10 flex size-5 cursor-pointer items-center justify-center rounded-full bg-black/50 text-white/80 transition-colors hover:bg-black/70 hover:text-white"
           >
-            <X className="size-3.5" />
+            <X className="size-3" />
           </button>
-          <button onClick={playNextNow} className="group block w-full cursor-pointer text-left">
-            <div className="relative aspect-video w-full overflow-hidden bg-neutral-900">
+          <button onClick={playNextNow} className="group flex h-full w-full cursor-pointer text-left">
+            <div className="relative h-full aspect-video shrink-0 overflow-hidden bg-neutral-900">
               {nextEpisodeImage ? (
                 <img
                   src={nextEpisodeImage}
@@ -1332,20 +1332,20 @@ export default function LocalVideoPlayer({
               )}
               <div className="absolute inset-0 bg-black/25 transition-colors group-hover:bg-black/10" />
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="flex size-11 items-center justify-center rounded-full bg-white/90 text-black shadow-lg transition-transform group-hover:scale-110">
-                  <Play className="ml-0.5 size-4" fill="currentColor" />
+                <div className="flex size-9 items-center justify-center rounded-full bg-white/90 text-black shadow-lg transition-transform group-hover:scale-110">
+                  <Play className="ml-0.5 size-3.5" fill="currentColor" />
                 </div>
               </div>
             </div>
-            <div className="p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
+            <div className="flex min-w-0 flex-1 flex-col justify-center px-3 py-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
                 {t("player.nextEpisodeIn", { seconds: nextCountdown })}
               </p>
-              <p className="mt-1 line-clamp-1 text-sm font-semibold text-white">
+              <p className="mt-0.5 line-clamp-1 text-[13px] font-semibold text-white">
                 {nextEpisode.episodeTitle || nextEpisode.title}
               </p>
               {Boolean(nextEpisode.seasonNumber || nextEpisode.episodeNumber) && (
-                <p className="mt-0.5 text-xs text-neutral-400">
+                <p className="mt-0.5 text-[11px] text-neutral-400">
                   {t("player.seasonEpisode", {
                     season: nextEpisode.seasonNumber || 1,
                     episode: nextEpisode.episodeNumber || 0,
@@ -1353,7 +1353,7 @@ export default function LocalVideoPlayer({
                 </p>
               )}
               {(nextEpisode.episodeSynopsis || nextEpisode.description) && (
-                <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-neutral-400">
+                <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-neutral-400">
                   {nextEpisode.episodeSynopsis || nextEpisode.description}
                 </p>
               )}
