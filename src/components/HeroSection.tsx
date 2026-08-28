@@ -8,6 +8,7 @@ import { backdropUrl, getGenreGradient, isPlayableMovie, tmdbMediaType } from "@
 import { fetchDetailWithVideos } from "@/lib/tmdb"
 import { useI18n } from "@/i18n/I18nProvider"
 import { displayLanguage } from "@/i18n/translations"
+import { useWatchState } from "@/lib/use-watch-state"
 
 interface HeroSectionProps {
   movie: Movie
@@ -41,6 +42,7 @@ export default function HeroSection({
     ? { ...movie, trailerUrl: resolvedTrailerUrl }
     : movie
   const canPlay = isPlayableMovie(playableMovie)
+  const watchState = useWatchState(movie.id)
   const contentAnimation = phase === "enter" ? "hero-content-enter" : "hero-content-exit"
   const heroRuntimeLabel =
     tmdbMediaType(movie) === "tv"
@@ -156,7 +158,7 @@ export default function HeroSection({
                   onClick={() => onPlay?.(playableMovie)}
                 >
                   <Play className="size-4 fill-black sm:size-5" />
-                  {t("common.play")}
+                  {watchState.inProgress ? t("common.resume") : t("common.play")}
                 </Button>
               )}
               <Button

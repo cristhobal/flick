@@ -13,6 +13,7 @@ import { Play, Star, Clock, Languages, Subtitles } from "lucide-react"
 import type { Movie } from "@/lib/data"
 import { useI18n } from "@/i18n/I18nProvider"
 import { displayLanguage, translateGenre } from "@/i18n/translations"
+import { useWatchState } from "@/lib/use-watch-state"
 import {
   posterUrl,
   backdropUrl,
@@ -40,6 +41,7 @@ export default function MovieDetailsModal({
   const bgSrc = backdropUrl(movie.backdropPath, "w1280")
   const posterSrc = posterUrl(movie.posterPath, "w342")
   const canPlay = isPlayableMovie(movie)
+  const watchState = useWatchState(movie.id)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -113,7 +115,7 @@ export default function MovieDetailsModal({
                 }}
               >
                 <Play className="size-4 fill-black" />
-                {t("common.play")}
+                {watchState.inProgress ? t("common.resume") : t("common.play")}
               </Button>
             )}
           </div>

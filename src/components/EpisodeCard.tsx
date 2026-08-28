@@ -7,6 +7,7 @@ import { Play, Star } from "lucide-react"
 import type { Movie } from "@/lib/data"
 import { useI18n } from "@/i18n/I18nProvider"
 import { translateGenre } from "@/i18n/translations"
+import { useWatchState } from "@/lib/use-watch-state"
 import { useScrollViewport } from "@/lib/scroll-container"
 import {
   posterUrl,
@@ -218,6 +219,7 @@ export default function EpisodeCard({
   const imgSrc = posterUrl(episode.posterPath || movie.posterPath, "w185")
   const bgSrc = backdropUrl(episode.backdropPath || movie.backdropPath, "w780")
   const canPlay = isPlayableMovie(episode)
+  const watchState = useWatchState(episode.id)
   const synopsis = episode.episodeSynopsis || episode.description || ""
   const duration = episode.duration && episode.duration !== "-"
     ? episode.duration
@@ -338,7 +340,7 @@ export default function EpisodeCard({
                   }}
                 >
                   <Play className="size-4 fill-black" />
-                  {t("common.play")}
+                  {watchState.inProgress ? t("common.resume") : t("common.play")}
                 </Button>
               )}
             </div>

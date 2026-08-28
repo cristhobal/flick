@@ -141,10 +141,12 @@ export default function PlayerPage({
               key={trailerUrl}
               src={trailerUrl}
               title={title}
+              media={movie}
               nextEpisode={nextEpisode}
               onPlayNext={onPlayMovie}
               contentId={movie.id}
               seriesId={movie.episodeNumber ? seriesId : undefined}
+              prefsKey={(movie.episodeNumber && seriesId) ? seriesId : movie.id}
             />
           ) : trailerUrl ? (
             <iframe

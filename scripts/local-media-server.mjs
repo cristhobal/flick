@@ -70,9 +70,12 @@ function parseTitleYear(name) {
 }
 
 // "E12 - Episode Title" -> { episode: 12, title: "Episode Title" }
+// Also handles fractional "special" numbering ("E7.5 - ...") — common for
+// recap/OVA episodes — so E7 and E7.5 stay distinct instead of both collapsing
+// to episode 7 (which produced duplicate React keys downstream).
 function parseEpisode(name) {
   const base = stripExt(name)
-  const match = base.match(/^E(\d+)\s*-?\s*(.*)$/i)
+  const match = base.match(/^E(\d+(?:\.\d+)?)\s*-?\s*(.*)$/i)
   if (match) return { episode: Number(match[1]), title: match[2].trim() || base }
   return { episode: 0, title: base }
 }
@@ -305,12 +308,19 @@ async function probeTracks(filePath) {
       // ffmpeg — keep the type-relative index in sync for `-map 0:s:N` but hide
       // them from the client so picking one never 500s.
       if (TEXT_SUBTITLE_CODECS.has(stream.codec_name)) {
+        const disp = stream.disposition || {}
         subtitleTracks.push({
           index: subtitleTypeIndex,
           codec: stream.codec_name,
           format: STYLED_SUBTITLE_CODECS.has(stream.codec_name) ? "ass" : "vtt",
           language: tags.language || "",
           title: tags.title || "",
+          // So the client can tell two same-language tracks apart (e.g. a full
+          // dialogue track vs a forced signs-only one that otherwise both show
+          // as just "spa").
+          forced: Boolean(disp.forced),
+          hearingImpaired: Boolean(disp.hearing_impaired),
+          default: Boolean(disp.default),
         })
       }
       subtitleTypeIndex++

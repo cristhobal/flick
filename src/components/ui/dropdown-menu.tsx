@@ -33,10 +33,14 @@ function DropdownMenuContent({
   className,
   align = "start",
   sideOffset = 4,
+  container,
   ...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
+}: React.ComponentProps<typeof DropdownMenuPrimitive.Content> & {
+  /** Portal target — pass the fullscreen element when the trigger lives inside one, since content portaled to `document.body` is invisible/inert outside it. Defaults to `document.body`. */
+  container?: React.ComponentProps<typeof DropdownMenuPrimitive.Portal>["container"]
+}) {
   return (
-    <DropdownMenuPrimitive.Portal>
+    <DropdownMenuPrimitive.Portal container={container}>
       <DropdownMenuPrimitive.Content
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
