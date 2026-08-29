@@ -233,7 +233,7 @@ function SubtitleView({
     <div
       // Fixed low position — clear of the control bar's height — so subtitles
       // never shift when the chrome shows or hides.
-      className="pointer-events-none absolute inset-x-0 bottom-[12%] z-10 flex justify-center px-[5%]"
+      className="pointer-events-none absolute inset-x-0 bottom-[8%] z-10 flex justify-center px-[5%]"
     >
       <p
         className="max-w-[46rem] text-balance text-center font-semibold leading-tight tracking-[0.01em] text-white [text-shadow:0_0_4px_rgba(0,0,0,0.75),0_2px_6px_rgba(0,0,0,0.95)] [-webkit-text-stroke:0.5px_rgba(0,0,0,0.55)] text-[clamp(1rem,3.4vw,1.85rem)] [&_i]:italic [&_b]:font-bold"
@@ -536,9 +536,11 @@ export default function LocalVideoPlayer({
     saveMediaPrefs(prefsKey, {
       audioLanguage: audio?.language || null,
       audioTitle: audio?.title || null,
+      audioIndex: audio ? audioIdx : null,
       subtitleLanguage: subtitle?.language || null,
       subtitleTitle: subtitle?.title || null,
       subtitleForced: Boolean(subtitle?.forced),
+      subtitleIndex: subtitle ? subtitleIdx : null,
     })
   }, [prefsKey, info])
 

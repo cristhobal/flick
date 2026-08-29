@@ -2,19 +2,23 @@
 // (a movie by its id, a whole series/anime by its series id) so every episode
 // opens with the same choice. Local dev only — same scope as watch-progress.
 //
-// Stored by *language* (plus title/forced hints to disambiguate), never by track
-// index: index ordering differs from one episode file to the next. When the
-// saved language isn't present in a particular file, resolution falls back to
+// Stored by *language* (plus title / forced / index hints to disambiguate).
+// Language is the portable key across a series' episode files; the exact track
+// index is kept too and wins when it still points at a track of the same
+// language (the common "same movie, watched again" case, and consistently-muxed
+// rips). When the saved language isn't present at all, resolution falls back to
 // the first audio track and to no subtitle — per the product rule.
 const STORAGE_KEY = "flick-media-prefs"
 
 export interface MediaTrackPrefs {
   audioLanguage: string | null
   audioTitle: string | null
+  audioIndex: number | null
   // null = subtitles off (also the value when nothing was ever chosen).
   subtitleLanguage: string | null
   subtitleTitle: string | null
   subtitleForced: boolean
+  subtitleIndex: number | null
 }
 
 interface TrackLike {
@@ -52,6 +56,25 @@ export function saveMediaPrefs(key: string | null | undefined, prefs: MediaTrack
   }
 }
 
+// Pick the best track in `tracks` matching the saved language, using the exact
+// index / title / forced hints in order, then the first same-language track.
+function bestMatch(
+  sameLang: TrackLike[],
+  savedIndex: number | null | undefined,
+  savedTitle: string | null | undefined,
+  savedForced: boolean | undefined
+): TrackLike {
+  const byIndex = savedIndex != null ? sameLang.find((t) => t.index === savedIndex) : undefined
+  if (byIndex) return byIndex
+  const byTitle = savedTitle ? sameLang.find((t) => t.title === savedTitle) : undefined
+  if (byTitle) return byTitle
+  if (savedForced !== undefined) {
+    const byForced = sameLang.find((t) => Boolean(t.forced) === savedForced)
+    if (byForced) return byForced
+  }
+  return sameLang[0]
+}
+
 // Which audio track to start on. Saved language wins; otherwise always the first
 // track (never leaves playback silent / on an unexpected dub).
 export function resolveAudioIndex(tracks: TrackLike[], prefs: MediaTrackPrefs | null): number {
@@ -60,10 +83,7 @@ export function resolveAudioIndex(tracks: TrackLike[], prefs: MediaTrackPrefs | 
   if (wanted) {
     const sameLang = tracks.filter((track) => track.language === wanted)
     if (sameLang.length > 0) {
-      const byTitle = prefs?.audioTitle
-        ? sameLang.find((track) => track.title === prefs.audioTitle)
-        : undefined
-      return (byTitle || sameLang[0]).index
+      return bestMatch(sameLang, prefs?.audioIndex, prefs?.audioTitle, undefined).index
     }
   }
   return tracks[0].index
@@ -79,11 +99,5 @@ export function resolveSubtitleIndex(
   if (!wanted) return null
   const sameLang = tracks.filter((track) => track.language === wanted)
   if (sameLang.length === 0) return null
-  const byTitle = prefs?.subtitleTitle
-    ? sameLang.find((track) => track.title === prefs.subtitleTitle)
-    : undefined
-  const byForced = sameLang.find(
-    (track) => Boolean(track.forced) === Boolean(prefs?.subtitleForced)
-  )
-  return (byTitle || byForced || sameLang[0]).index
+  return bestMatch(sameLang, prefs?.subtitleIndex, prefs?.subtitleTitle, Boolean(prefs?.subtitleForced)).index
 }
