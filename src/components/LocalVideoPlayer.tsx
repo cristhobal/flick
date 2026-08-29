@@ -197,16 +197,14 @@ function SkipIcon({ direction, seconds, className }: { direction: "back" | "forw
 // the audio clock, passed down from the player — picks the active cue, and only
 // re-renders React when the visible line actually changes. Look is deliberately
 // close to a modern streaming player: centred, semi-bold, heavy shadow + thin
-// outline for legibility over any frame, no box, ~2 lines, lifted above the
-// control bar while the chrome is showing.
+// outline for legibility over any frame, no box, ~2 lines, at a fixed low
+// position that never shifts when the controls appear or disappear.
 function SubtitleView({
   cues,
   getTime,
-  raised,
 }: {
   cues: SubtitleCue[]
   getTime: () => number
-  raised: boolean
 }) {
   const [html, setHtml] = useState("")
   const htmlRef = useRef("")
@@ -233,10 +231,9 @@ function SubtitleView({
   if (!html) return null
   return (
     <div
-      className={cn(
-        "pointer-events-none absolute inset-x-0 z-10 flex justify-center px-[5%] transition-[bottom] duration-300",
-        raised ? "bottom-[16%] sm:bottom-[18%]" : "bottom-[7%]"
-      )}
+      // Fixed low position — clear of the control bar's height — so subtitles
+      // never shift when the chrome shows or hides.
+      className="pointer-events-none absolute inset-x-0 bottom-[12%] z-10 flex justify-center px-[5%]"
     >
       <p
         className="max-w-[46rem] text-balance text-center font-semibold leading-tight tracking-[0.01em] text-white [text-shadow:0_0_4px_rgba(0,0,0,0.75),0_2px_6px_rgba(0,0,0,0.95)] [-webkit-text-stroke:0.5px_rgba(0,0,0,0.55)] text-[clamp(1rem,3.4vw,1.85rem)] [&_i]:italic [&_b]:font-bold"
@@ -1004,7 +1001,7 @@ export default function LocalVideoPlayer({
 
       {/* Styled text-subtitle overlay (VTT/SRT) — our own render, off the audio clock */}
       {!isAssSubtitle && !showPauseInfo && (
-        <SubtitleView cues={parsedCues} getTime={getSubtitleTime} raised={chromeVisible} />
+        <SubtitleView cues={parsedCues} getTime={getSubtitleTime} />
       )}
 
       {/* Sound source — hidden, kept in sync with the video above via useMediaSync */}
