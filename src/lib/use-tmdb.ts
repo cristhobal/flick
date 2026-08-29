@@ -184,6 +184,8 @@ export function toMovie(
   lang: Lang
 ): Movie {
   const title = item.title || item.name || titleFallback
+  const originalTitle =
+    detail?.original_title || detail?.original_name || item.original_title || item.original_name || ""
   const date = item.release_date || item.first_air_date || ""
   const year = date ? new Date(date).getFullYear() : 2024
   const desc = fallbackDescription(item.overview || "", descriptionFallback)
@@ -197,6 +199,7 @@ export function toMovie(
     id: `${type}-${item.id}`,
     tmdbId: item.id,
     title,
+    ...(originalTitle && originalTitle.trim() !== title.trim() ? { originalTitle } : {}),
     year: isNaN(year) ? 2024 : year,
     duration: runtimeStr(runtimeMinutes),
     durationSeconds: runtimeMinutes ? runtimeMinutes * 60 : undefined,
@@ -1045,6 +1048,8 @@ export function useTMDB(): TMDbState {
         id: tmdbId,
         title: result.detail.title || result.detail.name || translate("movie.unknown"),
         name: result.detail.name || result.detail.title || translate("movie.unknown"),
+        original_title: result.detail.original_title,
+        original_name: result.detail.original_name,
         poster_path: result.detail.poster_path,
         backdrop_path: result.detail.backdrop_path,
         overview: result.detail.overview || "",
