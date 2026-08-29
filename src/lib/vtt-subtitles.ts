@@ -73,14 +73,35 @@ export function useParsedSubtitles(url: string | null): SubtitleCue[] {
   useEffect(() => {
     if (!url) return
     let cancelled = false
-    fetch(url)
-      .then((res) => (res.ok ? res.text() : ""))
-      .then((text) => {
-        if (!cancelled) setLoaded({ url, cues: text ? parseVtt(text) : [] })
-      })
-      .catch(() => {
-        if (!cancelled) setLoaded({ url, cues: [] })
-      })
+    let attempt = 0
+    // Extracting an embedded track from a large MKV can take a while the first
+    // time (the server demuxes the whole file, then caches it). A transient
+    // failure or an empty result almost always means "not ready yet", so retry
+    // a few times with backoff before giving up.
+    const load = () => {
+      fetch(url)
+        .then((res) => (res.ok ? res.text() : Promise.reject(new Error(String(res.status)))))
+        .then((text) => {
+          if (cancelled) return
+          const cues = text ? parseVtt(text) : []
+          if (cues.length === 0 && attempt < 4) {
+            attempt += 1
+            window.setTimeout(load, 800 * attempt)
+            return
+          }
+          setLoaded({ url, cues })
+        })
+        .catch(() => {
+          if (cancelled) return
+          if (attempt < 4) {
+            attempt += 1
+            window.setTimeout(load, 800 * attempt)
+          } else {
+            setLoaded({ url, cues: [] })
+          }
+        })
+    }
+    load()
     return () => {
       cancelled = true
     }
