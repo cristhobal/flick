@@ -25,6 +25,9 @@
   posterPath: string | null
   backdropPath: string | null
   seriesTitle?: string
+  // The title in the work's original language (TMDB original_title / original_name),
+  // shown under the localized title on the detail page when the two differ.
+  originalTitle?: string
   episodeNumber?: number
   seasonNumber?: number
   totalEpisodes?: number

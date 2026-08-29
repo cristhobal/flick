@@ -326,6 +326,14 @@ export default function MovieDetailPage({
     : movie
   const canPlay = isPlayableMovie(detailMovie)
   const watchState = useWatchState(detailMovie.id)
+  // Title in the original language, shown under the big localized title when it
+  // actually differs (e.g. "Creed" under "Creed. Corazón de campeón").
+  const originalTitle =
+    creativeCredits?.detail?.original_title
+    || creativeCredits?.detail?.original_name
+    || movie.originalTitle
+    || ""
+  const showOriginalTitle = Boolean(originalTitle) && originalTitle.trim() !== movie.title.trim()
   const detailRuntime = creativeCredits?.detail?.runtime
     || creativeCredits?.detail?.episode_run_time?.find((minutes) => minutes > 0)
     || creativeCredits?.detail?.last_episode_to_air?.runtime
@@ -479,9 +487,16 @@ export default function MovieDetailPage({
 
             {/* Info */}
             <div className="flex min-w-0 flex-1 flex-col justify-end gap-3 sm:gap-4">
-              <h1 className="max-w-full text-2xl font-bold tracking-tight text-white drop-shadow-lg animate-fade-up stagger-2 sm:max-w-3xl sm:text-3xl md:text-4xl lg:text-5xl">
-                {movie.title}
-              </h1>
+              <div className="animate-fade-up stagger-2">
+                <h1 className="max-w-full text-2xl font-bold tracking-tight text-white drop-shadow-lg sm:max-w-3xl sm:text-3xl md:text-4xl lg:text-5xl">
+                  {movie.title}
+                </h1>
+                {showOriginalTitle && (
+                  <p className="mt-1 max-w-full text-sm font-medium text-neutral-400 sm:max-w-3xl sm:text-base">
+                    {originalTitle}
+                  </p>
+                )}
+              </div>
 
               <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-400 animate-fade-up stagger-3 sm:gap-3 sm:text-sm">
                 <span className="text-white/80">{movie.year}</span>

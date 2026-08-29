@@ -7,12 +7,14 @@ export const IMG_URL = "https://image.tmdb.org/t/p"
 
 interface TMDbPageResponse<T> { page: number; results: T[]; total_pages: number; total_results: number }
 export interface TMDbMovie {
-  id: number; title?: string; name?: string; poster_path: string | null; backdrop_path: string | null
+  id: number; title?: string; name?: string; original_title?: string; original_name?: string
+  poster_path: string | null; backdrop_path: string | null
   overview?: string; vote_average?: number; release_date?: string; first_air_date?: string; genre_ids?: number[]
   media_type?: string; original_language: string; popularity: number
 }
 export interface TMDbMovieDetail {
-  id: number; title?: string; name?: string; poster_path: string | null; backdrop_path: string | null
+  id: number; title?: string; name?: string; original_title?: string; original_name?: string
+  poster_path: string | null; backdrop_path: string | null
   overview: string; vote_average: number; release_date?: string; first_air_date?: string; runtime?: number | null
   episode_run_time?: number[]; last_episode_to_air?: { runtime?: number | null } | null
   genres?: { id: number; name: string }[]; spoken_languages?: { iso_639_1: string; english_name: string }[]
