@@ -28,6 +28,7 @@ const VIDEO_INFO_API_PATH = "/api/local-video-info"
 const SUBTITLE_API_PREFIX = "/api/local-subtitle/"
 const SUBTITLE_RAW_API_PREFIX = "/api/local-subtitle-raw/"
 const FONT_API_PREFIX = "/api/local-font/"
+const SUBTITLE_FONT_API_PATH = "/api/subtitle-font"
 const THUMBNAIL_API_PREFIX = "/api/local-thumbnail/"
 const THUMBNAIL_PREGEN_API_PREFIX = "/api/local-thumbnail-pregenerate/"
 const THUMBNAIL_WIDTH = 320
@@ -582,6 +583,61 @@ async function serveFont(res, filePath, attachmentIndex, filename) {
   }
 }
 
+// Resolve a font family the subtitle script asks for but that isn't embedded in
+// the file (e.g. "Trebuchet MS") to a real installed font, via fontconfig's
+// `fc-match` — the same substitution VLC and mpv do. Falls back to 404 (the
+// client then lets libass use its bundled fallback) when fontconfig isn't
+// available or matches nothing usable.
+let fcMatchProbe = null
+function fcMatchAvailable() {
+  if (!fcMatchProbe) {
+    fcMatchProbe = runCapture("fc-match", ["--version"]).then(() => true).catch(() => false)
+  }
+  return fcMatchProbe
+}
+
+async function serveSubtitleFont(res, family) {
+  const name = (family || "").trim()
+  if (!name) {
+    res.statusCode = 400
+    res.end("no family")
+    return
+  }
+  await mkdir(FONT_CACHE_DIR, { recursive: true }).catch(() => {})
+  const key = createHash("sha1").update(`fc::${name.toLowerCase()}`).digest("hex")
+  for (const ext of [".ttf", ".otf", ".ttc", ".woff2"]) {
+    const cached = await readCached(join(FONT_CACHE_DIR, `${key}${ext}`))
+    if (cached) {
+      res.statusCode = 200
+      res.setHeader("Content-Type", FONT_MIME_TYPES[ext] || "font/ttf")
+      res.end(cached)
+      return
+    }
+  }
+  if (!(await fcMatchAvailable())) {
+    res.statusCode = 404
+    res.end("no fontconfig")
+    return
+  }
+  try {
+    const out = (await runCapture("fc-match", ["-f", "%{file}", name])).toString("utf8").trim()
+    if (!out || !existsSync(out)) {
+      res.statusCode = 404
+      res.end("no match")
+      return
+    }
+    const ext = (extname(out) || ".ttf").toLowerCase()
+    const data = await readFile(out)
+    await writeFile(join(FONT_CACHE_DIR, `${key}${ext}`), data).catch(() => {})
+    res.statusCode = 200
+    res.setHeader("Content-Type", FONT_MIME_TYPES[ext] || "font/ttf")
+    res.end(data)
+  } catch {
+    res.statusCode = 404
+    res.end("fc-match failed")
+  }
+}
+
 // Scrub-bar hover preview — a single small JPEG frame near the requested second.
 // `-ss` before `-i` does a fast, keyframe-level (not frame-accurate) seek, which
 // is exactly the tradeoff scrubbing wants: near-instant response over exactness.
@@ -862,6 +918,12 @@ export function localMediaDevPlugin() {
           return
         }
         await serveFont(res, filePath, Number(attachmentParam), filename)
+      })
+
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url || !req.url.startsWith(SUBTITLE_FONT_API_PATH)) return next()
+        const url = new URL(req.url, "http://localhost")
+        await serveSubtitleFont(res, url.searchParams.get("family") || "")
       })
 
       server.middlewares.use(async (req, res, next) => {
