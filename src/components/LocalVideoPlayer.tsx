@@ -945,10 +945,11 @@ export default function LocalVideoPlayer({
     <div
       ref={containerRef}
       className={cn(
-        "group relative h-full w-full overflow-hidden",
-        // Semi-transparent so the page's blurred backdrop tints the letterbox
-        // bars instead of dead black; solid black in fullscreen.
-        fullscreen ? "bg-black" : "bg-black/25",
+        "group relative flex h-full w-full items-center justify-center overflow-hidden",
+        // The <video> is sized to its own aspect ratio and centred (not
+        // object-fit: contain, which makes Chrome paint opaque black bars), so
+        // the page's blurred backdrop shows around it. Solid black in fullscreen.
+        fullscreen ? "bg-black" : "bg-transparent",
         playing && !showControls && "cursor-none"
       )}
       onMouseMove={registerActivity}
@@ -958,7 +959,7 @@ export default function LocalVideoPlayer({
         ref={videoRef}
         src={src}
         title={title}
-        className="h-full w-full"
+        className="max-h-full max-w-full"
         muted
         playsInline
         onClick={togglePlay}
