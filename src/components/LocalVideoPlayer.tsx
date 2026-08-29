@@ -948,6 +948,17 @@ export default function LocalVideoPlayer({
       onMouseMove={registerActivity}
       onTouchStart={registerActivity}
     >
+      {/* Blurred artwork behind the letterboxed video — like the hero — so the
+          bars around a non-16:9 fit aren't dead black. */}
+      {pauseArt && (
+        <img
+          src={pauseArt}
+          alt=""
+          aria-hidden
+          className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-40 blur-2xl"
+        />
+      )}
+
       <video
         ref={videoRef}
         src={src}
