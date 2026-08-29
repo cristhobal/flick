@@ -52,33 +52,66 @@ export function useAssSubtitle(
     const container = containerRef.current
     if (!video || !container || !subUrl) return
 
-    // Fresh canvas per instance — see the ownership note above.
-    const canvas = document.createElement("canvas")
-    canvas.style.position = "absolute"
-    canvas.style.inset = "0"
-    canvas.style.pointerEvents = "none"
-    container.appendChild(canvas)
+    let cancelled = false
+    let current: { instance: JASSUB; canvas: HTMLCanvasElement } | null = null
+    let readyTimer: ReturnType<typeof setTimeout> | undefined
 
-    const instance = new JASSUB({
-      video,
-      canvas,
-      subUrl,
-      workerUrl,
-      wasmUrl,
-      modernWasmUrl,
-      fonts: fontUrls,
-      // JASSUB defaults `defaultFont` to "liberation sans" when it's omitted, so
-      // providing the font data under that exact key gives libass a guaranteed
-      // fallback for every glyph. (Do NOT pass `defaultFont` — that suppresses
-      // JASSUB's own fallback wiring.)
-      availableFonts: { "liberation sans": fallbackFontUrl },
-    })
-    instanceRef.current = instance
+    const teardown = () => {
+      if (readyTimer) clearTimeout(readyTimer)
+      readyTimer = undefined
+      if (current) {
+        current.instance.destroy().catch(() => {})
+        current.canvas.remove()
+        if (instanceRef.current === current.instance) instanceRef.current = null
+        current = null
+      }
+    }
+
+    // The raw-ASS extraction can be slow on a large MKV, and the JASSUB worker
+    // itself occasionally never completes its handshake under load — either way
+    // subtitles just never appear. So if it isn't ready within a few seconds,
+    // tear it down and try again (a couple of times).
+    const start = (attempt: number) => {
+      if (cancelled) return
+      const canvas = document.createElement("canvas")
+      canvas.style.position = "absolute"
+      canvas.style.inset = "0"
+      canvas.style.pointerEvents = "none"
+      container.appendChild(canvas)
+
+      const instance = new JASSUB({
+        video,
+        canvas,
+        subUrl,
+        workerUrl,
+        wasmUrl,
+        modernWasmUrl,
+        fonts: fontUrls,
+        // JASSUB defaults `defaultFont` to "liberation sans" when it's omitted, so
+        // providing the font data under that exact key gives libass a guaranteed
+        // fallback for every glyph. (Do NOT pass `defaultFont` — that suppresses
+        // JASSUB's own fallback wiring.)
+        availableFonts: { "liberation sans": fallbackFontUrl },
+      })
+      current = { instance, canvas }
+      instanceRef.current = instance
+
+      let ready = false
+      instance.ready.then(() => { ready = true }).catch(() => {})
+      readyTimer = setTimeout(() => {
+        if (cancelled || ready) return
+        if (attempt < 2) {
+          teardown()
+          start(attempt + 1)
+        }
+      }, 6000)
+    }
+
+    start(0)
 
     return () => {
-      instance.destroy().catch(() => {})
-      if (instanceRef.current === instance) instanceRef.current = null
-      canvas.remove()
+      cancelled = true
+      teardown()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoRef, containerRef, subUrl, fontsKey])

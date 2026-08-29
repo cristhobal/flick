@@ -404,11 +404,23 @@ async function readCached(cachePath) {
   }
 }
 
+// If a background prewarm pass for this file is running, wait for it (it's
+// almost certainly already producing this exact track) instead of racing it
+// with a second ffmpeg.
+async function awaitPrewarm(filePath) {
+  const job = subtitlePrewarmJobs.get(filePath)
+  if (job) await job.catch(() => {})
+}
+
 async function serveSubtitle(res, filePath, subtitleIndex) {
   await mkdir(CACHE_DIR, { recursive: true }).catch(() => {})
   const cacheKey = createHash("sha1").update(`${filePath}::${subtitleIndex}`).digest("hex")
   const cachePath = join(CACHE_DIR, `${cacheKey}.vtt`)
-  const cached = await readCached(cachePath)
+  let cached = await readCached(cachePath)
+  if (!cached) {
+    await awaitPrewarm(filePath)
+    cached = await readCached(cachePath)
+  }
   if (cached) {
     res.statusCode = 200
     res.setHeader("Content-Type", "text/vtt; charset=utf-8")
@@ -439,7 +451,11 @@ async function serveSubtitleRaw(res, filePath, subtitleIndex) {
   await mkdir(CACHE_DIR, { recursive: true }).catch(() => {})
   const cacheKey = createHash("sha1").update(`${filePath}::${subtitleIndex}::raw`).digest("hex")
   const cachePath = join(CACHE_DIR, `${cacheKey}.ass`)
-  const cached = await readCached(cachePath)
+  let cached = await readCached(cachePath)
+  if (!cached) {
+    await awaitPrewarm(filePath)
+    cached = await readCached(cachePath)
+  }
   if (cached) {
     res.statusCode = 200
     res.setHeader("Content-Type", "text/x-ssa; charset=utf-8")
@@ -463,6 +479,73 @@ async function serveSubtitleRaw(res, filePath, subtitleIndex) {
     res.statusCode = 500
     res.end(String(err))
   }
+}
+
+function subtitleCachePath(filePath, index, raw) {
+  const key = createHash("sha1")
+    .update(`${filePath}::${index}${raw ? "::raw" : ""}`)
+    .digest("hex")
+  return join(CACHE_DIR, `${key}.${raw ? "ass" : "vtt"}`)
+}
+
+const subtitlePrewarmJobs = new Map()
+
+// Extracting an embedded subtitle track from a multi-GB MKV means demuxing the
+// whole file (subtitle packets are interleaved throughout), which can take tens
+// of seconds — long enough that the track looks like it "just doesn't show".
+// So when an episode's track list is first fetched, warm every text track's
+// cache in the background in a single demux pass, so by the time the viewer
+// picks one it's already on disk. mp4/mov_text extraction is fast, so this
+// mostly matters for MKVs, but it's harmless either way.
+async function prewarmSubtitles(filePath, subtitleTracks) {
+  const tracks = (subtitleTracks || []).filter((track) => track && Number.isInteger(track.index))
+  if (tracks.length === 0) return
+  if (subtitlePrewarmJobs.has(filePath)) return subtitlePrewarmJobs.get(filePath)
+
+  const job = (async () => {
+    await mkdir(CACHE_DIR, { recursive: true }).catch(() => {})
+    const pending = tracks
+      .map((track) => {
+        const raw = track.format === "ass"
+        return { index: track.index, raw, cachePath: subtitleCachePath(filePath, track.index, raw) }
+      })
+      .filter((entry) => !existsSync(entry.cachePath))
+    if (pending.length === 0) return
+
+    const extract = async (entries) => {
+      const args = ["-hide_banner", "-loglevel", "error", "-y", "-i", filePath]
+      for (const entry of entries) {
+        args.push("-map", `0:s:${entry.index}`)
+        if (entry.raw) args.push("-c:s", "copy", "-f", "ass")
+        else args.push("-f", "webvtt")
+        args.push(`${entry.cachePath}.tmp`)
+      }
+      await runCapture("ffmpeg", args)
+      for (const entry of entries) {
+        await rename(`${entry.cachePath}.tmp`, entry.cachePath).catch(() => {})
+      }
+    }
+
+    // One combined pass first; if it fails (a single bad stream aborts the whole
+    // multi-output run) retry each still-missing track on its own.
+    try {
+      await extract(pending)
+    } catch {
+      // fall through to per-track
+    }
+    for (const entry of pending) {
+      if (existsSync(entry.cachePath)) continue
+      try {
+        await extract([entry])
+      } catch {
+        await rm(`${entry.cachePath}.tmp`, { force: true }).catch(() => {})
+      }
+    }
+  })()
+
+  subtitlePrewarmJobs.set(filePath, job)
+  job.finally(() => subtitlePrewarmJobs.delete(filePath)).catch(() => {})
+  return job
 }
 
 // Fonts embedded as MKV attachments — dumped instantly since ffmpeg reads attachment
@@ -730,6 +813,9 @@ export function localMediaDevPlugin() {
         try {
           const info = await probeTracks(filePath)
           sendJson(res, 200, info)
+          // Fire-and-forget: warm the subtitle cache so picking a track later is
+          // instant instead of waiting on a full MKV demux.
+          prewarmSubtitles(filePath, info.subtitleTracks).catch(() => {})
         } catch (err) {
           sendJson(res, 500, { audioTracks: [], subtitleTracks: [], chapters: [], duration: 0, error: String(err) })
         }
