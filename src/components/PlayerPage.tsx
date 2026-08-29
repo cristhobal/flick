@@ -132,9 +132,19 @@ export default function PlayerPage({
   )
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="relative min-h-screen bg-black text-white">
+      {/* Section backdrop — the title's artwork, blurred and dimmed, behind the
+          player and the info below it, fading to black (like the detail hero)
+          instead of a flat black page. */}
+      {image && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[min(95svh,960px)] overflow-hidden">
+          <img src={image} alt="" aria-hidden className="h-full w-full scale-110 object-cover opacity-70 blur-xl" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/45 to-black" />
+        </div>
+      )}
+
       {/* Video player — 16:9 ratio with safe bounds */}
-      <div className="relative h-[clamp(220px,56.25vw,80svh)] w-full bg-zinc-950">
+      <div className="relative z-10 h-[clamp(220px,56.25vw,80svh)] w-full">
         <div className="absolute inset-0">
           {trailerUrl && isLocalVideo ? (
             <LocalVideoPlayer
@@ -185,7 +195,7 @@ export default function PlayerPage({
         </Button>
       </div>
 
-      <div className="content-container py-6 sm:py-8">
+      <div className="content-container relative z-10 py-6 sm:py-8">
         <div className={sortedEpisodes.length > 0 ? "grid gap-8 lg:grid-cols-[minmax(0,1fr)_360px]" : undefined}>
           <div className="min-w-0">
             {/* Movies (no episode panel) get the full content width; series/anime
