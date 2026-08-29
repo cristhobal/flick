@@ -86,6 +86,7 @@ export function useAssSubtitle(
         workerUrl,
         wasmUrl,
         modernWasmUrl,
+        // Fonts embedded in the MKV (signs, and often the dialogue font too).
         fonts: fontUrls,
         // JASSUB defaults `defaultFont` to "liberation sans" when it's omitted, so
         // providing the font data under that exact key gives libass a guaranteed
@@ -93,6 +94,23 @@ export function useAssSubtitle(
         // JASSUB's own fallback wiring.)
         availableFonts: { "liberation sans": fallbackFontUrl },
       })
+      // When the script asks for a font that isn't embedded (very common — e.g.
+      // "Trebuchet MS" on a Crunchyroll rip), JASSUB calls `_getLocalFont` to
+      // look it up. Route it to the server, which resolves it with fontconfig
+      // (`fc-match`) — the exact same substitution VLC/mpv do — so the dialogue
+      // keeps its real typeface/metrics instead of collapsing to a bare fallback.
+      const withFontResolver = instance as unknown as {
+        _getLocalFont: (family: string) => Promise<Uint8Array | undefined>
+      }
+      withFontResolver._getLocalFont = async (family: string) => {
+        try {
+          const res = await fetch(`/api/subtitle-font?family=${encodeURIComponent(family)}`)
+          if (!res.ok) return undefined
+          return new Uint8Array(await res.arrayBuffer())
+        } catch {
+          return undefined
+        }
+      }
       current = { instance, canvas }
       instanceRef.current = instance
 
