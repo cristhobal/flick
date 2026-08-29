@@ -944,14 +944,7 @@ export default function LocalVideoPlayer({
   return (
     <div
       ref={containerRef}
-      className={cn(
-        "group relative flex h-full w-full items-center justify-center overflow-hidden",
-        // The <video> is sized to its own aspect ratio and centred (not
-        // object-fit: contain, which makes Chrome paint opaque black bars), so
-        // the page's blurred backdrop shows around it. Solid black in fullscreen.
-        fullscreen ? "bg-black" : "bg-transparent",
-        playing && !showControls && "cursor-none"
-      )}
+      className={cn("group relative h-full w-full overflow-hidden bg-black", playing && !showControls && "cursor-none")}
       onMouseMove={registerActivity}
       onTouchStart={registerActivity}
     >
@@ -959,7 +952,7 @@ export default function LocalVideoPlayer({
         ref={videoRef}
         src={src}
         title={title}
-        className="max-h-full max-w-full"
+        className="h-full w-full"
         muted
         playsInline
         onClick={togglePlay}
