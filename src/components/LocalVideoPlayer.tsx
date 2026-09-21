@@ -80,6 +80,10 @@ const NON_NATIVE_FILE_RE = /\.(m2ts|mts|ts|mpe?g|avi|wmv|flv)$/i
 const SEEK_RELOAD_DEBOUNCE_MS = 250
 // Below this, a video.currentTime jump isn't treated as a real seek — see onSeeking/onSeeked.
 const SEEK_RELOAD_MIN_JUMP_S = 1.5
+// Headroom to leave before the end of a buffered audio range when seeking inside it.
+// Landing right on the edge stalls the element immediately, which would sound exactly
+// like the refetch the in-buffer path exists to avoid.
+const AUDIO_BUFFER_SEEK_MARGIN_S = 0.35
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
 const CONTROLS_IDLE_MS = 2800
 // How long the video has to sit paused before the streaming-style info card
@@ -466,12 +470,52 @@ export default function LocalVideoPlayer({
     audio.addEventListener("error", onError, { once: true })
   }, [relPath])
 
+  // A seek only needs a brand-new transcode when it lands outside what the audio
+  // element already holds. Inside it, the element seeks natively and instantly — and
+  // "inside it" covers most seeks in practice: the transcoded track is a few hundred
+  // kbps, so the browser buffers minutes of it ahead of the playhead, and the stream
+  // keeps everything since its own start behind. Refetching instead costs an ffmpeg
+  // spawn plus a real seek on the source file (these live on an external drive), and
+  // that wait, plus the pause that preceded it, is the silence after skipping.
+  //
+  // Returns whether the jump was absorbed. The audio stream's origin is unchanged, so
+  // audioOffsetRef still maps its clock to movie time.
+  const seekAudioWithinBuffer = useCallback((absoluteSeconds: number): boolean => {
+    const audio = audioRef.current
+    if (!audio || !audioInitializedRef.current || audio.readyState < 2) return false
+    const relative = absoluteSeconds - audioOffsetRef.current
+    if (!Number.isFinite(relative) || relative < 0) return false
+    const ranges = audio.buffered
+    for (let i = 0; i < ranges.length; i++) {
+      if (relative >= ranges.start(i) && relative <= ranges.end(i) - AUDIO_BUFFER_SEEK_MARGIN_S) {
+        try {
+          audio.currentTime = relative
+        } catch {
+          return false
+        }
+        // /api/local-audio is a progressive ADTS stream with no Range support, so the
+        // element can report an empty `seekable` and silently clamp the assignment
+        // instead of honouring it. Reporting the jump as absorbed when that happens
+        // would skip the refetch and strand the audio somewhere else entirely — far
+        // worse than the silence. Only claim it when it actually landed.
+        return Math.abs(audio.currentTime - relative) <= AUDIO_BUFFER_SEEK_MARGIN_S
+      }
+    }
+    return false
+  }, [])
+
   useMediaSync(videoRef, audioRef, audioOffsetRef, intentPlayingRef, !remuxMode, debugSync)
 
   // Any real seek — scrub bar, chapter jump, anything that moves video.currentTime —
-  // needs a fresh audio stream from the new position. This is a native listener on
-  // the video element itself (not tied to our own UI handlers) so it covers every
-  // way currentTime can change, per the "don't special-case one interaction" brief.
+  // has to move the audio with it. This is a native listener on the video element
+  // itself (not tied to our own UI handlers) so it covers every way currentTime can
+  // change, per the "don't special-case one interaction" brief.
+  //
+  // Two paths, and which one runs is what the viewer hears. If the target is already
+  // inside the current audio stream's buffer — a skip button, a short scrub, anything
+  // that doesn't leave the downloaded window — the element is seeked natively and the
+  // sound never stops. Only a jump beyond it falls back to fetching a fresh transcode,
+  // which does cost a moment of silence.
   //
   // media-sync's own visibilitychange handling also nudges video.currentTime — to
   // snap the video (which a hidden tab can get browser-paused, see useMediaSync) back
@@ -491,12 +535,28 @@ export default function LocalVideoPlayer({
       const audioAbsolute = audioOffsetRef.current + audio.currentTime
       return Math.abs(video.currentTime - audioAbsolute) >= SEEK_RELOAD_MIN_JUMP_S
     }
+    // Moves the audio to the new position using the stream it already has, and keeps it
+    // playing. Done on `seeking` rather than `seeked` so sound never stops at all: the
+    // video's own seek on a byte-range-served local file takes a few tens of ms, far
+    // under the drift media-sync would even react to.
+    const absorbSeek = () => {
+      if (!seekAudioWithinBuffer(video.currentTime)) return false
+      if (!video.paused) audioRef.current?.play().catch(() => {})
+      return true
+    }
     const onSeeking = () => {
       if (!isRealSeek()) return
+      // Absorbed: the audio is already at the target, so isRealSeek() reads false in
+      // `seeked` and no reload is scheduled. Only a jump out of the buffered stream
+      // still has to go silent while a new transcode is fetched.
+      if (absorbSeek()) return
       audioRef.current?.pause()
     }
     const onSeeked = () => {
       if (!isRealSeek()) return
+      // Retry here too: more of the stream may have arrived during the seek itself,
+      // and a scrub that ends inside the buffer shouldn't pay for a refetch.
+      if (absorbSeek()) return
       if (debounceId !== null) window.clearTimeout(debounceId)
       debounceId = window.setTimeout(() => {
         if (!audioInitializedRef.current) return
@@ -510,7 +570,7 @@ export default function LocalVideoPlayer({
       video.removeEventListener("seeked", onSeeked)
       if (debounceId !== null) window.clearTimeout(debounceId)
     }
-  }, [reloadAudio, remuxMode])
+  }, [reloadAudio, seekAudioWithinBuffer, remuxMode])
 
   // Watchdog for the audio stream itself: after a large seek, or if the ffmpeg
   // transcode falls behind / dies partway through (the file lives on an external

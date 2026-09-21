@@ -31,8 +31,16 @@ const AHEAD_BUDGET_BYTES = 96 * 1024 * 1024
 const AHEAD_MIN_S = 8
 const AHEAD_MAX_S = 40
 const AHEAD_DEFAULT_S = 20
-// Data further than this behind the playhead is evicted (keeps rewind snappy).
-const BEHIND_KEEP_S = 12
+// Data further than this behind the playhead is evicted. A rewind that lands inside
+// the kept window is native and instant; one that doesn't restarts ffmpeg, so the
+// window has to clear the skip-back button (10s) with room to spare or every rewind
+// pays for a new process. Sized against its own byte budget the same way the ahead
+// window is, so a 4 Mbps remux keeps a generous rewind while a 40 Mbps one stays
+// modest and well clear of the browser's SourceBuffer quota.
+const BEHIND_BUDGET_BYTES = 40 * 1024 * 1024
+const BEHIND_MIN_S = 14
+const BEHIND_MAX_S = 40
+const BEHIND_DEFAULT_S = 20
 // Coalesce network chunks (usually 16–64 KB) into fewer, larger appends.
 const APPEND_MIN_BYTES = 256 * 1024
 const BACKPRESSURE_POLL_MS = 400
@@ -503,6 +511,11 @@ export class RemuxStream {
     return Math.min(AHEAD_MAX_S, Math.max(AHEAD_MIN_S, AHEAD_BUDGET_BYTES / this.bytesPerSecond))
   }
 
+  private behindKeepSeconds(): number {
+    if (this.bytesPerSecond <= 0) return BEHIND_DEFAULT_S
+    return Math.min(BEHIND_MAX_S, Math.max(BEHIND_MIN_S, BEHIND_BUDGET_BYTES / this.bytesPerSecond))
+  }
+
   private aheadSeconds(): number {
     const time = this.video.currentTime
     const ranges = this.video.buffered
@@ -534,7 +547,7 @@ export class RemuxStream {
   private evictBehind(aggressive = false) {
     const sb = this.sourceBuffer
     if (!sb || sb.updating || sb.buffered.length === 0) return
-    const keepFrom = this.video.currentTime - (aggressive ? 2 : BEHIND_KEEP_S)
+    const keepFrom = this.video.currentTime - (aggressive ? 2 : this.behindKeepSeconds())
     const start = sb.buffered.start(0)
     if (keepFrom - start < (aggressive ? 1 : 6)) return
     try {
