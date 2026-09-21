@@ -163,7 +163,9 @@ function buildEpisodeMovie(
     seasonNumber: ep.season,
     ...(overview ? { description: overview, longDescription: overview, episodeSynopsis: overview } : {}),
     ...(tmdbEpisode?.runtime ? { duration: `${tmdbEpisode.runtime}m`, durationSeconds: tmdbEpisode.runtime * 60 } : {}),
-    ...(tmdbEpisode?.vote_average ? { rating: Math.round(tmdbEpisode.vote_average * 10) / 10 } : {}),
+    // `rating` stays the show's, not the episode's. It sits next to the show's poster and
+    // the show's title wherever it is drawn, so a per-episode score made the same title
+    // read as two different ones — 8.1 in "Continue Watching", 8.7 in its own row.
     posterPath: parent.posterPath || stillPath,
     backdropPath: stillPath || parent.backdropPath,
     trailerUrl: localVideoUrl(ep.relPath),

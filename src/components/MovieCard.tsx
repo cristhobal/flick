@@ -17,6 +17,7 @@ import {
 import { fetchDetailWithVideos } from "@/lib/tmdb"
 import { useScrollViewport } from "@/lib/scroll-container"
 import { useWatchState } from "@/lib/use-watch-state"
+import { episodeRefOf } from "@/lib/watch-progress"
 
 
 const PREVIEW_OPEN_EVENT = "flick:movie-preview-open"
@@ -356,6 +357,15 @@ export default function MovieCard({
   // read "Reanudar" wherever the title appears, not just in that one row.
   const ownWatchState = useWatchState(progressRatioProp === undefined ? movie.id : null)
   const progressRatio = progressRatioProp ?? (ownWatchState.inProgress ? ownWatchState.ratio : undefined)
+  // Which episode this card is up to. Two sources, because the same show reaches the card
+  // two different ways: "Continue Watching" hands over the episode itself, while its own
+  // row hands over the series and the resume point has to be looked up from storage. Both
+  // end up labelled identically, which is the point.
+  const storedEpisode = episodeRefOf(ownWatchState.entry)
+  const resumeSeason = movie.episodeNumber != null ? movie.seasonNumber : storedEpisode?.season
+  const resumeEpisode = movie.episodeNumber ?? storedEpisode?.episode
+  const resumeEpisodeLabel =
+    resumeEpisode != null ? (resumeSeason ? `T${resumeSeason} · E${resumeEpisode}` : `E${resumeEpisode}`) : null
   const seasonCount = Math.max(movie.seasons || 0, movie.totalSeasons || 0, movie.seasonList?.length || 0)
   const episodeCount = movie.episodes || movie.seriesEpisodes?.length || 0
   const episodeInfo = episodeCount
@@ -426,9 +436,13 @@ export default function MovieCard({
                 "linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.97) 12%, rgba(0,0,0,0.88) 24%, rgba(0,0,0,0.74) 36%, rgba(0,0,0,0.56) 48%, rgba(0,0,0,0.38) 60%, rgba(0,0,0,0.22) 72%, rgba(0,0,0,0.1) 84%, rgba(0,0,0,0) 100%)",
             }}
           >
-            {movie.episodeNumber != null && (
+            {/* Where the viewer is up to. Drawn from resumeEpisodeLabel rather than from
+                movie.episodeNumber alone, so the same show is labelled identically in
+                "Continue Watching" (which hands over the episode) and in its own row
+                (which hands over the series, with the episode looked up from storage). */}
+            {resumeEpisodeLabel && (
               <p className="line-clamp-1 text-[10px] font-semibold tracking-wide text-[rgba(255,255,255,0.65)] uppercase">
-                {movie.seasonNumber ? `T${movie.seasonNumber} · E${movie.episodeNumber}` : `E${movie.episodeNumber}`}
+                {resumeEpisodeLabel}
               </p>
             )}
             <p className="line-clamp-1 text-sm font-medium text-[#fff]" title={movie.title}>

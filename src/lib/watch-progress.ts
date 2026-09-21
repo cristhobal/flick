@@ -25,6 +25,11 @@ const NEAR_END_MARGIN_SECONDS = 20
 export interface WatchProgressEntry {
   id: string
   seriesId?: string
+  /** Which episode this entry is, when it is one — so a card can say "T1 · E3" without
+   *  picking the id apart. Absent on standalone movies, and on entries written before
+   *  this was recorded; for those, episodeRefOf recovers the numbers from the id. */
+  season?: number
+  episode?: number
   currentTime: number
   duration: number
   updatedAt: number
@@ -59,14 +64,28 @@ function isNearEnd(currentTime: number, duration: number): boolean {
 // `seriesId` should be the parent show's own id for an episode, and left
 // unset for a standalone movie — it's what lets listWatchProgress collapse
 // every episode of one series down to a single "continue watching" card.
-export function saveWatchProgress(id: string, currentTime: number, duration: number, seriesId?: string) {
+export function saveWatchProgress(
+  id: string,
+  currentTime: number,
+  duration: number,
+  seriesId?: string,
+  episodeRef?: { season?: number; episode?: number }
+) {
   if (!id || duration <= 0 || currentTime < MIN_PROGRESS_SECONDS) return
   const map = readAll()
   if (isNearEnd(currentTime, duration)) {
     if (!(id in map)) return
     delete map[id]
   } else {
-    map[id] = { id, seriesId, currentTime, duration, updatedAt: Date.now() }
+    map[id] = {
+      id,
+      seriesId,
+      season: episodeRef?.season,
+      episode: episodeRef?.episode,
+      currentTime,
+      duration,
+      updatedAt: Date.now(),
+    }
   }
   writeAll(map)
   notifyChange()
@@ -82,6 +101,22 @@ export function clearWatchProgress(id: string) {
 
 export function getWatchProgress(id: string): WatchProgressEntry | null {
   return readAll()[id] || null
+}
+
+// An episode's content id is built as `<seriesId>-s<season>e<episode>` with an optional
+// `-<n>` disambiguator (see buildEpisodeMovie). Entries stored before season/episode were
+// recorded carry the numbers only in there, so recover them from the id rather than make
+// an existing resume point wait until it is watched again to get labelled.
+const ID_EPISODE_RE = /-s(\d+)e(\d+(?:\.\d+)?)(?:-\d+)?$/i
+
+/** Which episode a resume point refers to, or null for a standalone movie. */
+export function episodeRefOf(
+  entry: WatchProgressEntry | null | undefined
+): { season?: number; episode: number } | null {
+  if (!entry) return null
+  if (entry.episode != null) return { season: entry.season, episode: entry.episode }
+  const match = ID_EPISODE_RE.exec(entry.id)
+  return match ? { season: Number(match[1]), episode: Number(match[2]) } : null
 }
 
 // The resume state of a title as a browse/detail view sees it: a movie (or a

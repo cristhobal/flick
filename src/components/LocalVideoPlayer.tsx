@@ -900,6 +900,15 @@ export default function LocalVideoPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src])
 
+  // Stored with every resume point so a "Continue Watching" card can label which episode
+  // it will resume, instead of decoding it back out of the content id. Not memoized: it
+  // is only ever passed into a call, never used as a dependency, and PlayerPage remounts
+  // this component per episode (key={trailerUrl}) so `media` cannot change under it.
+  const episodeRef =
+    media?.episodeNumber != null
+      ? { season: media.seasonNumber, episode: media.episodeNumber }
+      : undefined
+
   // Persist "Continue Watching" progress when leaving this episode/movie —
   // navigating back, switching episodes (this component remounts fully on
   // every switch via key={trailerUrl} in PlayerPage), or closing the tab.
@@ -907,7 +916,7 @@ export default function LocalVideoPlayer({
     const saveNow = () => {
       const video = videoRef.current
       if (!video || !contentId) return
-      saveWatchProgress(contentId, video.currentTime, video.duration || duration, seriesId)
+      saveWatchProgress(contentId, video.currentTime, video.duration || duration, seriesId, episodeRef)
     }
     window.addEventListener("beforeunload", saveNow)
     return () => {
@@ -1224,7 +1233,7 @@ export default function LocalVideoPlayer({
           const video = videoRef.current
           if (video && contentId) {
             lastProgressSaveAtRef.current = Date.now()
-            saveWatchProgress(contentId, video.currentTime, video.duration || duration, seriesId)
+            saveWatchProgress(contentId, video.currentTime, video.duration || duration, seriesId, episodeRef)
           }
         }}
         onWaiting={() => {
@@ -1243,7 +1252,7 @@ export default function LocalVideoPlayer({
           const now = Date.now()
           if (contentId && now - lastProgressSaveAtRef.current > PROGRESS_SAVE_INTERVAL_MS) {
             lastProgressSaveAtRef.current = now
-            saveWatchProgress(contentId, time, event.currentTarget.duration || duration, seriesId)
+            saveWatchProgress(contentId, time, event.currentTarget.duration || duration, seriesId, episodeRef)
           }
         }}
       />
