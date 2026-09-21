@@ -1,9 +1,10 @@
 // Dev-only Vite middleware that exposes the local movie library on disk so `npm run dev`
 // can browse and stream real files instead of TMDB trailers. Registered with `apply: "serve"`
 // so it never runs (and never ships) during `astro build` / production.
-import { createReadStream, existsSync, readdirSync, statSync } from "node:fs"
+import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from "node:fs"
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { basename, dirname, extname, join, normalize, relative, resolve, sep } from "node:path"
+import { fileURLToPath } from "node:url"
 import { createHash } from "node:crypto"
 import { spawn } from "node:child_process"
 import { homedir } from "node:os"
@@ -1310,6 +1311,62 @@ function findLibraryUnder(parentDir, depth = 1) {
   return null
 }
 
+// Astro/Vite load `.env` into `import.meta.env` for app code only — this plugin runs
+// in the Node config process, where `process.env` never sees it. Read the env files
+// ourselves so `LOCAL_MOVIES_DIR` in `.env` works as the docs (and the error message
+// below) promise. Values already present in the real environment win.
+function loadEnvFiles() {
+  const root = fileURLToPath(new URL("../", import.meta.url))
+  /** @type {Record<string, string>} */
+  const values = {}
+  // Later files override earlier ones, matching Vite's own .env precedence.
+  for (const name of [".env", ".env.local", ".env.development", ".env.development.local"]) {
+    let raw
+    try {
+      raw = readFileSync(join(root, name), "utf8")
+    } catch {
+      continue
+    }
+    for (const line of raw.split(/\r?\n/)) {
+      const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line)
+      if (!match) continue
+      let value = match[2].trim()
+      // Strip matching quotes; an unquoted value keeps everything up to a ` #` comment.
+      if (/^"(.*)"$/s.test(value) || /^'(.*)'$/s.test(value)) value = value.slice(1, -1)
+      else value = value.replace(/\s+#.*$/, "").trim()
+      values[match[1]] = value
+    }
+  }
+  return values
+}
+
+// The same checkout is used from Windows and from Linux, where the library lives at
+// completely different paths (`D:\Peliculas` vs `/mnt/media/Peliculas`). Accept a
+// per-platform override first, then a `|`-separated candidate list in LOCAL_MOVIES_DIR
+// so a single committed .env can name both paths and each OS picks the one that exists.
+// `|` is illegal in Windows paths and vanishingly rare on POSIX, unlike `;`/`:` whose
+// meaning as a path separator flips between the two platforms.
+const PLATFORM_DIR_VARS = {
+  win32: "LOCAL_MOVIES_DIR_WINDOWS",
+  linux: "LOCAL_MOVIES_DIR_LINUX",
+  darwin: "LOCAL_MOVIES_DIR_MAC",
+}
+
+function findConfiguredLibraryDir() {
+  const fileEnv = loadEnvFiles()
+  const read = (/** @type {string} */ name) => (process.env[name] || fileEnv[name] || "").trim()
+
+  const platformVar = PLATFORM_DIR_VARS[/** @type {keyof typeof PLATFORM_DIR_VARS} */ (process.platform)]
+  const candidates = [...(platformVar ? [read(platformVar)] : []), ...read("LOCAL_MOVIES_DIR").split("|")]
+    .map((value) => value.trim())
+    .filter(Boolean)
+
+  if (candidates.length === 0) return null
+  // Several paths configured (one per machine) — use the first that exists here, and
+  // fall back to the first one overall so the error can name what was actually set.
+  return candidates.find((candidate) => isDir(candidate)) || candidates[0]
+}
+
 // No LOCAL_MOVIES_DIR set — look for a "Peliculas" folder in the usual places for
 // the current OS: any drive letter on Windows, mounted volumes on Linux/macOS, and
 // common home-folder locations. Returns null if nothing is found.
@@ -1332,22 +1389,40 @@ function findDefaultLibraryDir() {
     return null
   }
 
-  // Linux
+  // Linux. Mount points first, then the home folder — including the Spanish names
+  // a localised desktop creates ("Vídeos"), and WSL's /mnt/<drive letter> view of
+  // the Windows disks, which is where the same library shows up from a WSL checkout.
   const onRunMedia = findLibraryUnder("/run/media", 2) // /run/media/<user>/<disk>/Peliculas
   if (onRunMedia) return onRunMedia
   const onMedia = findLibraryUnder("/media", 2) // /media/<disk>/Peliculas or /media/<user>/<disk>/Peliculas
   if (onMedia) return onMedia
-  const onMnt = findLibraryUnder("/mnt") // /mnt/<disk>/Peliculas
+  const onMnt = findLibraryUnder("/mnt", 2) // /mnt/<disk>/Peliculas or /mnt/d/Peliculas under WSL
   if (onMnt) return onMnt
-  for (const candidate of [join(home, LIBRARY_FOLDER_NAME), join(home, "Videos", LIBRARY_FOLDER_NAME)]) {
+  const onSrv = findLibraryUnder("/srv") // /srv/<share>/Peliculas
+  if (onSrv) return onSrv
+  const candidates = [
+    join("/mnt", LIBRARY_FOLDER_NAME),
+    join("/media", LIBRARY_FOLDER_NAME),
+    join("/srv", LIBRARY_FOLDER_NAME),
+    join(home, LIBRARY_FOLDER_NAME),
+    join(home, "Películas"),
+    ...["Videos", "Vídeos", "Movies", "media"].map((dir) => join(home, dir, LIBRARY_FOLDER_NAME)),
+  ]
+  for (const candidate of candidates) {
     if (isDir(candidate)) return candidate
   }
   return null
 }
 
 export function localMediaDevPlugin() {
-  const configuredDir = process.env.LOCAL_MOVIES_DIR || findDefaultLibraryDir()
-  const baseDir = configuredDir ? normalize(configuredDir) : null
+  const resolvedDir = findConfiguredLibraryDir() || findDefaultLibraryDir()
+  const baseDir = resolvedDir ? normalize(resolvedDir) : null
+  const platformVar = PLATFORM_DIR_VARS[/** @type {keyof typeof PLATFORM_DIR_VARS} */ (process.platform)]
+  // Point at the per-platform variable so a checkout shared between Windows and Linux
+  // can carry both paths instead of one machine overwriting the other's .env.
+  const howToConfigure =
+    `Set LOCAL_MOVIES_DIR in your .env file to the path of your "${LIBRARY_FOLDER_NAME}" folder` +
+    (platformVar ? ` (or ${platformVar} for a path that only applies on this OS).` : ".")
 
   return {
     name: "flick-local-media-dev",
@@ -1357,8 +1432,8 @@ export function localMediaDevPlugin() {
         if (!req.url || !req.url.startsWith(LIBRARY_API_PATH)) return next()
         if (!baseDir || !existsSync(baseDir)) {
           const error = baseDir
-            ? `Directory not found: ${baseDir}`
-            : `No movie library found automatically. Set LOCAL_MOVIES_DIR in your .env file to the path of your "${LIBRARY_FOLDER_NAME}" folder.`
+            ? `Directory not found on ${process.platform}: ${baseDir}. ${howToConfigure}`
+            : `No movie library found automatically. ${howToConfigure}`
           sendJson(res, 200, { movies: [], series: [], animeMovies: [], animeSeries: [], error })
           return
         }

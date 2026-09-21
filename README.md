@@ -140,9 +140,26 @@ PUBLIC_DATA_SOURCE=local
 
 # Optional — if unset, Flick looks for a "Peliculas" folder automatically:
 # any drive letter on Windows (D:\Peliculas, E:\Peliculas, ...), mounted
-# volumes on Linux/macOS (/run/media, /media, /mnt, /Volumes), and common
+# volumes on Linux/macOS (/run/media, /media, /mnt, /srv, /Volumes), and common
 # home-folder locations (~/Peliculas, ~/Videos/Peliculas, ~/Movies/Peliculas).
 LOCAL_MOVIES_DIR=/path/to/your/movies/library
+```
+
+Sharing one checkout between Windows and Linux? The library lives at a different path
+on each, so give `LOCAL_MOVIES_DIR` several candidates separated by `|` — the first one
+that exists on the running machine wins:
+
+```dotenv
+LOCAL_MOVIES_DIR=D:\Peliculas|/mnt/media/Peliculas
+```
+
+Or keep them in separate variables, which take priority over `LOCAL_MOVIES_DIR` on their
+own platform:
+
+```dotenv
+LOCAL_MOVIES_DIR_WINDOWS=D:\Peliculas
+LOCAL_MOVIES_DIR_LINUX=/mnt/media/Peliculas
+LOCAL_MOVIES_DIR_MAC=/Volumes/Media/Peliculas
 ```
 
 Recommended structure:
