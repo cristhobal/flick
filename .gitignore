@@ -4,6 +4,8 @@ dist/
 # generated types
 .astro/
 .media-cache/
+# viewer's per-title audio/subtitle choices (local dev)
+.flick-data/
 
 # dependencies
 node_modules/

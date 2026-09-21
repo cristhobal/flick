@@ -3,12 +3,21 @@
 // so it never runs (and never ships) during `astro build` / production.
 import { createReadStream, existsSync, readdirSync, statSync } from "node:fs"
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises"
-import { extname, join, normalize, relative, resolve, sep } from "node:path"
+import { basename, dirname, extname, join, normalize, relative, resolve, sep } from "node:path"
 import { createHash } from "node:crypto"
 import { spawn } from "node:child_process"
 import { homedir } from "node:os"
 
-const VIDEO_EXTENSIONS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v"])
+// Includes the MPEG-TS family (.m2ts/.mts/.ts — Blu-ray remuxes and camcorder
+// rips) and MPEG program streams. Browsers can't demux those natively, so they
+// are played through the on-the-fly remux pipeline (see streamRemux below).
+const VIDEO_EXTENSIONS = new Set([
+  ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v",
+  ".m2ts", ".mts", ".ts", ".mpg", ".mpeg", ".ogv", ".3gp",
+])
+// Containers Chrome/Firefox can't open in a <video> element at all. Everything
+// else is tried natively first (see needsRemux for the codec-level fallback).
+const NON_NATIVE_CONTAINERS = new Set([".m2ts", ".mts", ".ts", ".mpg", ".mpeg", ".avi", ".wmv", ".flv"])
 const MIME_TYPES = {
   ".mp4": "video/mp4",
   ".m4v": "video/x-m4v",
@@ -18,15 +27,25 @@ const MIME_TYPES = {
   ".mov": "video/quicktime",
   ".wmv": "video/x-ms-wmv",
   ".flv": "video/x-flv",
+  ".m2ts": "video/mp2t",
+  ".mts": "video/mp2t",
+  ".ts": "video/mp2t",
+  ".mpg": "video/mpeg",
+  ".mpeg": "video/mpeg",
+  ".ogv": "video/ogg",
+  ".3gp": "video/3gpp",
 }
 
 const LIBRARY_FOLDER_NAME = "Peliculas"
 const LIBRARY_API_PATH = "/api/local-library"
 const VIDEO_API_PREFIX = "/api/local-video/"
 const AUDIO_API_PREFIX = "/api/local-audio/"
+const REMUX_API_PREFIX = "/api/local-remux/"
+const PREFS_API_PATH = "/api/local-prefs"
 const VIDEO_INFO_API_PATH = "/api/local-video-info"
 const SUBTITLE_API_PREFIX = "/api/local-subtitle/"
 const SUBTITLE_RAW_API_PREFIX = "/api/local-subtitle-raw/"
+const SUBTITLE_PGS_API_PREFIX = "/api/local-subtitle-pgs/"
 const FONT_API_PREFIX = "/api/local-font/"
 const SUBTITLE_FONT_API_PATH = "/api/subtitle-font"
 const THUMBNAIL_API_PREFIX = "/api/local-thumbnail/"
@@ -41,6 +60,9 @@ const THUMBNAIL_TARGET_COUNT = 300
 const CACHE_DIR = resolve(process.cwd(), ".media-cache", "subs")
 const FONT_CACHE_DIR = resolve(process.cwd(), ".media-cache", "fonts")
 const THUMB_CACHE_DIR = resolve(process.cwd(), ".media-cache", "thumbs")
+// Viewer choices (audio/subtitle per title) live outside .media-cache on purpose:
+// that folder is disposable cache, this is user data that must survive clearing it.
+const PREFS_FILE = resolve(process.cwd(), ".flick-data", "media-prefs.json")
 
 function thumbnailInterval(duration) {
   if (!duration || duration <= 0) return THUMBNAIL_MIN_INTERVAL_S
@@ -98,13 +120,41 @@ async function safeReaddir(dir) {
   }
 }
 
+// A ripped Blu-ray keeps its film in `<Movie (2016)>/BDMV/STREAM/00000.m2ts`,
+// next to menu clips and extras. Treat the whole disc folder as ONE movie —
+// named after the folder that holds BDMV, playing its biggest stream (the
+// feature) — instead of listing every numbered clip as a title of its own.
+async function findBlurayFeature(bdmvDir) {
+  const streams = await safeReaddir(join(bdmvDir, "STREAM"))
+  let best = null
+  for (const stream of streams) {
+    if (!stream.isFile() || !isVideoFile(stream.name)) continue
+    const full = join(bdmvDir, "STREAM", stream.name)
+    let size = 0
+    try {
+      size = statSync(full).size
+    } catch {
+      continue
+    }
+    if (!best || size > best.size) best = { full, size }
+  }
+  return best ? best.full : null
+}
+
 // Recursively collect every video file under `dir` as an individual movie entry.
 async function collectMoviesRecursive(baseDir, dir) {
   const movies = []
   const entries = await safeReaddir(dir)
   for (const entry of entries) {
     const full = join(dir, entry.name)
-    if (entry.isDirectory()) {
+    if (entry.isDirectory() && entry.name.toUpperCase() === "BDMV") {
+      const feature = await findBlurayFeature(full)
+      if (feature) {
+        const relPath = relative(baseDir, feature)
+        const { title, year } = parseTitleYear(basename(dir))
+        movies.push({ id: slugId(relPath), relPath, title: title || basename(dir), year })
+      }
+    } else if (entry.isDirectory()) {
       movies.push(...(await collectMoviesRecursive(baseDir, full)))
     } else if (entry.isFile() && isVideoFile(entry.name)) {
       const relPath = relative(baseDir, full)
@@ -255,10 +305,39 @@ function streamVideo(req, res, filePath) {
 
 const TEXT_SUBTITLE_CODECS = new Set(["subrip", "ass", "ssa", "mov_text", "webvtt", "text"])
 
+// Every ffmpeg/ffprobe we start is tracked so none outlives the dev server — a
+// remux of a 27 GB file left running after Ctrl+C would keep hammering the disk.
+const liveChildren = new Set()
+function trackChild(child) {
+  liveChildren.add(child)
+  child.on("close", () => liveChildren.delete(child))
+  return child
+}
+function killLiveChildren() {
+  for (const child of liveChildren) child.kill("SIGKILL")
+}
+process.on("exit", killLiveChildren)
+// Ctrl+C / `kill` end the process without running "exit" handlers unless the signal
+// is caught. Kill the children, then re-raise so the normal shutdown still happens.
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.once(signal, () => {
+    killLiveChildren()
+    process.kill(process.pid, signal)
+  })
+}
+
+// Background work (subtitle extraction, thumbnail passes) must never starve the
+// stream the viewer is actually watching, so it runs at reduced CPU priority.
+function spawnLowPriority(command, args, options) {
+  if (process.platform === "win32") return trackChild(spawn(command, args, options))
+  return trackChild(spawn("nice", ["-n", "12", command, ...args], options))
+}
+
 // Run ffprobe/ffmpeg and collect stdout as a Buffer; rejects on non-zero exit.
-function runCapture(command, args) {
+function runCapture(command, args, { lowPriority = false } = {}) {
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] })
+    const spawnFn = lowPriority ? spawnLowPriority : (cmd, cmdArgs, opts) => trackChild(spawn(cmd, cmdArgs, opts))
+    const child = spawnFn(command, args, { stdio: ["ignore", "pipe", "pipe"] })
     const chunks = []
     let stderr = ""
     child.stdout.on("data", (chunk) => chunks.push(chunk))
@@ -271,18 +350,100 @@ function runCapture(command, args) {
   })
 }
 
-// List embedded audio/subtitle streams, each with both its absolute ffprobe index
-// (for display) and its 0-based per-type index (what ffmpeg's `-map 0:a:N` expects).
-async function probeTracks(filePath) {
-  const output = await runCapture("ffprobe", [
+// ffprobe results per file, keyed by path and invalidated when the file's size or
+// mtime changes. Playback fires several requests (video-info, then a remux stream
+// per seek) that all need the same facts; on a multi-GB file on an external drive
+// re-probing each time is wasted latency.
+const probeCache = new Map()
+
+function probeRaw(filePath) {
+  let signature = ""
+  try {
+    const stats = statSync(filePath)
+    signature = `${stats.size}:${stats.mtimeMs}`
+  } catch {
+    // Fall through — ffprobe reports the real error below.
+  }
+  const cached = probeCache.get(filePath)
+  if (cached && cached.signature === signature) return cached.promise
+  const promise = runCapture("ffprobe", [
     "-v", "error",
-    "-show_entries", "stream=index,codec_type,codec_name:stream_tags=language,title,filename,mimetype",
-    "-show_entries", "format=duration",
+    "-show_entries",
+    "stream=index,codec_type,codec_name,profile,level,channels,pix_fmt,field_order,color_transfer,width,height,avg_frame_rate:stream_tags=language,title,filename,mimetype:stream_disposition=default,forced,hearing_impaired,attached_pic",
+    "-show_entries", "format=duration,start_time",
     "-show_chapters",
     "-of", "json",
     filePath,
-  ])
-  const data = JSON.parse(output.toString("utf8"))
+  ]).then((output) => JSON.parse(output.toString("utf8")))
+  probeCache.set(filePath, { signature, promise })
+  promise.catch(() => probeCache.delete(filePath))
+  return promise
+}
+
+// H.264 8-bit 4:2:0 up to level 5.2 decodes in every browser's MSE pipeline, so it
+// can be stream-copied. Anything else (MPEG-2/VC-1 from older Blu-rays, HEVC, 10-bit,
+// 4:2:2, interlaced) is re-encoded to a browser-safe H.264 on the fly.
+const COPYABLE_H264_PROFILES = new Set(["Baseline", "Constrained Baseline", "Main", "Extended", "High"])
+function pickVideoMode(video) {
+  if (!video) return "copy"
+  const progressive = !video.fieldOrder || video.fieldOrder === "progressive" || video.fieldOrder === "unknown"
+  const copyable =
+    video.codec === "h264" &&
+    video.pixFmt === "yuv420p" &&
+    COPYABLE_H264_PROFILES.has(video.profile) &&
+    (video.level || 0) <= 52 &&
+    progressive
+  return copyable ? "copy" : "transcode"
+}
+
+// Facts the remux pipeline and the client need about one file's video stream.
+async function getStreamPlan(filePath) {
+  const data = await probeRaw(filePath)
+  const streams = Array.isArray(data.streams) ? data.streams : []
+  const rawVideo = streams.find((stream) => stream.codec_type === "video" && stream.disposition?.attached_pic !== 1)
+  const video = rawVideo
+    ? {
+        codec: rawVideo.codec_name,
+        profile: rawVideo.profile || "",
+        level: Number(rawVideo.level) || 0,
+        pixFmt: rawVideo.pix_fmt || "",
+        fieldOrder: rawVideo.field_order || "",
+        colorTransfer: rawVideo.color_transfer || "",
+        width: Number(rawVideo.width) || 0,
+        height: Number(rawVideo.height) || 0,
+      }
+    : null
+  return {
+    startTime: Number(data.format?.start_time) || 0,
+    duration: Number(data.format?.duration) || 0,
+    audioCount: streams.filter((stream) => stream.codec_type === "audio").length,
+    video,
+    videoMode: pickVideoMode(video),
+  }
+}
+
+// Whether <video src=file> is hopeless and the stream must be remuxed instead: a
+// container browsers can't open (MPEG-TS, AVI, …). Deliberately NOT decided by codec:
+// whether a browser can decode e.g. HEVC depends on the machine (hardware decoders),
+// which only the browser knows — so a native <video> that errors falls back to remux
+// on the client (LocalVideoPlayer's onError), and one that works is left alone.
+function needsRemux(filePath) {
+  return NON_NATIVE_CONTAINERS.has(extname(filePath).toLowerCase())
+}
+
+const AUDIO_CODEC_LABELS = { dts: "DTS", truehd: "TrueHD", eac3: "E-AC-3", ac3: "AC-3", aac: "AAC", flac: "FLAC", opus: "Opus", mp3: "MP3", pcm_bluray: "LPCM", pcm_s16le: "PCM", pcm_s24le: "PCM" }
+function channelLabel(channels) {
+  if (channels === 6) return "5.1"
+  if (channels === 8) return "7.1"
+  if (channels === 2) return "2.0"
+  if (channels === 1) return "1.0"
+  return channels ? `${channels}ch` : ""
+}
+
+// List embedded audio/subtitle streams, each with both its absolute ffprobe index
+// (for display) and its 0-based per-type index (what ffmpeg's `-map 0:a:N` expects).
+async function probeTracks(filePath) {
+  const data = await probeRaw(filePath)
   const streams = Array.isArray(data.streams) ? data.streams : []
   // Chapter markers, when present, are the most reliable way to know where credits
   // actually start — far better than guessing from a fixed "last N seconds" offset,
@@ -302,18 +463,31 @@ async function probeTracks(filePath) {
   for (const stream of streams) {
     const tags = stream.tags || {}
     if (stream.codec_type === "audio") {
-      audioTracks.push({ index: audioTypeIndex, codec: stream.codec_name, language: tags.language || "", title: tags.title || "" })
+      const codecLabel = AUDIO_CODEC_LABELS[stream.codec_name] || stream.codec_name || ""
+      const profile = stream.profile && /dts-hd|atmos|x/i.test(stream.profile) ? stream.profile : ""
+      audioTracks.push({
+        index: audioTypeIndex,
+        codec: stream.codec_name,
+        language: tags.language || "",
+        title: tags.title || "",
+        channels: Number(stream.channels) || 0,
+        // Untagged tracks (common in Blu-ray rips: the TS carries no language) still
+        // need something recognisable in the menu — "DTS-HD MA 5.1", not just "Audio 2".
+        detail: [profile || codecLabel, channelLabel(Number(stream.channels) || 0)].filter(Boolean).join(" "),
+      })
       audioTypeIndex++
     } else if (stream.codec_type === "subtitle") {
-      // Image-based subtitle codecs (PGS, DVD/VOB) can't be converted to text by
-      // ffmpeg — keep the type-relative index in sync for `-map 0:s:N` but hide
-      // them from the client so picking one never 500s.
-      if (TEXT_SUBTITLE_CODECS.has(stream.codec_name)) {
-        const disp = stream.disposition || {}
+      const disp = stream.disposition || {}
+      // Image-based subtitle codecs can't become text. PGS (Blu-ray) is drawn by the
+      // client's own bitmap renderer; DVD/VOB subtitles stay hidden — but the
+      // type-relative index is still counted so `-map 0:s:N` stays in sync.
+      const isText = TEXT_SUBTITLE_CODECS.has(stream.codec_name)
+      const isPgs = stream.codec_name === "hdmv_pgs_subtitle"
+      if (isText || isPgs) {
         subtitleTracks.push({
           index: subtitleTypeIndex,
           codec: stream.codec_name,
-          format: STYLED_SUBTITLE_CODECS.has(stream.codec_name) ? "ass" : "vtt",
+          format: isPgs ? "pgs" : STYLED_SUBTITLE_CODECS.has(stream.codec_name) ? "ass" : "vtt",
           language: tags.language || "",
           title: tags.title || "",
           // So the client can tell two same-language tracks apart (e.g. a full
@@ -333,8 +507,19 @@ async function probeTracks(filePath) {
       attachmentTypeIndex++
     }
   }
-  const duration = Number(data.format?.duration) || 0
-  return { audioTracks, subtitleTracks, fonts, chapters, duration, thumbnailInterval: thumbnailInterval(duration) }
+  const plan = await getStreamPlan(filePath)
+  return {
+    audioTracks,
+    subtitleTracks,
+    fonts,
+    chapters,
+    duration: plan.duration,
+    // Container clock origin: MPEG-TS files start at e.g. 0.54s, not 0. The remux
+    // stream keeps those raw timestamps, so the player maps them back with this.
+    startTime: plan.startTime,
+    remux: needsRemux(filePath),
+    thumbnailInterval: thumbnailInterval(plan.duration),
+  }
 }
 
 // Audio-only stream for one track, always transcoded to AAC/ADTS so it's guaranteed
@@ -345,7 +530,7 @@ async function probeTracks(filePath) {
 // — see MediaSyncManager (src/lib/media-sync.ts) for how the two stay locked together.
 function streamAudioOnly(res, filePath, audioIndex, startSeconds) {
   const args = [
-    "-hide_banner", "-loglevel", "error",
+    "-hide_banner", "-loglevel", "error", "-nostdin",
     // Survive malformed/unusual streams (odd timestamps, truncated frames) instead
     // of aborting the whole transcode over a single bad packet.
     "-err_detect", "ignore_err",
@@ -362,39 +547,149 @@ function streamAudioOnly(res, filePath, audioIndex, startSeconds) {
     "-f", "adts",
     "pipe:1",
   ]
-  const child = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] })
-  let headersSent = false
+  pipeFfmpeg(res, args, "audio/aac")
+}
+
+// Run ffmpeg and pipe its stdout into the HTTP response with real backpressure:
+// when the browser stops reading (its media buffer is full) the pipe fills, ffmpeg
+// blocks on its own write, and it stops decoding/reading the source. The previous
+// per-chunk `res.write` ignored that signal, so a fast transcode of a long file was
+// buffered whole in Node's memory whenever the browser lagged behind it.
+//
+// Headers are held back until the first byte so a failure that happens before any
+// output (bad track index, undecodable codec, corrupt file) becomes a real 500 the
+// client can react to, instead of an empty 200 that leaves playback silently stuck.
+function pipeFfmpeg(res, args, contentType, { lowPriority = false } = {}) {
+  // The client may already be gone (e.g. it aborted while the caller was probing the
+  // file). Its "close" event has fired by now, so nothing would ever kill the child.
+  if (res.destroyed || res.closed) return
+  const spawnFn = lowPriority ? spawnLowPriority : (cmd, cmdArgs, opts) => trackChild(spawn(cmd, cmdArgs, opts))
+  const child = spawnFn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] })
   let stderr = ""
-  const sendHeaders = () => {
-    if (headersSent || res.headersSent) return
-    headersSent = true
+  let started = false
+  let closed = false
+
+  child.stderr.on("data", (chunk) => {
+    if (stderr.length < 4000) stderr += chunk.toString()
+  })
+  child.stdout.once("data", () => {
+    started = true
     res.statusCode = 200
-    res.setHeader("Content-Type", "audio/aac")
-  }
-  child.stdout.on("data", (chunk) => {
-    sendHeaders()
-    res.write(chunk)
+    res.setHeader("Content-Type", contentType)
+    res.setHeader("Cache-Control", "no-store")
   })
-  child.stdout.on("end", () => {
-    sendHeaders() // ffmpeg produced zero bytes but exited 0 — still close the response cleanly
-    res.end()
-  })
-  child.stderr.on("data", (chunk) => { stderr += chunk.toString() })
+  // `end: false` — the response is closed by hand below, once the exit status is
+  // known, so a crash mid-stream can be told apart from a normal end of file.
+  child.stdout.pipe(res, { end: false })
   child.on("error", () => {
-    if (!res.headersSent) { res.statusCode = 500 }
+    if (!res.headersSent) res.statusCode = 500
     res.end()
   })
   child.on("close", (code) => {
-    // ffmpeg died before producing any audio at all (bad track index, undecodable
-    // codec, corrupt file) — surface a real error instead of a silent empty 200 so
-    // the player can detect it and retry/fall back instead of just staying muted.
-    if (code !== 0 && !headersSent) {
-      res.statusCode = 500
-      res.setHeader("Content-Type", "text/plain")
-      res.end(stderr.slice(0, 500) || `ffmpeg exited with ${code}`)
+    if (closed) return
+    if (started) {
+      // Clean exit: finish the response. Failure partway through: drop the
+      // connection so the client sees a network error (and retries) instead of
+      // mistaking a truncated stream for the whole file.
+      if (code === 0) res.end()
+      else res.destroy()
+      return
+    }
+    // ffmpeg died before producing any output at all — surface a real error.
+    if (!res.headersSent && !res.writableEnded) {
+      res.statusCode = code === 0 ? 200 : 500
+      res.setHeader("Content-Type", code === 0 ? contentType : "text/plain")
+      res.end(code === 0 ? undefined : stderr.slice(0, 500) || `ffmpeg exited with ${code}`)
     }
   })
-  res.on("close", () => child.kill("SIGKILL"))
+  res.on("close", () => {
+    closed = true
+    child.kill("SIGKILL")
+  })
+}
+
+// Live remux for files the browser can't play directly (MPEG-TS/.m2ts, AVI, …, or
+// unsupported video codecs): one ffmpeg process turns the source into a fragmented
+// MP4 — video + the chosen audio track (always AAC) — starting at `startSeconds`, and
+// the client feeds it to a MediaSource (src/lib/remux-stream.ts). Because video and
+// audio come out of the same process on the same timeline, they cannot drift apart.
+//
+// Video is stream-copied whenever the codec is browser-safe (a Blu-ray's H.264 costs
+// no CPU and starts instantly); otherwise it is re-encoded to H.264.
+//
+// Timestamps are the source's own (`-copyts`), made absolute in the fMP4 by
+// `frag_discont`, so the client can map them back to movie time with just the
+// container's start offset. Two details keep that exact:
+//   - Timing note: `-use_editlist 0` + `negative_cts_offsets` is what keeps picture and
+//     sound aligned. Measured in Chrome with a test file whose picture flashes and
+//     sound beeps on the same whole seconds: A/V offset ~3ms (the same as a native mp4)
+//     for sources with 0, 1, 2 and 3 B-frames. Trying to pre-compensate the muxer's
+//     composition shift by hand (ffmpeg's `setts`) made it WORSE, by 40-80ms, and
+//     `ffprobe` on the output is misleading here (it applies the MP4 edit list, which
+//     browsers treat differently) — verify changes to these flags in a browser.
+//   - Copying can only cut on a keyframe, and ffmpeg lands on the first one AFTER the
+//     requested time. Starting a few seconds early guarantees a keyframe at or before
+//     the point the viewer asked for; the player starts playback at the real target.
+const REMUX_PREROLL_S = 4
+async function streamRemux(res, filePath, startSeconds, audioIndex) {
+  let plan
+  try {
+    plan = await getStreamPlan(filePath)
+  } catch (err) {
+    res.statusCode = 500
+    res.end(String(err))
+    return
+  }
+  const copy = plan.videoMode === "copy"
+  const seekTo = Math.max(0, startSeconds - (copy ? REMUX_PREROLL_S : 0))
+  const withAudio = audioIndex >= 0 && audioIndex < plan.audioCount
+
+  const args = [
+    "-hide_banner", "-loglevel", "error", "-nostdin",
+    "-err_detect", "ignore_err",
+    "-fflags", "+genpts",
+    ...(seekTo > 0 ? ["-ss", seekTo.toFixed(3)] : []),
+    "-copyts",
+    "-i", filePath,
+    "-map", "0:v:0",
+    ...(withAudio ? ["-map", `0:a:${audioIndex}`] : []),
+    "-sn", "-dn",
+  ]
+
+  if (copy) {
+    args.push("-c:v", "copy")
+  } else {
+    const filters = []
+    if (plan.video && plan.video.fieldOrder && plan.video.fieldOrder !== "progressive" && plan.video.fieldOrder !== "unknown") {
+      filters.push("yadif=mode=0:deint=all")
+    }
+    // Never ship more than 1080p to a browser tab; keeps the encode realtime.
+    filters.push("scale='min(1920,iw)':-2:flags=bicubic", "format=yuv420p")
+    args.push(
+      "-vf", filters.join(","),
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+      // No B-frames: pts == dts, so the muxer applies no composition shift, and
+      // fragments can be cut cleanly every GOP.
+      "-bf", "0", "-g", "48", "-keyint_min", "48", "-sc_threshold", "0",
+      "-profile:v", "high", "-level:v", "4.1",
+    )
+  }
+
+  if (withAudio) {
+    args.push("-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "192k")
+  }
+
+  args.push(
+    // No edit list: the timeline is then just tfdt + per-sample composition offsets,
+    // which every browser reads the same way (see the timing note above).
+    "-use_editlist", "0",
+    "-avoid_negative_ts", "disabled",
+    "-max_muxing_queue_size", "4096",
+    "-movflags", "+frag_keyframe+empty_moov+default_base_moof+frag_discont+negative_cts_offsets",
+    "-f", "mp4",
+    "pipe:1",
+  )
+  pipeFfmpeg(res, args, "video/mp4")
 }
 
 async function readCached(cachePath) {
@@ -482,6 +777,91 @@ async function serveSubtitleRaw(res, filePath, subtitleIndex) {
   }
 }
 
+
+// ---- PGS (Blu-ray bitmap) subtitles ----
+// The image subtitles of a Blu-ray rip can't be turned into text, so they are handed
+// to the client as-is (a .sup stream, PGS segments back to back) and drawn there
+// (src/lib/pgs-subtitles.ts). Extracting one means demuxing the WHOLE file — subtitle
+// packets are interleaved with the video all the way through, tens of GB for a
+// remux. So it runs once, in the background at low priority, into a growing file,
+// and requests are answered from whatever has been written so far: the viewer gets
+// subtitles for the start of the film within moments instead of after the full pass,
+// and the client keeps asking for what came after `offset` until it's complete.
+const pgsJobs = new Map()
+
+function pgsCachePath(filePath, subtitleIndex) {
+  const key = createHash("sha1").update(`${filePath}::${subtitleIndex}::pgs`).digest("hex")
+  return join(CACHE_DIR, `${key}.sup`)
+}
+
+// One ffmpeg pass writing every PGS track of the file (one demux, however many).
+function startPgsExtraction(filePath, indices) {
+  const wanted = indices.filter((index) => !existsSync(pgsCachePath(filePath, index)))
+  if (wanted.length === 0) return null
+  const existing = pgsJobs.get(filePath)
+  if (existing) return existing
+
+  const job = (async () => {
+    await mkdir(CACHE_DIR, { recursive: true }).catch(() => {})
+    const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i", filePath]
+    for (const index of wanted) {
+      args.push("-map", `0:s:${index}`, "-c:s", "copy", "-flush_packets", "1", "-f", "sup", `${pgsCachePath(filePath, index)}.tmp`)
+    }
+    await new Promise((resolveRun) => {
+      const child = spawnLowPriority("ffmpeg", args, { stdio: ["ignore", "ignore", "ignore"] })
+      child.on("error", () => resolveRun())
+      child.on("close", (code) => resolveRun(code))
+    }).then(async (code) => {
+      for (const index of wanted) {
+        const finalPath = pgsCachePath(filePath, index)
+        if (code === 0) await rename(`${finalPath}.tmp`, finalPath).catch(() => {})
+        else await rm(`${finalPath}.tmp`, { force: true }).catch(() => {})
+      }
+    })
+  })()
+  pgsJobs.set(filePath, job)
+  job.finally(() => pgsJobs.delete(filePath)).catch(() => {})
+  return job
+}
+
+async function pgsTrackIndices(filePath) {
+  try {
+    const info = await probeTracks(filePath)
+    return info.subtitleTracks.filter((track) => track.format === "pgs").map((track) => track.index)
+  } catch {
+    return []
+  }
+}
+
+async function servePgs(res, filePath, subtitleIndex, offset) {
+  const finalPath = pgsCachePath(filePath, subtitleIndex)
+  let source = finalPath
+  let complete = existsSync(finalPath)
+  if (!complete) {
+    const indices = await pgsTrackIndices(filePath)
+    if (!indices.includes(subtitleIndex)) {
+      res.statusCode = 404
+      res.end("Not a PGS track")
+      return
+    }
+    startPgsExtraction(filePath, indices)
+    // The pass may have just finished and renamed its output.
+    complete = existsSync(finalPath)
+    source = complete ? finalPath : `${finalPath}.tmp`
+  }
+  let data
+  try {
+    data = await readFile(source)
+  } catch {
+    data = Buffer.alloc(0)
+  }
+  res.statusCode = 200
+  res.setHeader("Content-Type", "application/octet-stream")
+  res.setHeader("Cache-Control", "no-store")
+  res.setHeader("X-Flick-Complete", complete ? "1" : "0")
+  res.end(offset > 0 ? data.subarray(Math.min(offset, data.length)) : data)
+}
+
 function subtitleCachePath(filePath, index, raw) {
   const key = createHash("sha1")
     .update(`${filePath}::${index}${raw ? "::raw" : ""}`)
@@ -521,7 +901,7 @@ async function prewarmSubtitles(filePath, subtitleTracks) {
         else args.push("-f", "webvtt")
         args.push(`${entry.cachePath}.tmp`)
       }
-      await runCapture("ffmpeg", args)
+      await runCapture("ffmpeg", args, { lowPriority: true })
       for (const entry of entries) {
         await rename(`${entry.cachePath}.tmp`, entry.cachePath).catch(() => {})
       }
@@ -643,10 +1023,29 @@ async function serveSubtitleFont(res, family) {
 // is exactly the tradeoff scrubbing wants: near-instant response over exactness.
 // Cached to disk per (file, whole second) so repeatedly hovering the same spot
 // never re-invokes ffmpeg.
+function thumbnailCachePathAt(filePath, seconds) {
+  const cacheKey = createHash("sha1").update(`${filePath}::${seconds}`).digest("hex")
+  return join(THUMB_CACHE_DIR, `${cacheKey}.jpg`)
+}
+
+async function extractThumbnail(filePath, seconds, options) {
+  const jpeg = await runCapture("ffmpeg", [
+    "-hide_banner", "-loglevel", "error", "-nostdin",
+    "-ss", String(seconds),
+    "-i", filePath,
+    "-frames:v", "1",
+    "-q:v", "4",
+    "-vf", `scale=${THUMBNAIL_WIDTH}:-2`,
+    "-f", "mjpeg",
+    "pipe:1",
+  ], options)
+  if (jpeg.length === 0) throw new Error("empty frame")
+  return jpeg
+}
+
 async function serveThumbnail(res, filePath, seconds) {
   await mkdir(THUMB_CACHE_DIR, { recursive: true }).catch(() => {})
-  const cacheKey = createHash("sha1").update(`${filePath}::${seconds}`).digest("hex")
-  const cachePath = join(THUMB_CACHE_DIR, `${cacheKey}.jpg`)
+  const cachePath = thumbnailCachePathAt(filePath, seconds)
   const cached = await readCached(cachePath)
   if (cached) {
     res.statusCode = 200
@@ -656,17 +1055,7 @@ async function serveThumbnail(res, filePath, seconds) {
     return
   }
   try {
-    const jpeg = await runCapture("ffmpeg", [
-      "-hide_banner", "-loglevel", "error",
-      "-ss", String(seconds),
-      "-i", filePath,
-      "-frames:v", "1",
-      "-q:v", "4",
-      "-vf", `scale=${THUMBNAIL_WIDTH}:-2`,
-      "-f", "mjpeg",
-      "pipe:1",
-    ])
-    if (jpeg.length === 0) throw new Error("empty frame")
+    const jpeg = await extractThumbnail(filePath, seconds)
     await writeFile(cachePath, jpeg).catch(() => {})
     res.statusCode = 200
     res.setHeader("Content-Type", "image/jpeg")
@@ -700,6 +1089,42 @@ function thumbnailCachePathFor(filePath, frameName, interval) {
 // running, promoting each finished frame into THUMB_CACHE_DIR as soon as it
 // lands — so scrub hovers near the start of the file go instant within a
 // couple seconds, without waiting for ffmpeg to reach the end of a long movie.
+// Decoding a file end to end just to sample a frame every few seconds is fine for a
+// 1 GB episode and ruinous for a 27 GB Blu-ray remux: minutes of a fully loaded CPU
+// and the whole file streamed off the disk, competing with the movie being watched.
+// Big files, and MPEG-TS in general (no index to seek by), instead get one cheap
+// keyframe seek per thumbnail — a few hundred tiny reads — at low priority.
+const THUMBNAIL_SEEK_MODE_BYTES = 3 * 1024 * 1024 * 1024
+const THUMBNAIL_SEEK_MODE_EXTENSIONS = new Set([".m2ts", ".mts", ".ts", ".mpg", ".mpeg"])
+// Let playback claim the disk first; nobody scrubs in the first seconds.
+const THUMBNAIL_SEEK_START_DELAY_MS = 8000
+
+function useSeekThumbnails(filePath) {
+  if (THUMBNAIL_SEEK_MODE_EXTENSIONS.has(extname(filePath).toLowerCase())) return true
+  try {
+    return statSync(filePath).size >= THUMBNAIL_SEEK_MODE_BYTES
+  } catch {
+    return false
+  }
+}
+
+async function pregenerateThumbnailsBySeeking(filePath, duration, interval, markerPath) {
+  await new Promise((resolveDelay) => setTimeout(resolveDelay, THUMBNAIL_SEEK_START_DELAY_MS))
+  await mkdir(THUMB_CACHE_DIR, { recursive: true }).catch(() => {})
+  let made = 0
+  for (let second = 0; second < duration; second += interval) {
+    const cachePath = thumbnailCachePathAt(filePath, second)
+    if (existsSync(cachePath)) continue
+    try {
+      await writeFile(cachePath, await extractThumbnail(filePath, second, { lowPriority: true }))
+      made++
+    } catch {
+      // A frame that can't be extracted just stays a cache miss (served live on hover).
+    }
+  }
+  await writeFile(markerPath, String(made)).catch(() => {})
+}
+
 async function pregenerateThumbnails(filePath, duration) {
   const interval = thumbnailInterval(duration)
   const markerPath = join(
@@ -708,6 +1133,14 @@ async function pregenerateThumbnails(filePath, duration) {
   )
   if (existsSync(markerPath)) return
   if (thumbnailPregenJobs.has(filePath)) return thumbnailPregenJobs.get(filePath)
+
+  if (useSeekThumbnails(filePath)) {
+    const seekJob = pregenerateThumbnailsBySeeking(filePath, duration, interval, markerPath).finally(() =>
+      thumbnailPregenJobs.delete(filePath)
+    )
+    thumbnailPregenJobs.set(filePath, seekJob)
+    return seekJob
+  }
 
   const job = new Promise((resolveJob) => {
     (async () => {
@@ -739,8 +1172,8 @@ async function pregenerateThumbnails(filePath, duration) {
         }
       }
 
-      const child = spawn("ffmpeg", [
-        "-hide_banner", "-loglevel", "error",
+      const child = spawnLowPriority("ffmpeg", [
+        "-hide_banner", "-loglevel", "error", "-nostdin",
         "-i", filePath,
         "-vf", `fps=1/${interval},scale=${THUMBNAIL_WIDTH}:-2`,
         "-q:v", "5",
@@ -764,6 +1197,86 @@ async function pregenerateThumbnails(filePath, duration) {
 
   thumbnailPregenJobs.set(filePath, job)
   return job
+}
+
+
+// ---- Per-title audio/subtitle preferences ----
+// Stored server-side (one small JSON file) instead of only in the browser's
+// localStorage, which is scoped to origin: a different dev port, another browser or
+// cleared site data would silently forget every choice. Keys are file-based (see
+// media-prefs.ts), so a choice stays attached to that exact movie.
+async function readPrefsStore() {
+  try {
+    const parsed = JSON.parse(await readFile(PREFS_FILE, "utf8"))
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+// Writes are serialised and atomic (temp file + rename) so two quick changes, or a
+// crash mid-write, can never leave a truncated file that would drop every preference.
+let prefsWriteChain = Promise.resolve()
+function updatePrefsStore(entries) {
+  prefsWriteChain = prefsWriteChain
+    .then(async () => {
+      const current = await readPrefsStore()
+      for (const [key, value] of entries) {
+        const previous = current[key]
+        if (!previous || (value.updatedAt || 0) >= (previous.updatedAt || 0)) current[key] = value
+      }
+      await mkdir(dirname(PREFS_FILE), { recursive: true })
+      const tmp = `${PREFS_FILE}.tmp`
+      await writeFile(tmp, JSON.stringify(current, null, 2))
+      await rename(tmp, PREFS_FILE)
+    })
+    .catch(() => {})
+  return prefsWriteChain
+}
+
+function readJsonBody(req, limitBytes = 64 * 1024) {
+  return new Promise((resolveBody, rejectBody) => {
+    const chunks = []
+    let size = 0
+    req.on("data", (chunk) => {
+      size += chunk.length
+      if (size > limitBytes) {
+        rejectBody(new Error("Body too large"))
+        req.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on("end", () => {
+      try {
+        resolveBody(JSON.parse(Buffer.concat(chunks).toString("utf8") || "null"))
+      } catch (err) {
+        rejectBody(err)
+      }
+    })
+    req.on("error", rejectBody)
+  })
+}
+
+async function handlePrefsRequest(req, res) {
+  if (req.method === "GET") {
+    sendJson(res, 200, { prefs: await readPrefsStore() })
+    return
+  }
+  if (req.method === "PUT" || req.method === "POST") {
+    try {
+      const body = await readJsonBody(req)
+      const entries = Object.entries(body?.entries && typeof body.entries === "object" ? body.entries : {})
+        .filter(([key, value]) => typeof key === "string" && key.length > 0 && key.length <= 1024 && value && typeof value === "object")
+      await updatePrefsStore(entries)
+      sendJson(res, 200, { ok: true, saved: entries.length })
+    } catch (err) {
+      sendJson(res, 400, { ok: false, error: String(err) })
+    }
+    return
+  }
+  res.statusCode = 405
+  res.end()
 }
 
 function isDir(path) {
@@ -871,10 +1384,25 @@ export function localMediaDevPlugin() {
           sendJson(res, 200, info)
           // Fire-and-forget: warm the subtitle cache so picking a track later is
           // instant instead of waiting on a full MKV demux.
-          prewarmSubtitles(filePath, info.subtitleTracks).catch(() => {})
+          prewarmSubtitles(filePath, info.subtitleTracks.filter((track) => track.format !== "pgs")).catch(() => {})
+          startPgsExtraction(filePath, info.subtitleTracks.filter((track) => track.format === "pgs").map((track) => track.index))
         } catch (err) {
           sendJson(res, 500, { audioTracks: [], subtitleTracks: [], chapters: [], duration: 0, error: String(err) })
         }
+      })
+
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url || !req.url.startsWith(SUBTITLE_PGS_API_PREFIX)) return next()
+        const url = new URL(req.url, "http://localhost")
+        const encodedRelPath = url.pathname.slice(SUBTITLE_PGS_API_PREFIX.length)
+        const filePath = resolveLibraryPath(baseDir, encodedRelPath)
+        const streamParam = url.searchParams.get("stream")
+        if (!filePath || streamParam === null || Number.isNaN(Number(streamParam))) {
+          res.statusCode = 400
+          res.end("Invalid path")
+          return
+        }
+        await servePgs(res, filePath, Number(streamParam), Math.max(0, Number(url.searchParams.get("offset")) || 0))
       })
 
       server.middlewares.use(async (req, res, next) => {
@@ -972,6 +1500,27 @@ export function localMediaDevPlugin() {
         }
         const startSeconds = Number(url.searchParams.get("start")) || 0
         streamAudioOnly(res, filePath, Number(trackParam), startSeconds)
+      })
+
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url || !req.url.startsWith(PREFS_API_PATH)) return next()
+        await handlePrefsRequest(req, res)
+      })
+
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url || !req.url.startsWith(REMUX_API_PREFIX)) return next()
+        const url = new URL(req.url, "http://localhost")
+        const encodedRelPath = url.pathname.slice(REMUX_API_PREFIX.length)
+        const filePath = resolveLibraryPath(baseDir, encodedRelPath)
+        if (!filePath) {
+          res.statusCode = 400
+          res.end("Invalid path")
+          return
+        }
+        const startSeconds = Math.max(0, Number(url.searchParams.get("start")) || 0)
+        const audioParam = url.searchParams.get("audio")
+        const audioIndex = audioParam === null || Number.isNaN(Number(audioParam)) ? 0 : Number(audioParam)
+        await streamRemux(res, filePath, startSeconds, audioIndex)
       })
 
       server.middlewares.use(async (req, res, next) => {
