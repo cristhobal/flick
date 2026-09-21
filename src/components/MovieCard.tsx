@@ -22,6 +22,56 @@ import { useWatchState } from "@/lib/use-watch-state"
 const PREVIEW_OPEN_EVENT = "flick:movie-preview-open"
 const PREVIEW_VIEWPORT_PADDING = 12
 
+/**
+ * Decides which way the preview's description unfolds and which edge to pin the preview
+ * by while it does. Pure geometry, so the arrow (which points the way before anything is
+ * clicked) and the expansion itself run the exact same calculation off the exact same
+ * measurements — they used to each carry their own copy and disagree on the first open.
+ *
+ * Growing down keeps the top edge put; growing up pins the bottom edge, so the preview
+ * and the description rise together instead of running off the bottom of the screen.
+ * Either way the result is clamped so the expanded box stays on screen.
+ */
+function resolveExpansion(
+  top: number,
+  previewHeight: number,
+  synopsisHeight: number,
+  viewportHeight: number
+): { direction: "down" | "up"; pinned: { top: number } | { bottom: number } } {
+  const expandedHeight = previewHeight + synopsisHeight
+  // Taller than the whole viewport (a short browser window): it fits no direction. Pin
+  // the head to the top so the poster and title stay visible and the overflow falls off
+  // the bottom, which is where truncation is least surprising.
+  if (expandedHeight > viewportHeight - PREVIEW_VIEWPORT_PADDING * 2) {
+    return { direction: "down", pinned: { top: PREVIEW_VIEWPORT_PADDING } }
+  }
+  const roomBelow = viewportHeight - PREVIEW_VIEWPORT_PADDING - (top + previewHeight)
+  const roomAbove = top - PREVIEW_VIEWPORT_PADDING
+  // Prefer down; fall back to up; if neither side alone has room take the roomier one —
+  // the clamps below then slide the preview just far enough to fit.
+  const direction: "down" | "up" =
+    roomBelow >= synopsisHeight ? "down" : roomAbove >= synopsisHeight || roomAbove > roomBelow ? "up" : "down"
+  // The highest the top edge may sit and still leave the whole expanded box on screen.
+  const highestTop = Math.max(
+    PREVIEW_VIEWPORT_PADDING,
+    viewportHeight - PREVIEW_VIEWPORT_PADDING - expandedHeight
+  )
+  if (direction === "down") {
+    // A no-op whenever the description fits below; it only slides the preview when the
+    // two sides had to split the room between them.
+    return { direction, pinned: { top: Math.max(PREVIEW_VIEWPORT_PADDING, Math.min(top, highestTop)) } }
+  }
+  return {
+    direction,
+    pinned: {
+      bottom: Math.max(
+        PREVIEW_VIEWPORT_PADDING,
+        Math.min(viewportHeight - (top + previewHeight), viewportHeight - PREVIEW_VIEWPORT_PADDING - expandedHeight)
+      ),
+    },
+  }
+}
+
 interface MovieCardProps {
   movie: Movie
   onPlay?: (movie: Movie) => void
@@ -59,6 +109,9 @@ export default function MovieCard({
   const cardRef = useRef<HTMLDivElement>(null)
   const previewIdRef = useRef(`preview-${movie.id}-${index}`)
   const synopsisRef = useRef<HTMLDivElement>(null)
+  // The description's natural height has to be read off an inner box: the element that
+  // animates is clipped to `max-height: 0` while closed, so it measures 0 from outside.
+  const synopsisContentRef = useRef<HTMLDivElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const synopsisTogglingRef = useRef(false)
   const resizeObserverRef = useRef<ResizeObserver | null>(null)
@@ -129,7 +182,7 @@ export default function MovieCard({
     const previewEl = previewRef.current
     const actualPreviewHeight = previewEl.offsetHeight
     const actualPreviewWidth = previewEl.offsetWidth
-    const viewportPadding = 12
+    const viewportPadding = PREVIEW_VIEWPORT_PADDING
     const gap = 8
     const spaceRight = window.innerWidth - rect.right
     const rawLeft = spaceRight >= actualPreviewWidth + gap + viewportPadding
@@ -150,12 +203,23 @@ export default function MovieCard({
     setPos({ left, top })
   }, [pos.bottom])
 
+  // Measure the description the moment the preview mounts — before the first paint, and
+  // long before anyone can click the chevron. Every placement decision below needs this
+  // number; while it was still 0 the preview concluded the description weighed nothing
+  // and always opened downward on the first try. A ResizeObserver keeps it honest
+  // afterwards (a late web font or a reflow changes how many lines the synopsis takes).
   useLayoutEffect(() => {
-    if (synopsisRef.current && movie.description) {
-      const h = synopsisRef.current.scrollHeight
-      if (h > 0) setSynopsisHeight(h)
+    const content = synopsisContentRef.current
+    if (!content) return
+    const measure = () => {
+      const height = content.offsetHeight
+      if (height > 0) setSynopsisHeight((prev) => (prev === height ? prev : height))
     }
-  }, [movie.description, showSynopsis])
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [showExpanded, movie.description])
 
   useLayoutEffect(() => {
     if (showExpanded && previewRef.current) {
@@ -174,15 +238,20 @@ export default function MovieCard({
     }
   }, [showExpanded, calculatePosition])
 
-  // Which way the description will open, known as soon as the preview is on screen so
-  // the arrow can already point the right way (up when there is no room below).
+  // Point the arrow the right way as soon as the preview is on screen. Re-runs when the
+  // measured description height lands, so the very first click already knows the answer.
   useLayoutEffect(() => {
     const preview = previewRef.current
     if (!showExpanded || showSynopsis || !preview || pos.bottom !== undefined) return
     const top = pos.top ?? preview.getBoundingClientRect().top
-    const fitsBelow = top + preview.offsetHeight + synopsisHeight + PREVIEW_VIEWPORT_PADDING <= document.documentElement.clientHeight
     // Derived from DOM measurements, which only exist after layout.
-    setExpandDirection(fitsBelow ? "down" : "up")
+    const { direction } = resolveExpansion(
+      top,
+      preview.offsetHeight,
+      synopsisHeight,
+      document.documentElement.clientHeight
+    )
+    setExpandDirection(direction)
   }, [showExpanded, showSynopsis, synopsisHeight, pos.top, pos.bottom])
 
   const scheduleHide = useCallback((delay = 350) => {
@@ -193,30 +262,28 @@ export default function MovieCard({
     }, delay)
   }, [])
 
-  // Opens/closes the description. The direction is decided once, up front, from how much
-  // room the preview has: it grows downward (its top edge stays put) when the description
-  // fits below, otherwise upward (its bottom edge stays put, so the card and the description
-  // rise together instead of running off the bottom of the screen). Closing retraces
-  // whichever way it opened.
+  // Opens/closes the description. The direction and the anchor edge come from
+  // resolveExpansion, which has had the real description height since the preview
+  // mounted — the same answer the arrow has been showing all along. Anchoring by one
+  // edge is what keeps the growth smooth: CSS does the rest, nothing is repositioned
+  // mid-animation. Closing retraces whichever way it opened.
   const toggleSynopsis = useCallback(() => {
-    const preview = previewRef.current
     synopsisTogglingRef.current = true
     setTimeout(() => { synopsisTogglingRef.current = false }, 350)
     synopsisAnimatingRef.current = true
     setTimeout(() => { synopsisAnimatingRef.current = false }, 400)
 
+    const preview = previewRef.current
     if (!showSynopsis && preview) {
-      const viewportHeight = document.documentElement.clientHeight
       const top = pos.top ?? preview.getBoundingClientRect().top
-      const fitsBelow = top + preview.offsetHeight + synopsisHeight + PREVIEW_VIEWPORT_PADDING <= viewportHeight
-      if (fitsBelow) {
-        setExpandDirection("down")
-        setPos((prev) => ({ left: prev.left, top }))
-      } else {
-        // Pin the bottom edge where it is now: everything grows up from there.
-        setExpandDirection("up")
-        setPos((prev) => ({ left: prev.left, bottom: viewportHeight - (top + preview.offsetHeight) }))
-      }
+      const { direction, pinned } = resolveExpansion(
+        top,
+        preview.offsetHeight,
+        synopsisHeight,
+        document.documentElement.clientHeight
+      )
+      setExpandDirection(direction)
+      setPos((prev) => ({ left: prev.left, ...pinned }))
     }
     setShowSynopsis((prev) => !prev)
   }, [showSynopsis, synopsisHeight, pos.top])
@@ -499,12 +566,14 @@ export default function MovieCard({
                   transform: showSynopsis ? "translateY(0)" : expandDirection === "up" ? "translateY(8px)" : "translateY(-8px)",
                 }}
               >
-                <div className="pt-3">
-                  <p className="line-clamp-4 text-xs leading-relaxed text-neutral-400">
-                    {movie.description}
-                  </p>
+                <div ref={synopsisContentRef}>
+                  <div className="pt-3">
+                    <p className="line-clamp-4 text-xs leading-relaxed text-neutral-400">
+                      {movie.description}
+                    </p>
+                  </div>
+                  <div className="h-4" />
                 </div>
-                <div className="h-4" />
               </div>
             )}
 
