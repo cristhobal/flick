@@ -160,13 +160,30 @@
       -webkit-text-size-adjust: 100%;
      text-rendering: optimizeLegibility;
    }
-  /* scrollbar-gutter: stable reserves the scrollbar space without forcing a
-     visible scrollbar, so Radix's scroll-lock has nothing to compensate for.
-     Prevent Radix (used by modal Dialog/Sheet/Select) from adding extra
-     padding-right when it opens, which would make the page narrower. */
+  /* Every Radix modal layer (Dialog/Sheet/Select) pulls in react-remove-scroll, which
+     assumes <body> is the scroller: while one is open it stamps <body> with
+     `data-scroll-locked` and forces `overflow: hidden`, `position: relative`,
+     `overscroll-behavior: contain` and a scrollbar-width compensation gap on it.
+     None of that locks anything here — <body> never scrolls, the ScrollArea viewport
+     does (src/lib/scroll-container.tsx) — it only perturbs the page behind the modal.
+     Neutralise the layout-affecting ones; scroll-container.tsx freezes the real
+     viewport instead. `overscroll-behavior` is left alone: it costs no layout and
+     still suppresses pull-to-refresh behind an open sheet on Android. */
   html body[data-scroll-locked] {
     padding-right: 0 !important;
     margin-right: 0 !important;
+    overflow: visible !important;
+    position: static !important;
+  }
+
+  /* The actual lock, mirrored onto the scrolling element by scroll-container.tsx.
+     `overflow: hidden` keeps the current scroll offset and only stops the user from
+     moving it, so the page behind a modal stays exactly where it was. Applied as a
+     class, not an inline style: Radix's ScrollArea writes overflowX/overflowY inline
+     on its viewport and would drop an inline lock on its next render. */
+  [data-radix-scroll-area-viewport].scroll-locked {
+    overflow: hidden !important;
+    overscroll-behavior: none !important;
   }
   html {
     @apply font-sans;
