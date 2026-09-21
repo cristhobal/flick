@@ -766,7 +766,7 @@ export default function HomePage() {
 
         <main className="pb-12 sm:pb-16">
           {visibleHero && (
-            <div className="full-bleed relative min-h-[68svh] overflow-hidden bg-black sm:min-h-[90vh] lg:min-h-screen">
+            <div className="full-bleed relative min-h-svh overflow-hidden bg-black">
               {exitingHero && (
                 <HeroSection
                   key={`exit-${exitingHero.id}`}
@@ -786,7 +786,7 @@ export default function HomePage() {
             </div>
           )}
 
-          <div className="relative z-20 -mt-12 space-y-5 sm:-mt-14 sm:space-y-10">
+          <div className="relative z-20 space-y-5 pt-6 sm:space-y-10 sm:pt-10">
             {homeCategories.map((category, index) => {
               const onViewAll = buildViewAll(
                 category,

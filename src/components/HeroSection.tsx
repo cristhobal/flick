@@ -84,7 +84,7 @@ export default function HeroSection({
 
   return (
     <section
-      className={`min-h-[68svh] w-full overflow-hidden bg-black sm:min-h-[90vh] lg:min-h-screen ${
+      className={`min-h-svh w-full overflow-hidden bg-black ${
         phase === "exit"
           ? "hero-cinematic-exit absolute inset-0 z-0"
           : "hero-cinematic-enter relative z-10"
