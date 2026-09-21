@@ -27,7 +27,7 @@ export default function MovieCarousel({
   getProgressRatio,
 }: MovieCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const { canScrollLeft, canScrollRight, ref: scrollStateRef } = useScrollState()
+  const { canScrollLeft, canScrollRight, ref: scrollStateRef } = useScrollState(scrollRef)
   const { t } = useI18n()
 
   const scroll = (direction: "left" | "right") => {
@@ -71,7 +71,7 @@ export default function MovieCarousel({
         </div>
 
         <div
-          ref={(node) => { scrollRef.current = node; scrollStateRef(node) }}
+          ref={scrollStateRef}
           className="hide-scrollbar flex flex-nowrap gap-2 overflow-x-auto pb-2 scroll-smooth sm:gap-3 sm:pb-4"
         >
           {items.map((movie, i) => (

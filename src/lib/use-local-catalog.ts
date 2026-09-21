@@ -250,6 +250,12 @@ function pickHero(movies: Movie[]): Movie | null {
   return pool[Math.floor(Math.random() * pool.length)]
 }
 
+// The local library has no "trending" concept. This must be ONE stable object, not
+// a `new Set()` in the return value: consumers list it as a useMemo/useEffect
+// dependency (HomePage's hero scoring), and a fresh Set on every render made that
+// memo recompute, re-run its effect, set state, re-render… forever.
+const NO_TRENDING_IDS = new Set<number>()
+
 export function useLocalCatalog(): TMDbState {
   const { lang, t: translate } = useI18n()
   const [hero, setHero] = useState<Movie | null>(null)
@@ -378,6 +384,6 @@ export function useLocalCatalog(): TMDbState {
     error,
     search,
     loadDetail,
-    trendingTmdbIds: new Set<number>(),
+    trendingTmdbIds: NO_TRENDING_IDS,
   }
 }

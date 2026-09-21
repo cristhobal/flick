@@ -125,9 +125,9 @@ export default function MovieDetailPage({
   const screenshotScrollRef = useRef<HTMLDivElement>(null)
   const castScrollRef = useRef<HTMLDivElement>(null)
   const relatedScrollRef = useRef<HTMLDivElement>(null)
-  const { canScrollLeft: canScreenshotScrollLeft, canScrollRight: canScreenshotScrollRight, ref: screenshotStateRef } = useScrollState()
-  const { canScrollLeft: canCastScrollLeft, canScrollRight: canCastScrollRight, ref: castStateRef } = useScrollState()
-  const { canScrollLeft: canRelatedScrollLeft, canScrollRight: canRelatedScrollRight, ref: relatedStateRef } = useScrollState()
+  const { canScrollLeft: canScreenshotScrollLeft, canScrollRight: canScreenshotScrollRight, ref: screenshotStateRef } = useScrollState(screenshotScrollRef)
+  const { canScrollLeft: canCastScrollLeft, canScrollRight: canCastScrollRight, ref: castStateRef } = useScrollState(castScrollRef)
+  const { canScrollLeft: canRelatedScrollLeft, canScrollRight: canRelatedScrollRight, ref: relatedStateRef } = useScrollState(relatedScrollRef)
 
   useEffect(() => {
     setSelectedSeason(1)
@@ -739,7 +739,7 @@ export default function MovieDetailPage({
                 </button>
               </div>
               <div
-                ref={(node) => { screenshotScrollRef.current = node; screenshotStateRef(node) }}
+                ref={screenshotStateRef}
                 className="hide-scrollbar flex flex-nowrap gap-4 overflow-x-auto pb-2 scroll-smooth"
               >
                 {screenshots.map((path, index) => (
@@ -807,7 +807,7 @@ export default function MovieDetailPage({
                 </button>
               </div>
               <div
-                ref={(node) => { castScrollRef.current = node; castStateRef(node) }}
+                ref={castStateRef}
                 className="hide-scrollbar flex flex-nowrap gap-4 overflow-x-auto pb-2 scroll-smooth"
               >
           {cast.map((actor) => (
@@ -846,7 +846,7 @@ export default function MovieDetailPage({
               </button>
             </div>
             <div
-              ref={(node) => { relatedScrollRef.current = node; relatedStateRef(node) }}
+              ref={relatedStateRef}
               className="hide-scrollbar flex flex-nowrap gap-2 overflow-x-auto pb-2 scroll-smooth sm:gap-3"
             >
               {related.map((item, i) => (
