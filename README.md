@@ -167,7 +167,7 @@ Recommended structure:
 ```text
 Peliculas/
 ├── Movie Name (2024).mkv
-├── ANIME/
+├── Animes/
 │   └── Películas/
 │       └── Anime Name (2016).mkv
 └── Series/

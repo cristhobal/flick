@@ -99,7 +99,7 @@ function parseTitleYear(name) {
 // to episode 7 (which produced duplicate React keys downstream).
 function parseEpisode(name) {
   const base = stripExt(name)
-  const match = base.match(/^E(\d+(?:\.\d+)?)\s*-?\s*(.*)$/i)
+  const match = base.match(/^(?:S\d+)?E(\d+(?:\.\d+)?)\s*-?\s*(.*)$/i)
   if (match) return { episode: Number(match[1]), title: match[2].trim() || base }
   return { episode: 0, title: base }
 }
@@ -205,6 +205,15 @@ async function collectShowsUnder(baseDir, dir) {
   return shows.filter((show) => show.episodes.length > 0)
 }
 
+async function isShowDirectory(dir) {
+  const entries = await safeReaddir(dir)
+  return entries.some(
+    (entry) =>
+      (entry.isFile() && isVideoFile(entry.name)) ||
+      (entry.isDirectory() && parseSeasonFolder(entry.name) !== null)
+  )
+}
+
 async function buildLibrary(baseDir) {
   const movies = []
   const series = []
@@ -225,7 +234,7 @@ async function buildLibrary(baseDir) {
     const lowerName = entry.name.toLowerCase()
     if (lowerName === "series") {
       series.push(...(await collectShowsUnder(baseDir, full)))
-    } else if (lowerName === "anime") {
+    } else if (lowerName === "animes" || lowerName === "anime") {
       const animeEntries = await safeReaddir(full)
       for (const animeEntry of animeEntries) {
         const animeFull = join(full, animeEntry.name)
@@ -237,7 +246,11 @@ async function buildLibrary(baseDir) {
         } else if (animeEntry.isDirectory() && /pel[ií]cula/i.test(animeLower)) {
           animeMovies.push(...(await collectMoviesRecursive(baseDir, animeFull)))
         } else if (animeEntry.isDirectory()) {
-          animeSeries.push(...(await collectShowsUnder(baseDir, animeFull)))
+          if (await isShowDirectory(animeFull)) {
+            animeSeries.push(await collectShow(baseDir, animeFull, animeEntry.name))
+          } else {
+            animeSeries.push(...(await collectShowsUnder(baseDir, animeFull)))
+          }
         }
       }
     } else {
