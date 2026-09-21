@@ -20,6 +20,7 @@ import { useWatchState } from "@/lib/use-watch-state"
 
 
 const PREVIEW_OPEN_EVENT = "flick:movie-preview-open"
+const PREVIEW_VIEWPORT_PADDING = 12
 
 interface MovieCardProps {
   movie: Movie
@@ -44,7 +45,15 @@ export default function MovieCard({
   const [showSynopsis, setShowSynopsis] = useState(false)
   const [synopsisHeight, setSynopsisHeight] = useState(0)
   const [resolvedTrailerUrl, setResolvedTrailerUrl] = useState<string | null | undefined>(movie.trailerUrl)
-  const [pos, setPos] = useState({ left: 0, top: 0 })
+  // Where the floating preview is pinned. It is anchored by ONE edge and CSS does the
+  // rest: `top` for the normal downward growth, `bottom` when there is no room below and
+  // the description has to open upward (see toggleSynopsis). Anchoring by an edge is what
+  // makes the growth smooth — repositioning from JS on every animation frame lagged the
+  // content by a frame and made the card shake.
+  const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number }>({ left: 0, top: 0 })
+  const [expandDirection, setExpandDirection] = useState<"down" | "up">("down")
+  // The description is animating open/closed: nothing may re-place the card meanwhile.
+  const synopsisAnimatingRef = useRef(false)
   const showTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const cardRef = useRef<HTMLDivElement>(null)
@@ -113,6 +122,9 @@ export default function MovieCard({
 
   const calculatePosition = useCallback(() => {
     if (!cardRef.current || !previewRef.current) return
+    // Once the preview is bottom-anchored (opened upward) or its description is mid-
+    // animation, its position is decided by toggleSynopsis — hands off.
+    if (synopsisAnimatingRef.current || pos.bottom !== undefined) return
     const rect = cardRef.current.getBoundingClientRect()
     const previewEl = previewRef.current
     const actualPreviewHeight = previewEl.offsetHeight
@@ -136,7 +148,7 @@ export default function MovieCard({
       window.innerHeight - actualPreviewHeight - viewportPadding
     )
     setPos({ left, top })
-  }, [showSynopsis, synopsisHeight])
+  }, [pos.bottom])
 
   useLayoutEffect(() => {
     if (synopsisRef.current && movie.description) {
@@ -160,7 +172,18 @@ export default function MovieCard({
       resizeObserverRef.current?.disconnect()
       resizeObserverRef.current = null
     }
-  }, [showExpanded, showSynopsis, synopsisHeight, calculatePosition])
+  }, [showExpanded, calculatePosition])
+
+  // Which way the description will open, known as soon as the preview is on screen so
+  // the arrow can already point the right way (up when there is no room below).
+  useLayoutEffect(() => {
+    const preview = previewRef.current
+    if (!showExpanded || showSynopsis || !preview || pos.bottom !== undefined) return
+    const top = pos.top ?? preview.getBoundingClientRect().top
+    const fitsBelow = top + preview.offsetHeight + synopsisHeight + PREVIEW_VIEWPORT_PADDING <= document.documentElement.clientHeight
+    // Derived from DOM measurements, which only exist after layout.
+    setExpandDirection(fitsBelow ? "down" : "up")
+  }, [showExpanded, showSynopsis, synopsisHeight, pos.top, pos.bottom])
 
   const scheduleHide = useCallback((delay = 350) => {
     clearTimeout(hideTimerRef.current)
@@ -169,6 +192,34 @@ export default function MovieCard({
       setShowSynopsis(false)
     }, delay)
   }, [])
+
+  // Opens/closes the description. The direction is decided once, up front, from how much
+  // room the preview has: it grows downward (its top edge stays put) when the description
+  // fits below, otherwise upward (its bottom edge stays put, so the card and the description
+  // rise together instead of running off the bottom of the screen). Closing retraces
+  // whichever way it opened.
+  const toggleSynopsis = useCallback(() => {
+    const preview = previewRef.current
+    synopsisTogglingRef.current = true
+    setTimeout(() => { synopsisTogglingRef.current = false }, 350)
+    synopsisAnimatingRef.current = true
+    setTimeout(() => { synopsisAnimatingRef.current = false }, 400)
+
+    if (!showSynopsis && preview) {
+      const viewportHeight = document.documentElement.clientHeight
+      const top = pos.top ?? preview.getBoundingClientRect().top
+      const fitsBelow = top + preview.offsetHeight + synopsisHeight + PREVIEW_VIEWPORT_PADDING <= viewportHeight
+      if (fitsBelow) {
+        setExpandDirection("down")
+        setPos((prev) => ({ left: prev.left, top }))
+      } else {
+        // Pin the bottom edge where it is now: everything grows up from there.
+        setExpandDirection("up")
+        setPos((prev) => ({ left: prev.left, bottom: viewportHeight - (top + preview.offsetHeight) }))
+      }
+    }
+    setShowSynopsis((prev) => !prev)
+  }, [showSynopsis, synopsisHeight, pos.top])
 
   const handleCardEnter = () => {
     // Disable hover preview on touch devices
@@ -343,7 +394,7 @@ export default function MovieCard({
         <article
           ref={previewRef}
           className="pointer-events-none fixed z-[9999] w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-md bg-neutral-950/95 shadow-[0_24px_80px_rgba(0,0,0,0.75)] backdrop-blur-2xl animate-scale-in"
-          style={{ left: pos.left, top: pos.top }}
+          style={{ left: pos.left, top: pos.top, bottom: pos.bottom }}
         >
           <div className="relative aspect-[16/9] w-full overflow-hidden bg-neutral-900">
             {bgSrc ? (
@@ -410,12 +461,15 @@ export default function MovieCard({
                   className="size-9 shrink-0 rounded-md text-neutral-400 hover:bg-white/[0.06] hover:text-white"
                   onClick={(e) => {
                     e.stopPropagation()
-                    synopsisTogglingRef.current = true
-                    setTimeout(() => { synopsisTogglingRef.current = false }, 350)
-                    setShowSynopsis((prev) => !prev)
+                    toggleSynopsis()
                   }}
                 >
-                  <ChevronDown className={`size-4 transition-transform duration-200 ${showSynopsis ? "rotate-180" : ""}`} />
+                  {/* Points the way the description will open / has opened. */}
+                  <ChevronDown
+                    className={`size-4 transition-transform duration-200 ${
+                      (expandDirection === "up") !== showSynopsis ? "rotate-180" : ""
+                    }`}
+                  />
                 </Button>
               )}
             </div>
@@ -441,7 +495,8 @@ export default function MovieCard({
                 style={{
                   maxHeight: showSynopsis ? synopsisHeight : 0,
                   opacity: showSynopsis ? 1 : 0,
-                  transform: showSynopsis ? "translateY(0)" : "translateY(-8px)",
+                  // Slides in from the side the card is growing toward.
+                  transform: showSynopsis ? "translateY(0)" : expandDirection === "up" ? "translateY(8px)" : "translateY(-8px)",
                 }}
               >
                 <div className="pt-3">
