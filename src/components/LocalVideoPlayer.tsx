@@ -14,6 +14,13 @@
 // (WASM libass) so original styling, fonts and positioning survive — see
 // ass-renderer.ts. Both are timed off the <audio> clock the viewer actually
 // hears, not the muted clock-video, via getSubtitleTime.
+//
+// Files a browser can't open at all (.m2ts/MPEG-TS, AVI, …) use a different, simpler
+// arrangement — "remux mode": the server sends ONE fragmented MP4 holding picture and
+// the chosen audio track (same ffmpeg process, same timeline), a RemuxStream feeds it
+// to the <video> through MediaSource, and the <video> itself plays the sound. There is
+// no <audio> element and nothing to keep in sync, so the paths below that exist only to
+// lock two elements together (useMediaSync, reloadAudio, the audio watchdog) are off.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
@@ -32,7 +39,18 @@ import { useAssSubtitle } from "@/lib/ass-renderer"
 import { activeCueHtml, useParsedSubtitles, type SubtitleCue } from "@/lib/vtt-subtitles"
 import { backdropUrl, posterUrl, type Movie } from "@/lib/data"
 import { clearWatchProgress, getWatchProgress, saveWatchProgress } from "@/lib/watch-progress"
-import { getMediaPrefs, resolveAudioIndex, resolveSubtitleIndex, saveMediaPrefs } from "@/lib/media-prefs"
+import {
+  fileKey,
+  getMediaPrefs,
+  loadMediaPrefs,
+  resolveAudioIndex,
+  resolveSubtitleIndex,
+  saveMediaPrefs,
+  showKey,
+} from "@/lib/media-prefs"
+import { RemuxStream } from "@/lib/remux-stream"
+import { usePgsSubtitles } from "@/lib/pgs-subtitles"
+import PgsSubtitleView from "@/components/PgsSubtitleView"
 import {
   Pause,
   Play,
@@ -56,6 +74,9 @@ const VIDEO_API_PREFIX = "/api/local-video/"
 const THUMBNAIL_API_PREFIX = "/api/local-thumbnail/"
 const THUMBNAIL_PREGEN_API_PREFIX = "/api/local-thumbnail-pregenerate/"
 const OFF_VALUE = "off"
+// Containers no browser opens in a <video> element — always played through remux mode
+// (the server's own list, NON_NATIVE_CONTAINERS, has to match).
+const NON_NATIVE_FILE_RE = /\.(m2ts|mts|ts|mpe?g|avi|wmv|flv)$/i
 const SEEK_RELOAD_DEBOUNCE_MS = 250
 // Below this, a video.currentTime jump isn't treated as a real seek — see onSeeking/onSeeked.
 const SEEK_RELOAD_MIN_JUMP_S = 1.5
@@ -97,7 +118,11 @@ interface Track {
   codec: string
   language: string
   title: string
-  format?: "vtt" | "ass"
+  format?: "vtt" | "ass" | "pgs"
+  channels?: number
+  // Codec/profile + channel layout ("DTS-HD MA 5.1") — what tells apart audio tracks
+  // that carry no title or language.
+  detail?: string
   forced?: boolean
   hearingImpaired?: boolean
   default?: boolean
@@ -154,10 +179,27 @@ interface VideoInfo {
   chapters: Chapter[]
   duration: number
   thumbnailInterval: number
+  // Container clock origin (MPEG-TS starts at e.g. 0.54s) and whether the server says
+  // this file must go through the remux pipeline.
+  startTime?: number
+  remux?: boolean
 }
 
-function trackLabel(track: Track, fallback: string): string {
-  return track.title || track.language || fallback
+// Menu labels for audio tracks. Title and language name come first; the codec
+// detail ("DTS-HD MA 5.1") follows, and is all there is for untagged tracks. Labels
+// that would still read identically get a counter so two options never look the same.
+function buildAudioLabels(tracks: Track[], fallback: (i: number) => string): string[] {
+  const base = tracks.map((track, i) => {
+    const name = track.title || LANGUAGE_NAMES[track.language] || track.language
+    const label = [name, track.detail].filter(Boolean).join(" · ")
+    return label || fallback(i)
+  })
+  return base.map((label, i) => {
+    const dupes = base.filter((other) => other === label)
+    if (dupes.length < 2) return label
+    const ordinal = base.slice(0, i + 1).filter((other) => other === label).length
+    return `${label} ${ordinal}`
+  })
 }
 
 function formatTime(seconds: number): string {
@@ -292,7 +334,24 @@ export default function LocalVideoPlayer({
     return decodeURIComponent(src.slice(VIDEO_API_PREFIX.length))
   }, [src])
 
+  // Every place this title's audio/subtitle choice is looked up or saved, most
+  // specific first: this exact file, the show it belongs to (episodes only), and the
+  // old TMDB-id key that earlier versions used — read-only, so past choices survive.
+  const prefsKeys = useMemo(
+    () => [relPath ? fileKey(relPath) : null, relPath && seriesId ? showKey(relPath) : null, prefsKey],
+    [relPath, seriesId, prefsKey]
+  )
+
   const [info, setInfo] = useState<VideoInfo | null>(null)
+  // Remux mode (see the header): containers browsers can't open, or a native <video>
+  // that errored out and needs the ffmpeg pipeline as a fallback.
+  const [nativeFailed, setNativeFailed] = useState(false)
+  const remuxMode = Boolean(relPath) && (nativeFailed || NON_NATIVE_FILE_RE.test(relPath || "") || Boolean(info?.remux))
+  const remuxRef = useRef<RemuxStream | null>(null)
+  const [streamError, setStreamError] = useState<string | null>(null)
+  // True once the saved audio/subtitle choice has been read and applied — remux mode
+  // waits for it so the first stream starts on the right audio track.
+  const [prefsResolved, setPrefsResolved] = useState(false)
   const [selectedAudio, setSelectedAudio] = useState(0)
   const [selectedSubtitle, setSelectedSubtitle] = useState<number | null>(null)
   const [playing, setPlaying] = useState(false)
@@ -407,7 +466,7 @@ export default function LocalVideoPlayer({
     audio.addEventListener("error", onError, { once: true })
   }, [relPath])
 
-  useMediaSync(videoRef, audioRef, audioOffsetRef, intentPlayingRef, true, debugSync)
+  useMediaSync(videoRef, audioRef, audioOffsetRef, intentPlayingRef, !remuxMode, debugSync)
 
   // Any real seek — scrub bar, chapter jump, anything that moves video.currentTime —
   // needs a fresh audio stream from the new position. This is a native listener on
@@ -424,7 +483,7 @@ export default function LocalVideoPlayer({
   // further from where the audio currently is than ordinary drift ever gets.
   useEffect(() => {
     const video = videoRef.current
-    if (!video) return
+    if (!video || remuxMode) return
     let debounceId: number | null = null
     const isRealSeek = () => {
       const audio = audioRef.current
@@ -451,7 +510,7 @@ export default function LocalVideoPlayer({
       video.removeEventListener("seeked", onSeeked)
       if (debounceId !== null) window.clearTimeout(debounceId)
     }
-  }, [reloadAudio])
+  }, [reloadAudio, remuxMode])
 
   // Watchdog for the audio stream itself: after a large seek, or if the ffmpeg
   // transcode falls behind / dies partway through (the file lives on an external
@@ -474,7 +533,7 @@ export default function LocalVideoPlayer({
   useEffect(() => {
     const video = videoRef.current
     const audio = audioRef.current
-    if (!video || !audio) return
+    if (!video || !audio || remuxMode) return
     let recoverTimer: number | null = null
     // Give the audio element a moment to settle after the tab becomes visible
     // before trusting any "not advancing" reading — the visibility transition
@@ -525,61 +584,81 @@ export default function LocalVideoPlayer({
       audio.removeEventListener("playing", onAudioPlaying)
       document.removeEventListener("visibilitychange", onVisibilityChange)
     }
-  }, [reloadAudio])
+  }, [reloadAudio, remuxMode])
 
-  // Persist the current audio-language / subtitle pick against this title so the
-  // next episode opens the same way. Stored by language, not index — see media-prefs.
+  // Persist the current audio / subtitle pick against this title (see media-prefs.ts):
+  // stored under the file itself so it stays with this movie, and — for an episode —
+  // under its show, so later episodes start the same way.
   const persistPrefs = useCallback((audioIdx: number, subtitleIdx: number | null) => {
-    if (!prefsKey || !info) return
+    if (!info) return
     const audio = info.audioTracks.find((track) => track.index === audioIdx)
     const subtitle = subtitleIdx === null
       ? null
       : info.subtitleTracks.find((track) => track.index === subtitleIdx) || null
-    saveMediaPrefs(prefsKey, {
+    saveMediaPrefs(prefsKeys.slice(0, 2), {
       audioLanguage: audio?.language || null,
       audioTitle: audio?.title || null,
       audioIndex: audio ? audioIdx : null,
+      audioCodec: audio?.codec || null,
+      subtitleOff: subtitle === null,
       subtitleLanguage: subtitle?.language || null,
       subtitleTitle: subtitle?.title || null,
       subtitleForced: Boolean(subtitle?.forced),
       subtitleIndex: subtitle ? subtitleIdx : null,
+      subtitleCodec: subtitle?.codec || null,
     })
-  }, [prefsKey, info])
+  }, [prefsKeys, info])
 
   const handleAudioChange = useCallback((value: string) => {
     const idx = Number(value)
     setSelectedAudio(idx)
-    const video = videoRef.current
-    reloadAudio(video?.currentTime ?? 0, idx)
+    selectedAudioRef.current = idx
+    if (remuxMode) {
+      remuxRef.current?.setAudioTrack(idx)
+    } else {
+      reloadAudio(videoRef.current?.currentTime ?? 0, idx)
+    }
     persistPrefs(idx, selectedSubtitleRef.current)
-  }, [reloadAudio, persistPrefs])
+  }, [reloadAudio, persistPrefs, remuxMode])
 
   const handleSubtitleChange = useCallback((value: string) => {
     const next = value === OFF_VALUE ? null : Number(value)
     setSelectedSubtitle(next)
+    selectedSubtitleRef.current = next
     persistPrefs(selectedAudioRef.current, next)
   }, [persistPrefs])
 
-  // Apply the saved audio-language / subtitle choice once this file's track list
-  // is known. Runs a single time per mount; the user's later picks are theirs to
-  // keep. If audio already started on the default track, hop it to the resolved
-  // one (a brief reload, only when the saved language isn't track 0).
+  // Apply the saved audio / subtitle choice once this file's track list is known.
+  // Runs a single time per mount; the user's later picks are theirs to keep. The saved
+  // choices are read from the server store first (see loadMediaPrefs), which is why
+  // this is asynchronous — and why remux mode holds its first stream until
+  // `prefsResolved`, so playback opens on the right track rather than hopping to it.
+  // In the native two-element mode audio may already be running on the default track;
+  // then it's hopped to the resolved one (a brief reload, only if it differs).
   const prefsAppliedRef = useRef(false)
   useEffect(() => {
     if (!info || prefsAppliedRef.current) return
-    prefsAppliedRef.current = true
-    const prefs = getMediaPrefs(prefsKey)
-    const audioIdx = resolveAudioIndex(info.audioTracks, prefs)
-    const subtitleIdx = resolveSubtitleIndex(info.subtitleTracks, prefs)
-    const previousAudioIdx = selectedAudioRef.current
-    setSelectedAudio(audioIdx)
-    selectedAudioRef.current = audioIdx
-    setSelectedSubtitle(subtitleIdx)
-    selectedSubtitleRef.current = subtitleIdx
-    if (audioInitializedRef.current && audioIdx !== previousAudioIdx) {
-      reloadAudio(videoRef.current?.currentTime ?? 0, audioIdx)
+    let cancelled = false
+    loadMediaPrefs().then(() => {
+      if (cancelled || prefsAppliedRef.current) return
+      prefsAppliedRef.current = true
+      const prefs = getMediaPrefs(prefsKeys)
+      const audioIdx = resolveAudioIndex(info.audioTracks, prefs)
+      const subtitleIdx = resolveSubtitleIndex(info.subtitleTracks, prefs)
+      const previousAudioIdx = selectedAudioRef.current
+      setSelectedAudio(audioIdx)
+      selectedAudioRef.current = audioIdx
+      setSelectedSubtitle(subtitleIdx)
+      selectedSubtitleRef.current = subtitleIdx
+      if (audioInitializedRef.current && audioIdx !== previousAudioIdx) {
+        reloadAudio(videoRef.current?.currentTime ?? 0, audioIdx)
+      }
+      setPrefsResolved(true)
+    })
+    return () => {
+      cancelled = true
     }
-  }, [info, prefsKey, reloadAudio])
+  }, [info, prefsKeys, reloadAudio])
 
   // ---- Subtitles: custom styled overlay for plain text (VTT/SRT), JASSUB for ASS/SSA ----
   // Both are driven off getSubtitleTime() — the audio clock the viewer actually
@@ -591,6 +670,7 @@ export default function LocalVideoPlayer({
   )
   const selectedSubtitleTrack = subtitleOptions.find((s) => s.index === selectedSubtitle) || null
   const isAssSubtitle = selectedSubtitleTrack?.format === "ass"
+  const isPgsSubtitle = selectedSubtitleTrack?.format === "pgs"
 
   // The clock every subtitle renderer reads. Rules, in order:
   //   1. While a seek is in flight there is no valid time (NaN → no cue matches, nothing
@@ -622,10 +702,16 @@ export default function LocalVideoPlayer({
     return video.currentTime
   }, [])
 
-  const vttSubUrl = !isAssSubtitle && relPath && selectedSubtitleTrack
+  const vttSubUrl = !isAssSubtitle && !isPgsSubtitle && relPath && selectedSubtitleTrack
     ? `/api/local-subtitle/${encodeURIComponent(relPath)}?stream=${selectedSubtitleTrack.index}`
     : null
   const parsedCues = useParsedSubtitles(vttSubUrl)
+
+  // Blu-ray bitmap subtitles: fetched as a raw .sup and drawn by PgsSubtitleView.
+  const pgsSubUrl = isPgsSubtitle && relPath && selectedSubtitleTrack
+    ? `/api/local-subtitle-pgs/${encodeURIComponent(relPath)}?stream=${selectedSubtitleTrack.index}`
+    : null
+  const pgsCuesRef = usePgsSubtitles(pgsSubUrl)
 
   const assSubUrl = isAssSubtitle && relPath && selectedSubtitleTrack
     ? `/api/local-subtitle-raw/${encodeURIComponent(relPath)}?stream=${selectedSubtitleTrack.index}`
@@ -700,13 +786,18 @@ export default function LocalVideoPlayer({
     const audio = audioRef.current
     if (!video) return
     intentPlayingRef.current = true
+    if (remuxMode) {
+      // The <video> carries its own audio here — nothing else to start or align.
+      video.play().catch(() => {})
+      return
+    }
     if (!audioInitializedRef.current) {
       audioInitializedRef.current = true
       reloadAudio(video.currentTime, selectedAudioRef.current)
     }
     video.play().catch(() => {})
     audio?.play().catch(() => {})
-  }, [reloadAudio])
+  }, [reloadAudio, remuxMode])
 
   const togglePlay = useCallback(() => {
     const video = videoRef.current
@@ -765,6 +856,34 @@ export default function LocalVideoPlayer({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contentId, seriesId])
+
+  // Remux mode: attach the MediaSource stream once the track list (duration, container
+  // start offset) and the saved audio choice are known, opening straight at the
+  // "Continue Watching" position so there's no wasted stream from 0:00.
+  //
+  // Declared AFTER the progress-saving effect on purpose: on unmount React runs
+  // cleanups in declaration order, and destroy() resets the element's currentTime,
+  // which would otherwise be what got saved.
+  useEffect(() => {
+    const video = videoRef.current
+    if (!remuxMode || !video || !relPath || !info || !prefsResolved) return
+    const stream = new RemuxStream(video, {
+      relPath,
+      duration: info.duration,
+      startTime: info.startTime || 0,
+      onError: (message) => setStreamError(message),
+    })
+    remuxRef.current = stream
+    setStreamError(null)
+    const saved = contentId ? getWatchProgress(contentId) : null
+    stream.start(saved && saved.currentTime > 0 ? saved.currentTime : 0, selectedAudioRef.current)
+    return () => {
+      stream.destroy()
+      remuxRef.current = null
+    }
+    // contentId is read once at attach time; a different title remounts this component.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remuxMode, relPath, info, prefsResolved])
 
   // Scrub-bar hover preview: debounced so we don't hit the server for every
   // pixel the pointer crosses, and bucketed so nearby positions reuse the same
@@ -857,23 +976,30 @@ export default function LocalVideoPlayer({
     navigator.mediaSession.playbackState = playing ? "playing" : "paused"
   }, [playing])
 
+  // The element that actually makes sound: the <video> in remux mode, the separate
+  // hidden <audio> otherwise (where the <video> stays muted as a silent clock).
+  const soundElement = useCallback(
+    (): HTMLMediaElement | null => (remuxMode ? videoRef.current : audioRef.current),
+    [remuxMode]
+  )
+
   const toggleMute = useCallback(() => {
-    const audio = audioRef.current
-    if (!audio) return
-    audio.muted = !audio.muted
-    setMuted(audio.muted)
-  }, [])
+    const sound = soundElement()
+    if (!sound) return
+    sound.muted = !sound.muted
+    setMuted(sound.muted)
+  }, [soundElement])
 
   const handleVolumeChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const audio = audioRef.current
+    const sound = soundElement()
     const next = Number(event.target.value)
     setVolume(next)
-    if (audio) {
-      audio.volume = next
-      audio.muted = next === 0
+    if (sound) {
+      sound.volume = next
+      sound.muted = next === 0
       setMuted(next === 0)
     }
-  }, [])
+  }, [soundElement])
 
   const handleRateChange = useCallback((value: string) => {
     const next = Number(value)
@@ -947,6 +1073,10 @@ export default function LocalVideoPlayer({
   }, [playing, buffering])
 
   const audioOptions = info?.audioTracks || []
+  const audioLabels = useMemo(
+    () => buildAudioLabels(info?.audioTracks || [], (i) => `${t("player.audio")} ${i + 1}`),
+    [info, t]
+  )
   const portalContainer = fullscreen ? containerRef.current : undefined
   const progressPct = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0
   const chromeVisible = showControls || !playing || buffering
@@ -966,12 +1096,27 @@ export default function LocalVideoPlayer({
     >
       <video
         ref={videoRef}
-        src={src}
+        // In remux mode RemuxStream owns the source (a MediaSource object URL); React
+        // must not put the raw file URL back.
+        src={remuxMode ? undefined : src}
         title={title}
         className="h-full w-full"
-        muted
+        // Native mode: silent clock, sound comes from the separate <audio>. Remux
+        // mode: this element plays the sound itself.
+        muted={!remuxMode}
         playsInline
         onClick={togglePlay}
+        onError={(event) => {
+          // A native <video> that can't open/decode the file (codec or container the
+          // browser lacks) falls back to the ffmpeg remux pipeline instead of just
+          // sitting on a black frame.
+          if (!remuxMode && event.currentTarget.error) setNativeFailed(true)
+        }}
+        onVolumeChange={(event) => {
+          if (!remuxMode) return
+          setVolume(event.currentTarget.volume)
+          setMuted(event.currentTarget.muted)
+        }}
         onPlay={() => setPlaying(true)}
         onPause={() => {
           // Only a pause the user actually asked for touches the UI. A
@@ -1019,8 +1164,13 @@ export default function LocalVideoPlayer({
       />
 
       {/* Styled text-subtitle overlay (VTT/SRT) — our own render, off the audio clock */}
-      {!isAssSubtitle && !showPauseInfo && (
+      {!isAssSubtitle && !isPgsSubtitle && !showPauseInfo && (
         <SubtitleView cues={parsedCues} getTime={getSubtitleTime} />
+      )}
+
+      {/* Blu-ray (PGS) bitmap subtitles */}
+      {isPgsSubtitle && !showPauseInfo && (
+        <PgsSubtitleView cuesRef={pgsCuesRef} getTime={getSubtitleTime} videoRef={videoRef} />
       )}
 
       {/* Sound source — hidden, kept in sync with the video above via useMediaSync */}
@@ -1037,7 +1187,24 @@ export default function LocalVideoPlayer({
         )}
       />
 
-      {buffering && (
+      {streamError && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/70 px-6 text-center">
+          <p className="text-sm font-semibold text-white">{t("player.streamError")}</p>
+          <p className="max-w-md break-words text-xs text-white/60">{streamError}</p>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setStreamError(null)
+              remuxRef.current?.start(videoRef.current?.currentTime ?? 0, selectedAudioRef.current)
+            }}
+          >
+            {t("common.retry")}
+          </Button>
+        </div>
+      )}
+
+      {buffering && !streamError && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div className="flex size-16 items-center justify-center rounded-full bg-black/40 backdrop-blur-sm">
             <Spinner className="size-7 text-white" />
@@ -1267,7 +1434,7 @@ export default function LocalVideoPlayer({
                   <DropdownMenuRadioGroup value={String(selectedAudio)} onValueChange={handleAudioChange}>
                     {audioOptions.map((track, idx) => (
                       <DropdownMenuRadioItem key={track.index} value={String(track.index)} className="text-xs focus:bg-neutral-800 focus:text-white">
-                        {trackLabel(track, `${t("player.audio")} ${idx + 1}`)}
+                        {audioLabels[idx]}
                       </DropdownMenuRadioItem>
                     ))}
                   </DropdownMenuRadioGroup>
