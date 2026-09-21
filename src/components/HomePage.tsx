@@ -568,8 +568,10 @@ export default function HomePage() {
       })
       .filter((category) => category.items.length > 0)
   }, [lang, movies])
+  // A row with no cards is just a title floating over blank space (the local library
+  // usually has no Series or Anime, for one) — only rows with something in them show.
   const homeCategories = useMemo(
-    () => [...categories, ...movieGenreCategories],
+    () => [...categories, ...movieGenreCategories].filter((category) => category.items.length > 0),
     [categories, movieGenreCategories]
   )
 
@@ -813,6 +815,17 @@ export default function HomePage() {
                 </Fragment>
               )
             })}
+            {/* "Continue watching" normally follows the first row; with no rows at all
+                it would never render, so it stands on its own. */}
+            {homeCategories.length === 0 && continueWatchingItems.length > 0 && (
+              <MovieCarousel
+                title={t("home.continue")}
+                items={continueWatchingItems.map(({ movie }) => movie)}
+                onPlay={handlePlay}
+                onDetails={handleDetails}
+                getProgressRatio={(movie) => continueWatchingProgressById.get(movie.id)}
+              />
+            )}
           </div>
         </main>
 
