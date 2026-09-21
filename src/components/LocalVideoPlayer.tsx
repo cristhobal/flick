@@ -21,7 +21,7 @@
 // to the <video> through MediaSource, and the <video> itself plays the sound. There is
 // no <audio> element and nothing to keep in sync, so the paths below that exist only to
 // lock two elements together (useMediaSync, reloadAudio, the audio watchdog) are off.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import {
@@ -297,7 +297,7 @@ interface LocalVideoPlayerProps {
   nextEpisode?: Movie | null
   onPlayNext?: (movie: Movie) => void
   // The movie/episode currently playing — feeds the "paused for a while" info
-  // card (artwork, title, season/episode, synopsis, rating…), streaming-app style.
+  // card (title, season/episode, synopsis, rating…) shown over the frozen frame.
   media?: Movie | null
   // Identity for "Continue Watching": contentId is this exact movie/episode's
   // own id (what progress is saved and resumed against); seriesId is the
@@ -1121,8 +1121,8 @@ export default function LocalVideoPlayer({
 
   // ---- "Paused for a while" info card ----
   // After the video sits paused (not buffering, not on the credits/next card) for
-  // PAUSE_INFO_DELAY_MS, fade in a streaming-style card with the artwork and the
-  // episode/movie details. Any resume hides it immediately.
+  // PAUSE_INFO_DELAY_MS, fade in a card with the episode/movie details over the
+  // frozen frame. Any resume hides it immediately.
   useEffect(() => {
     if (playing || buffering) {
       setShowPauseInfo(false)
@@ -1142,10 +1142,46 @@ export default function LocalVideoPlayer({
   const chromeVisible = showControls || !playing || buffering
 
   const isEpisode = Boolean(media?.episodeNumber)
-  const pauseArt = media
-    ? backdropUrl(media.backdropPath, "w1280") || posterUrl(media.posterPath, "w500")
-    : null
   const pauseSynopsis = media?.episodeSynopsis || media?.description || media?.longDescription || ""
+  // The pause card's metadata, as a list so the divider between entries can be drawn by
+  // position — the fields are all optional, and rendering them inline left dividers
+  // dangling whenever one was missing.
+  const pauseMeta: { key: string; node: React.ReactNode }[] = []
+  if (media) {
+    if (media.contentRating) {
+      pauseMeta.push({
+        key: "contentRating",
+        // The one thing that stays a box: a maturity rating is read as a certification
+        // mark, not as a word in a sentence.
+        node: (
+          <span className="rounded-[3px] border border-white/35 px-1.5 py-px text-[10px] font-medium tracking-wide text-white/80 sm:text-[11px]">
+            {media.contentRating}
+          </span>
+        ),
+      })
+    }
+    if (media.rating > 0) {
+      pauseMeta.push({
+        key: "rating",
+        node: (
+          <span className="flex items-center gap-1.5 font-semibold text-amber-400">
+            <Star className="size-3.5 fill-current sm:size-4" />
+            {media.rating.toFixed(1)}
+          </span>
+        ),
+      })
+    }
+    if (media.year > 0) pauseMeta.push({ key: "year", node: <span>{media.year}</span> })
+    if (media.duration && media.duration !== "-") {
+      pauseMeta.push({ key: "duration", node: <span>{media.duration}</span> })
+    }
+    if (media.quality) {
+      pauseMeta.push({ key: "quality", node: <span className="tracking-wide">{media.quality}</span> })
+    }
+    if (media.genre) {
+      pauseMeta.push({ key: "genre", node: <span className="hidden sm:inline">{media.genre}</span> })
+    }
+  }
 
   return (
     <div
@@ -1212,24 +1248,25 @@ export default function LocalVideoPlayer({
         }}
       />
 
+      {/* Subtitles stay up while the pause card is showing. They used to be hidden for
+          it, which made sense when the card covered the picture with artwork; now that
+          it lets the frozen frame through, the line that was on screen has to stay on
+          screen with it. All three layers sit at z-10, above the card (z-auto), so the
+          card's scrim never washes them out. They freeze on their own: the clock they
+          read stops advancing when playback does. */}
+
       {/* JASSUB (ASS/SSA subtitle renderer) mounts its own <canvas> inside this
           stable, React-childless container — see ass-renderer.ts for why the
           canvas can't be a React element. */}
-      <div
-        ref={assContainerRef}
-        className={cn(
-          "pointer-events-none absolute inset-0 transition-opacity",
-          showPauseInfo && "opacity-0"
-        )}
-      />
+      <div ref={assContainerRef} className="pointer-events-none absolute inset-0 z-10" />
 
       {/* Styled text-subtitle overlay (VTT/SRT) — our own render, off the audio clock */}
-      {!isAssSubtitle && !isPgsSubtitle && !showPauseInfo && (
+      {!isAssSubtitle && !isPgsSubtitle && (
         <SubtitleView cues={parsedCues} getTime={getSubtitleTime} />
       )}
 
       {/* Blu-ray (PGS) bitmap subtitles */}
-      {isPgsSubtitle && !showPauseInfo && (
+      {isPgsSubtitle && (
         <PgsSubtitleView cuesRef={pgsCuesRef} getTime={getSubtitleTime} videoRef={videoRef} />
       )}
 
@@ -1272,60 +1309,67 @@ export default function LocalVideoPlayer({
         </div>
       )}
 
-      {/* "Paused for a while" info card — streaming-app style: full-bleed artwork
-          behind a left-anchored block with the title, season/episode, meta and
-          synopsis. Clicking anywhere on it resumes. Sits above the video but
-          below the transport cluster and control bar (DOM order), so the play
-          button and controls stay usable on top of it. */}
+      {/* "Paused for a while" info card — a left-anchored block with the title,
+          season/episode, meta and synopsis. What sits behind it is the paused frame
+          itself: no artwork is drawn over the video, so pausing freezes the picture
+          (and its subtitle, which keeps rendering at z-10 above this) exactly where it
+          stopped. The scrim comes in two parts: a flat dim that pushes the whole frame
+          back so the card reads as the foreground, plus a ramp over the text column
+          that takes it most of the way to black. The picture stays readable on the
+          right, but it is clearly the background — the copy wins. Clicking anywhere on
+          it resumes. Sits above the video but below the transport cluster and control
+          bar (DOM order), so the play button and controls stay usable on top. */}
       {showPauseInfo && media && (
         <div
           className="absolute inset-0 cursor-pointer animate-fade-in"
           onClick={togglePlay}
         >
-          {pauseArt && (
-            <img src={pauseArt} alt="" className="absolute inset-0 h-full w-full object-cover" />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-r from-black via-black/85 to-black/30" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/40" />
+          <div className="absolute inset-0 bg-black/55" />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/65 to-transparent" />
 
-          <div className="relative flex h-full max-w-2xl flex-col justify-center gap-2 px-6 sm:gap-3 sm:px-14">
-            <p className="animate-fade-up stagger-1 text-[11px] font-semibold uppercase tracking-[0.3em] text-white/55 sm:text-xs">
-              {t("player.paused")}
-            </p>
-            <h2 className="animate-fade-up stagger-2 text-balance text-2xl font-black leading-tight text-white drop-shadow-lg sm:text-4xl md:text-5xl">
+          {/* Spacing is per-element rather than one flat gap: the eyebrow belongs tight
+              to the title, the synopsis wants air from the metadata. That rhythm is
+              most of what separates this from a stack of evenly spaced lines. */}
+          <div className="relative flex h-full max-w-2xl flex-col justify-center px-6 sm:px-14">
+            <div className="animate-fade-up stagger-1 flex items-center gap-2.5 text-white/45">
+              <Pause className="size-3.5 fill-current sm:size-4" />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.22em] sm:text-[11px]">
+                {t("player.paused")}
+              </span>
+            </div>
+
+            {/* font-bold, not font-black: at display sizes the heaviest weight closes up
+                the counters and reads as shouting rather than as a title card. */}
+            <h2 className="animate-fade-up stagger-2 mt-3 text-balance text-3xl font-bold leading-[1.05] tracking-tight text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.55)] sm:mt-4 sm:text-5xl md:text-6xl">
               {title}
             </h2>
+
             {isEpisode && (
-              <p className="animate-fade-up stagger-2 text-sm font-semibold text-white/90 sm:text-lg">
+              <p className="animate-fade-up stagger-2 mt-2.5 text-sm font-medium text-white/85 sm:mt-3 sm:text-base">
                 {media.seasonNumber
                   ? t("player.seasonEpisode", { season: media.seasonNumber, episode: media.episodeNumber || 0 })
                   : t("player.episode", { episode: media.episodeNumber || 0 })}
-                {media.episodeTitle ? ` · ${media.episodeTitle}` : ""}
+                {media.episodeTitle && <span className="text-white/55"> · {media.episodeTitle}</span>}
               </p>
             )}
-            <div className="animate-fade-up stagger-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-white/70 sm:text-sm">
-              {media.rating > 0 && (
-                <span className="flex items-center gap-1 font-semibold text-amber-400">
-                  <Star className="size-3.5 fill-current sm:size-4" />
-                  {media.rating.toFixed(1)}
-                </span>
-              )}
-              {media.year > 0 && <span>{media.year}</span>}
-              {media.contentRating && (
-                <span className="rounded border border-white/30 px-1.5 py-0.5 text-[10px] font-medium tracking-wide sm:text-[11px]">
-                  {media.contentRating}
-                </span>
-              )}
-              {media.quality && (
-                <span className="rounded bg-white/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide sm:text-[11px]">
-                  {media.quality}
-                </span>
-              )}
-              {media.duration && media.duration !== "-" && <span>{media.duration}</span>}
-              {media.genre && <span className="hidden sm:inline">{media.genre}</span>}
-            </div>
+
+            {/* One muted line with hairline dividers instead of a row of mismatched
+                chips (a bordered box next to a filled pill next to bare text). Same
+                construction as the hero's metadata row, so the two read as one app.
+                Built as a list and joined so a missing field never strands a divider. */}
+            {pauseMeta.length > 0 && (
+              <div className="animate-fade-up stagger-3 mt-3.5 flex flex-wrap items-center gap-x-2.5 gap-y-2 text-xs text-white/60 sm:mt-4 sm:gap-x-3 sm:text-sm">
+                {pauseMeta.map((item, index) => (
+                  <Fragment key={item.key}>
+                    {index > 0 && <span aria-hidden className="h-3.5 w-px bg-white/25" />}
+                    {item.node}
+                  </Fragment>
+                ))}
+              </div>
+            )}
+
             {pauseSynopsis && (
-              <p className="animate-fade-up stagger-4 line-clamp-3 max-w-xl text-sm leading-relaxed text-white/75 sm:line-clamp-4 sm:text-base">
+              <p className="animate-fade-up stagger-4 mt-4 line-clamp-3 max-w-xl text-sm leading-relaxed text-white/65 sm:mt-5 sm:line-clamp-4 sm:text-base">
                 {pauseSynopsis}
               </p>
             )}
