@@ -65,6 +65,8 @@ const CONTROLS_IDLE_MS = 2800
 // (artwork + title + season/episode + synopsis + rating) fades in over it.
 const PAUSE_INFO_DELAY_MS = 5000
 const SKIP_SECONDS = 10
+// How far the audio clock may stray from the video before subtitles stop trusting it.
+const SUBTITLE_CLOCK_TOLERANCE_S = 0.4
 // Fallback bucket size before video-info returns the server's real
 // thumbnailInterval (which scales with duration) — only matters for the brief
 // window before that first response lands.
@@ -590,9 +592,23 @@ export default function LocalVideoPlayer({
   const selectedSubtitleTrack = subtitleOptions.find((s) => s.index === selectedSubtitle) || null
   const isAssSubtitle = selectedSubtitleTrack?.format === "ass"
 
+  // The clock every subtitle renderer reads. Rules, in order:
+  //   1. While a seek is in flight there is no valid time (NaN → no cue matches, nothing
+  //      is drawn). `video.currentTime` already holds the target, but the frame on screen
+  //      is still the OLD position; a line from the new scene over the old picture is
+  //      exactly the "subtitles out of sync after skipping" symptom.
+  //   2. Otherwise follow the <audio> the viewer actually hears (native two-element
+  //      mode) — but only while it agrees with the video. Right after a jump the audio
+  //      element keeps playing the old position until it is paused and reloaded, and
+  //      once reloaded it can trail the video by however long the transcode took to
+  //      start; a clock that far from the video is stale, not authoritative.
+  //   3. Otherwise the video's own time (always the case in remux mode, where the
+  //      <video> carries the sound itself).
   const getSubtitleTime = useCallback(() => {
     const video = videoRef.current
     const audio = audioRef.current
+    if (!video) return 0
+    if (video.seeking) return Number.NaN
     if (
       audio &&
       audioInitializedRef.current &&
@@ -600,9 +616,10 @@ export default function LocalVideoPlayer({
       audio.readyState >= 2 &&
       Number.isFinite(audio.currentTime)
     ) {
-      return audioOffsetRef.current + audio.currentTime
+      const audioTime = audioOffsetRef.current + audio.currentTime
+      if (Math.abs(audioTime - video.currentTime) <= SUBTITLE_CLOCK_TOLERANCE_S) return audioTime
     }
-    return video?.currentTime ?? 0
+    return video.currentTime
   }, [])
 
   const vttSubUrl = !isAssSubtitle && relPath && selectedSubtitleTrack
