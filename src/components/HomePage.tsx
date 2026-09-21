@@ -766,7 +766,7 @@ export default function HomePage() {
 
         <main className="pb-12 sm:pb-16">
           {visibleHero && (
-            <div className="full-bleed relative min-h-svh overflow-hidden bg-black">
+            <div className="full-bleed relative min-h-[85svh] overflow-hidden bg-black sm:min-h-svh">
               {exitingHero && (
                 <HeroSection
                   key={`exit-${exitingHero.id}`}

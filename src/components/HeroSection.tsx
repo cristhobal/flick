@@ -84,7 +84,7 @@ export default function HeroSection({
 
   return (
     <section
-      className={`min-h-svh w-full overflow-hidden bg-black ${
+      className={`min-h-[85svh] w-full overflow-hidden bg-black sm:min-h-svh ${
         phase === "exit"
           ? "hero-cinematic-exit absolute inset-0 z-0"
           : "hero-cinematic-enter relative z-10"
@@ -96,7 +96,7 @@ export default function HeroSection({
           src={bgSrc}
           alt=""
           className={`absolute inset-0 h-full w-full object-cover will-change-transform ${
-            imgLoaded ? "animate-ken-burns opacity-40" : "opacity-0"
+            imgLoaded ? "animate-ken-burns opacity-60 sm:opacity-40" : "opacity-0"
           }`}
           style={{ transition: imgLoaded ? undefined : "opacity 1s ease" }}
           onLoad={() => setImgLoaded(true)}
@@ -106,30 +106,36 @@ export default function HeroSection({
         />
       )}
 
-      {/* Fallback gradient */}
+      {/* Fallback gradient. Once the backdrop is up this is only colour grading, and on
+          phones it stacks with three more dark layers over a full-width (not half-width)
+          scrim — at 60% the artwork was crushed to near-black, so mobile grades lighter. */}
       <div
         className={`absolute inset-0 bg-gradient-to-b ${getGenreGradient(movie.genre)} transition-opacity duration-1000 ${
-          imgLoaded ? "opacity-60" : "opacity-100"
+          imgLoaded ? "opacity-30 sm:opacity-60" : "opacity-100"
         }`}
       />
 
       {/* Ambient light effect */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.04)_0%,transparent_60%)]" />
-      <div className="absolute inset-0 bg-black/45 sm:bg-transparent" />
-      <div className="absolute inset-0 bg-gradient-to-r from-black/75 via-black/45 to-black/15 sm:from-black/90 sm:via-black/50 sm:to-transparent lg:w-1/2" />
+      <div className="absolute inset-0 bg-black/20 sm:bg-transparent" />
+      {/* The side scrim only spans half the width from lg up; below that it covers the
+          whole frame, so phones need a far gentler ramp to keep the backdrop visible. */}
+      <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/25 to-transparent sm:from-black/90 sm:via-black/50 sm:to-transparent lg:w-1/2" />
       <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(0,0,0,1)_0%,rgba(0,0,0,0.986)_5%,rgba(0,0,0,0.945)_10%,rgba(0,0,0,0.879)_15%,rgba(0,0,0,0.789)_20%,rgba(0,0,0,0.68)_25%,rgba(0,0,0,0.557)_30%,rgba(0,0,0,0.426)_35%,rgba(0,0,0,0.294)_40%,rgba(0,0,0,0.169)_45%,rgba(0,0,0,0.058)_50%,rgba(0,0,0,0)_58%,transparent_100%)] sm:bg-[linear-gradient(to_top,rgba(0,0,0,1)_0%,rgba(0,0,0,0.986)_4%,rgba(0,0,0,0.945)_8%,rgba(0,0,0,0.879)_12%,rgba(0,0,0,0.789)_16%,rgba(0,0,0,0.68)_20%,rgba(0,0,0,0.557)_24%,rgba(0,0,0,0.426)_28%,rgba(0,0,0,0.294)_32%,rgba(0,0,0,0.169)_36%,rgba(0,0,0,0.058)_40%,rgba(0,0,0,0)_46%,transparent_100%)]" />
 
-      {/* Content — vertically centered, safe padding for header */}
-      <div className="absolute inset-0 z-10 flex flex-col justify-center py-14 sm:pb-[8vh] sm:pt-16 lg:pb-[10vh]">
+      {/* Content — bottom-anchored on phones (a centered block leaves a dead black half
+          below it on a tall viewport), vertically centered from sm up. Top padding keeps
+          it clear of the fixed header if the copy ever grows past the available space. */}
+      <div className="absolute inset-0 z-10 flex flex-col justify-end pt-20 pb-8 sm:justify-center sm:pb-[8vh] sm:pt-16 lg:pb-[10vh]">
         <div className="content-container">
-          <div className="flex max-w-full flex-col items-start gap-3 sm:max-w-2xl sm:gap-4 lg:max-w-4xl">
+          <div className="flex max-w-full flex-col items-start gap-3 px-1 sm:max-w-2xl sm:gap-4 sm:px-0 lg:max-w-4xl">
             {/* Title */}
             <h1 className={`${contentAnimation} hero-stagger-title max-w-full pb-1 text-3xl leading-[1.1] font-bold tracking-tight text-balance text-white drop-shadow-lg sm:pb-2 sm:text-5xl lg:text-6xl xl:text-7xl`}>
               {movie.title}
             </h1>
 
             {/* Meta info */}
-            <div className={`${contentAnimation} hero-stagger-meta flex flex-wrap items-center gap-2 text-xs text-neutral-400 sm:gap-3 sm:text-sm`}>
+            <div className={`${contentAnimation} hero-stagger-meta flex flex-wrap items-center gap-2 text-[13px] text-neutral-400 sm:gap-3 sm:text-sm`}>
               <span className="text-white/80">{movie.year}</span>
               <span className="h-3.5 w-px bg-neutral-700 sm:h-4" />
               <span>{heroRuntimeLabel}</span>
@@ -144,8 +150,8 @@ export default function HeroSection({
               </span>
             </div>
 
-            {/* Description — hidden on very small screens */}
-            <p className={`${contentAnimation} hero-stagger-description line-clamp-2 max-w-full text-xs leading-relaxed text-neutral-300 sm:line-clamp-3 sm:text-sm md:text-base lg:text-neutral-400`}>
+            {/* Description — clamped to two lines on phones */}
+            <p className={`${contentAnimation} hero-stagger-description line-clamp-2 max-w-full text-sm leading-relaxed text-neutral-300 sm:line-clamp-3 md:text-base lg:text-neutral-400`}>
               {movie.description}
             </p>
 
@@ -154,7 +160,7 @@ export default function HeroSection({
               {canPlay && (
                 <Button
                   size="default"
-                  className="h-9 gap-2 border-0 bg-white px-4 text-sm text-black transition-all duration-300 hover:scale-105 hover:bg-neutral-200 active:scale-95 sm:h-11 sm:px-6 sm:text-base"
+                  className="h-11 gap-2 border-0 bg-white px-5 text-sm text-black transition-all duration-300 hover:scale-105 hover:bg-neutral-200 active:scale-95 sm:px-6 sm:text-base"
                   onClick={() => onPlay?.(playableMovie)}
                 >
                   <Play className="size-4 fill-black sm:size-5" />
@@ -164,7 +170,7 @@ export default function HeroSection({
               <Button
                 size="default"
                 variant="outline"
-                className="h-9 gap-2 border-white/20 px-4 text-sm text-white transition-all duration-300 hover:scale-105 hover:bg-white/10 active:scale-95 sm:h-11 sm:px-6 sm:text-base"
+                className="h-11 gap-2 border-white/20 bg-white/5 px-5 text-sm text-white backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:bg-white/10 active:scale-95 sm:bg-transparent sm:px-6 sm:text-base sm:backdrop-blur-none"
                 onClick={() => onDetails?.(movie)}
               >
                 <Info className="size-4 sm:size-5" />
