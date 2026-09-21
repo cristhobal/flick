@@ -160,6 +160,24 @@ Peliculas/
         │   └── S01E02.mkv
 ```
 
+#### Containers and codecs
+
+MP4/MKV/WebM play natively. Containers a browser cannot open — **`.m2ts`/`.mts`/`.ts` (Blu-ray remuxes), MPEG-PS, AVI, WMV, FLV** — are remuxed on the fly by `ffmpeg` into a fragmented MP4 and fed to the `<video>` through Media Source Extensions (`src/lib/remux-stream.ts`). Picture and the chosen audio track come out of one `ffmpeg` process on one timeline, so they cannot drift apart. H.264 is stream-copied (no CPU, starts in about a second); anything else (MPEG-2, VC-1, HEVC, 10-bit, interlaced) is re-encoded to 8-bit H.264. Only a few seconds are buffered ahead and old data is evicted, so a 30 GB file costs roughly the same memory as a small one. A native `<video>` that errors (e.g. HEVC without hardware decoding) falls back to the same pipeline automatically.
+
+A Blu-ray folder (`Movie (2016)/BDMV/STREAM/*.m2ts`) is listed as one title using its largest stream.
+
+`ffmpeg` and `ffprobe` must be on `PATH`. `fc-match` (fontconfig) is optional and used to resolve ASS subtitle fonts.
+
+#### Subtitles and remembered choices
+
+Text (SRT/VTT), ASS/SSA (rendered with libass) and Blu-ray **PGS** bitmap subtitles are supported. PGS is extracted once in the background at low priority and served progressively, so the first minutes are available almost immediately; it is cached in `.media-cache/`.
+
+The audio track and subtitle you pick are remembered **per file** (and per show for episodes) in `.flick-data/media-prefs.json`, with `localStorage` as a fallback. Tracks are matched by language, title, codec and position, so files without language tags (common in Blu-ray rips) are remembered too.
+
+> `scripts/local-media-server.mjs` is loaded once at startup and is **not** hot-reloaded. After pulling changes to it, restart `pnpm dev`.
+
+Debugging: `localStorage["flick:debug-remux"] = "1"` traces the remux stream lifecycle; `localStorage["flick:debug-sync"] = "1"` logs the audio/video drift of the native two-element player.
+
 Only titles that actually exist in the folder are shown — the catalog is not pre-generated, so there's nothing to keep in sync. Local playback endpoints are dev/preview middleware and require access to the host machine; they are not available from a standard static Vercel deployment, and none of this code is included in the production bundle.
 
 ---
