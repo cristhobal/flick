@@ -3,14 +3,15 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-  DrawerClose,
-} from "@/components/ui/drawer"
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  SheetClose,
+} from "@/components/ui/sheet"
 import {
   Search,
   Menu,
@@ -19,6 +20,7 @@ import {
   Tv,
   Clapperboard,
   Library,
+  ChevronRight,
   X,
 } from "lucide-react"
 import { useI18n } from "@/i18n/I18nProvider"
@@ -209,13 +211,12 @@ export default function Header({
 
           <ThemeToggle />
 
-          {/* Mobile Menu — Vaul Drawer from left */}
-          <Drawer
-            open={mobileMenuOpen}
-            onOpenChange={setMobileMenuOpen}
-            direction="left"
-          >
-            <DrawerTrigger asChild>
+          {/* Mobile menu. A Sheet (Radix Dialog), not a Vaul Drawer: Vaul rubber-bands a
+              drag away from the dismiss direction, which on a side panel pinned to the
+              edge just tears it off that edge and exposes the page behind it. A Sheet has
+              no drag gesture, and it matches the panel FilterSidebar already uses. */}
+          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+            <SheetTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -223,74 +224,100 @@ export default function Header({
               >
                 <Menu className="size-5" />
               </Button>
-            </DrawerTrigger>
-            <DrawerContent className="inset-y-0 left-0 flex h-full w-[78vw] max-w-[280px] flex-col overflow-hidden rounded-none border-r border-sidebar-border bg-sidebar p-0 text-sidebar-foreground shadow-[var(--drawer-shadow)]">
-              {/* Header */}
-              <DrawerHeader className="shrink-0 border-b border-sidebar-border/60 px-5 pt-7 pb-5">
+            </SheetTrigger>
+            <SheetContent
+              side="left"
+              showCloseButton={false}
+              overlayClassName="bg-black/60 supports-backdrop-filter:backdrop-blur-[2px]"
+              // The width carries the `data-[side=left]` prefix so it overrides the
+              // variant-scoped `w-3/4` in the base styles instead of tying on specificity.
+              className="gap-0 border-r border-sidebar-border bg-sidebar p-0 text-sidebar-foreground shadow-2xl data-[side=left]:w-[min(86vw,20rem)] data-[side=left]:sm:max-w-none supports-backdrop-filter:bg-sidebar/85 supports-backdrop-filter:backdrop-blur-xl"
+            >
+              <SheetHeader className="shrink-0 gap-0 border-b border-sidebar-border/60 px-5 pt-6 pb-4">
                 <div className="flex items-center justify-between">
-                  <DrawerTitle className="text-xl font-bold tracking-tighter text-sidebar-foreground">
+                  <SheetTitle className="text-xl font-bold tracking-tighter text-sidebar-foreground">
                     flick
-                  </DrawerTitle>
-                  <DrawerClose asChild>
-                    <button
-                      className="flex size-8 cursor-pointer items-center justify-center rounded-full text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                  </SheetTitle>
+                  <SheetClose asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="rounded-full text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
                       aria-label="Cerrar menu"
                     >
                       <X className="size-4" />
-                    </button>
-                  </DrawerClose>
+                    </Button>
+                  </SheetClose>
                 </div>
-                <DrawerDescription className="sr-only">
+                <SheetDescription className="sr-only">
                   {t("nav.main")}
-                </DrawerDescription>
-              </DrawerHeader>
+                </SheetDescription>
+              </SheetHeader>
 
-              {/* Nav */}
-              <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
-                {navLinks.map((link) => {
-                  const active = currentPage === link.id
-                  return (
-                    <button
-                      key={link.id}
-                      disabled={link.disabled}
-                      title={link.disabled ? t("common.availableSoon") : undefined}
-                      onClick={() => {
-                        onNavigate?.(link.id)
-                        setMobileMenuOpen(false)
-                      }}
-                      className={`group flex items-center gap-3 rounded-lg px-3 py-3 text-sm transition-all duration-150 cursor-pointer ${
-                        link.disabled
-                          ? "cursor-not-allowed opacity-25"
-                          : active
-                            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                            : "text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                      }`}
-                    >
-                      <span
-                        className={`flex size-8 shrink-0 items-center justify-center rounded-md transition-colors ${
-                          active
-                            ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                            : "bg-sidebar-accent/40 text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80"
-                        }`}
-                      >
-                        <link.icon className="size-4" />
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-left font-medium">
-                        {link.label}
-                      </span>
-                    </button>
-                  )
-                })}
+              <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+                <p className="px-3 pb-2 text-[11px] font-semibold tracking-[0.14em] text-sidebar-foreground/35 uppercase">
+                  {t("nav.main")}
+                </p>
+                <ul className="flex flex-col gap-1">
+                  {navLinks.map((link) => {
+                    const active = currentPage === link.id
+                    return (
+                      <li key={link.id}>
+                        <button
+                          disabled={link.disabled}
+                          title={link.disabled ? t("common.availableSoon") : undefined}
+                          aria-current={active ? "page" : undefined}
+                          onClick={() => {
+                            onNavigate?.(link.id)
+                            setMobileMenuOpen(false)
+                          }}
+                          className={`group relative flex w-full items-center gap-3 overflow-hidden rounded-xl py-2.5 pr-3 pl-3.5 text-sm outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-sidebar-ring ${
+                            link.disabled
+                              ? "cursor-not-allowed opacity-25"
+                              : active
+                                ? "cursor-pointer bg-gradient-to-r from-sidebar-accent to-sidebar-accent/25 text-sidebar-accent-foreground"
+                                : "cursor-pointer text-sidebar-foreground/60 hover:bg-sidebar-accent/40 hover:text-sidebar-foreground active:scale-[0.985]"
+                          }`}
+                        >
+                          {/* Active rail — reads at a glance without relying on the fill alone */}
+                          {active && (
+                            <span
+                              aria-hidden
+                              className="absolute top-1/2 left-0 h-6 w-[3px] -translate-y-1/2 rounded-r-full bg-sidebar-primary"
+                            />
+                          )}
+                          <span
+                            className={`flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                              active
+                                ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+                                : "bg-sidebar-accent/40 text-sidebar-foreground/55 group-hover:bg-sidebar-accent/70 group-hover:text-sidebar-foreground"
+                            }`}
+                          >
+                            <link.icon className="size-4" />
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-left font-medium">
+                            {link.label}
+                          </span>
+                          <ChevronRight
+                            aria-hidden
+                            className={`size-4 shrink-0 transition-opacity ${
+                              active ? "opacity-45" : "opacity-0 group-hover:opacity-30"
+                            }`}
+                          />
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
               </nav>
 
-              {/* Footer */}
-              <div className="shrink-0 border-t border-sidebar-border/60 px-5 py-4">
+              <SheetFooter className="shrink-0 gap-0 border-t border-sidebar-border/60 px-5 py-4">
                 <p className="text-[11px] font-medium text-sidebar-foreground/35">
                   flick &middot; {new Date().getFullYear()}
                 </p>
-              </div>
-            </DrawerContent>
-          </Drawer>
+              </SheetFooter>
+            </SheetContent>
+          </Sheet>
         </div>
       </div>
     </header>
