@@ -128,52 +128,60 @@ export default function HeroSection({
           it clear of the fixed header if the copy ever grows past the available space. */}
       <div className="absolute inset-0 z-10 flex flex-col justify-end pt-20 pb-8 sm:justify-center sm:pb-[8vh] sm:pt-16 lg:pb-[10vh]">
         <div className="content-container">
-          <div className="flex max-w-full flex-col items-start gap-3 px-1 sm:max-w-2xl sm:gap-4 sm:px-0 lg:max-w-4xl">
+          {/* The hero always fills the viewport, so on a big screen a small block of copy
+              floats in the middle of it with dead space above and below. Rather than
+              shrink the section, the copy scales with the room it has: wider gaps and
+              larger type from lg up, so the block grows into the space instead of
+              leaving it empty. */}
+          <div className="flex max-w-full flex-col items-start gap-3 px-1 sm:max-w-2xl sm:gap-4 sm:px-0 lg:max-w-4xl lg:gap-5 xl:gap-6">
             {/* Title */}
             <h1 className={`${contentAnimation} hero-stagger-title max-w-full pb-1 text-3xl leading-[1.1] font-bold tracking-tight text-balance text-white drop-shadow-lg sm:pb-2 sm:text-5xl lg:text-6xl xl:text-7xl`}>
               {movie.title}
             </h1>
 
             {/* Meta info */}
-            <div className={`${contentAnimation} hero-stagger-meta flex flex-wrap items-center gap-2 text-[13px] text-neutral-400 sm:gap-3 sm:text-sm`}>
+            <div className={`${contentAnimation} hero-stagger-meta flex flex-wrap items-center gap-2 text-[13px] text-neutral-400 sm:gap-3 sm:text-sm lg:gap-4 lg:text-base`}>
               <span className="text-white/80">{movie.year}</span>
-              <span className="h-3.5 w-px bg-neutral-700 sm:h-4" />
+              <span className="h-3.5 w-px bg-neutral-700 sm:h-4 lg:h-5" />
               <span>{heroRuntimeLabel}</span>
-              <span className="h-3.5 w-px bg-neutral-700 sm:h-4" />
-              <div className="flex items-center gap-1">
-                <Star className="size-3.5 fill-neutral-400 text-neutral-400 sm:size-4" />
+              <span className="h-3.5 w-px bg-neutral-700 sm:h-4 lg:h-5" />
+              <div className="flex items-center gap-1 lg:gap-1.5">
+                <Star className="size-3.5 fill-neutral-400 text-neutral-400 sm:size-4 lg:size-[18px]" />
                 <span className="text-white/80">{movie.rating}</span>
               </div>
-              <span className="hidden h-4 w-px bg-neutral-700 sm:block" />
+              <span className="hidden h-4 w-px bg-neutral-700 sm:block lg:h-5" />
               <span className="hidden text-neutral-500 sm:inline">
                 {movie.language.slice(0, 2).map((language) => displayLanguage(language, lang)).join(" / ")}
               </span>
             </div>
 
-            {/* Description — clamped to two lines on phones */}
-            <p className={`${contentAnimation} hero-stagger-description line-clamp-2 max-w-full text-sm leading-relaxed text-neutral-300 sm:line-clamp-3 md:text-base lg:text-neutral-400`}>
+            {/* Description — clamped to two lines on phones. Its own max-width from lg up
+                is narrower than the block's: 20px type across the full 4xl would run past
+                a comfortable measure, and holding the line shorter also lets a one-line
+                synopsis wrap into two instead of trailing off alone. */}
+            <p className={`${contentAnimation} hero-stagger-description line-clamp-2 max-w-full text-sm leading-relaxed text-neutral-300 sm:line-clamp-3 md:text-base lg:max-w-3xl lg:text-lg lg:text-neutral-400 xl:text-xl`}>
               {movie.description}
             </p>
 
             {/* Actions */}
-            <div className={`${contentAnimation} hero-stagger-actions mt-1 flex flex-wrap items-center gap-2 sm:mt-2 sm:gap-3`}>
+            <div className={`${contentAnimation} hero-stagger-actions mt-1 flex flex-wrap items-center gap-2 sm:mt-2 sm:gap-3 lg:mt-3 lg:gap-4`}>
               {canPlay && (
                 <Button
                   size="default"
-                  className="h-11 gap-2 border-0 bg-white px-5 text-sm text-black transition-all duration-300 hover:scale-105 hover:bg-neutral-200 active:scale-95 sm:px-6 sm:text-base"
+                  className="h-11 gap-2 border-0 bg-white px-5 text-sm text-black transition-all duration-300 hover:scale-105 hover:bg-neutral-200 active:scale-95 sm:px-6 sm:text-base lg:h-13 lg:gap-2.5 lg:px-8 lg:text-lg"
                   onClick={() => onPlay?.(playableMovie)}
                 >
-                  <Play className="size-4 fill-black sm:size-5" />
+                  <Play className="size-4 fill-black sm:size-5 lg:size-[22px]" />
                   {watchState.inProgress ? t("common.resume") : t("common.play")}
                 </Button>
               )}
               <Button
                 size="default"
                 variant="outline"
-                className="h-11 gap-2 border-white/20 bg-white/5 px-5 text-sm text-white backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:bg-white/10 active:scale-95 sm:bg-transparent sm:px-6 sm:text-base sm:backdrop-blur-none"
+                className="h-11 gap-2 border-white/20 bg-white/5 px-5 text-sm text-white backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:bg-white/10 active:scale-95 sm:bg-transparent sm:px-6 sm:text-base sm:backdrop-blur-none lg:h-13 lg:gap-2.5 lg:px-8 lg:text-lg"
                 onClick={() => onDetails?.(movie)}
               >
-                <Info className="size-4 sm:size-5" />
+                <Info className="size-4 sm:size-5 lg:size-[22px]" />
                 {t("common.details")}
               </Button>
             </div>
