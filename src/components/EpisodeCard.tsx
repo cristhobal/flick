@@ -11,6 +11,7 @@ import { useWatchState } from "@/lib/use-watch-state"
 import { useScrollViewport } from "@/lib/scroll-container"
 import {
   posterUrl,
+  stillUrl,
   backdropUrl,
   getGenreGradient,
   isPlayableMovie,
@@ -216,7 +217,10 @@ export default function EpisodeCard({
     ? `E${episode.episodeNumber} - ${episodeName}`
     : episodeName
 
-  const imgSrc = posterUrl(episode.posterPath || movie.posterPath, "w185")
+  // A frame from this very episode (TMDB still), cropped to fill the vertical cover
+  // box; the show's poster only when TMDB has no still for it.
+  const imgSrc = stillUrl(episode.stillPath || null, "w300")
+    || posterUrl(episode.posterPath || movie.posterPath, "w185")
   const bgSrc = backdropUrl(episode.backdropPath || movie.backdropPath, "w780")
   const canPlay = isPlayableMovie(episode)
   const watchState = useWatchState(episode.id)
@@ -230,11 +234,14 @@ export default function EpisodeCard({
     <>
       <div
         ref={cardRef}
+        // self-start: don't let the grid stretch this card to the tallest one in its
+        // row — that (like the old fixed px height) left an empty band at the bottom.
+        className="self-start"
         onMouseEnter={handleCardEnter}
         onMouseLeave={handleCardLeave}
       >
         <div
-          className="cursor-pointer rounded-lg border border-neutral-800 bg-neutral-900/50 transition-colors hover:border-neutral-700 hover:bg-neutral-900 h-[136px] overflow-hidden"
+          className="cursor-pointer overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900/50 transition-colors hover:border-neutral-700 hover:bg-neutral-900"
           onPointerDown={(e) => {
             (e.currentTarget as HTMLElement).dataset.pointerX = String(e.clientX)
             ;(e.currentTarget as HTMLElement).dataset.pointerY = String(e.clientY)
@@ -257,7 +264,9 @@ export default function EpisodeCard({
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="line-clamp-2 text-sm leading-snug font-medium text-white">
+                  {/* One line only: with the 2-line synopsis below, the text column then
+                      never outgrows the 96px cover, so every card is the same height. */}
+                  <p className="truncate text-sm leading-snug font-medium text-white" title={episodeLabel}>
                     {episodeLabel}
                   </p>
                   <p className="mt-1 text-xs text-neutral-500">

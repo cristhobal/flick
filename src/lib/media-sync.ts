@@ -26,7 +26,7 @@
 // currently-buffered audio stream, which requires requesting a brand new stream (see
 // LocalVideoPlayer's reloadAudio) rather than a plain currentTime nudge. This hook
 // only owns *continuous* sync — play/pause propagation and drift correction.
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 
 // Beyond this, jump-correct instead of nudging: catch the (muted, silent) video up
 // when audio is ahead, or jump audio forward when it's behind. Never drag audio
@@ -37,14 +37,35 @@ const SOFT_CORRECTION_RATE = 0.06 // +/- 6% playback speed while nudging back in
 const SOFT_CORRECTION_MAX_MS = 2000
 const DEBUG_LOG_INTERVAL_MS = 2000
 
+// Whether `time` (audio-element seconds) is already downloaded. /api/local-audio is
+// a progressive transcode with no Range support: a currentTime outside what has
+// arrived is never fetched — the element just waits there (readyState 1, not
+// paused, no error, no "stalled") while the video plays on in silence.
+function isBuffered(media: HTMLMediaElement, time: number): boolean {
+  const ranges = media.buffered
+  for (let i = 0; i < ranges.length; i++) {
+    if (time >= ranges.start(i) && time <= ranges.end(i)) return true
+  }
+  return false
+}
+
 export function useMediaSync(
   videoRef: React.RefObject<HTMLVideoElement | null>,
   audioRef: React.RefObject<HTMLAudioElement | null>,
   offsetRef: React.RefObject<number>,
   intentPlayingRef: React.RefObject<boolean>,
   enabled: boolean,
-  debug = false
+  debug = false,
+  // Called when the browser refuses audio.play() — the player decides what that means
+  // (e.g. NotAllowedError: autoplay with sound blocked). Never silently swallowed: a
+  // refused play() is exactly how "a track is selected but nothing is heard" happens.
+  onAudioPlayRejected?: (error: unknown) => void
 ) {
+  const onRejectedRef = useRef(onAudioPlayRejected)
+  useEffect(() => {
+    onRejectedRef.current = onAudioPlayRejected
+  }, [onAudioPlayRejected])
+
   useEffect(() => {
     const video = videoRef.current
     const audio = audioRef.current
@@ -66,7 +87,7 @@ export function useMediaSync(
     }
 
     const resumeIfPlaying = () => {
-      if (!video.paused && !video.ended) audio.play().catch(() => {})
+      if (!video.paused && !video.ended) audio.play().catch((error) => onRejectedRef.current?.(error))
     }
 
     const onPlay = () => resumeIfPlaying()
@@ -131,8 +152,16 @@ export function useMediaSync(
         // Unavoidably a touch audible, but it's the only track that can't just
         // be re-seeked for free.
         stopSoftCorrection()
+        //
+        // Only within what the stream already holds, though. Anything further is a
+        // seek, and that belongs to the owner, which fetches a new stream from there
+        // (LocalVideoPlayer's seek handling). This matters at the end of every seek:
+        // the browser clears video.seeking and fires this timeupdate BEFORE "seeked",
+        // so jumping here would both strand the audio outside its buffer and make the
+        // owner's "seeked" see audio and video aligned, skip the reload, and leave the
+        // track selected but silent.
         const target = video.currentTime - offsetRef.current
-        if (target >= 0) {
+        if (target >= 0 && isBuffered(audio, target)) {
           try {
             audio.currentTime = target
           } catch {

@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "astro dev",
+    "dev:host": "node scripts/dev-host.mjs",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",

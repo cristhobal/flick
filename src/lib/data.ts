@@ -32,6 +32,10 @@
   seasonNumber?: number
   totalEpisodes?: number
   seasonTitle?: string
+  // TMDB still (a frame from the episode itself). Only the episode list uses it —
+  // posterPath stays the show's, so "Continue Watching" (which draws the episode
+  // object) still matches the show's card in every other row.
+  stillPath?: string | null
   episodeTitle?: string
   episodeSynopsis?: string
   seriesEpisodes?: Movie[]
@@ -65,6 +69,11 @@ export function isPlayableMovie(movie: Movie): boolean {
 }
 
 export function posterUrl(path: string | null, size: "w185" | "w342" | "w500" = "w342"): string | null {
+  if (!path) return null
+  return `https://image.tmdb.org/t/p/${size}${path}`
+}
+
+export function stillUrl(path: string | null, size: "w185" | "w300" | "original" = "w300"): string | null {
   if (!path) return null
   return `https://image.tmdb.org/t/p/${size}${path}`
 }

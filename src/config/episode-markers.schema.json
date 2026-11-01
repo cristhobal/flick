@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Openings y endings por episodio",
+  "type": "object",
+  "required": ["series"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "$comment": { "type": ["string", "array"] },
+    "series": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/series" }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "time": {
+      "description": "\"MM:SS\" o \"HH:MM:SS\" (decimales opcionales). Con \"-\" delante, cuenta desde el final del archivo.",
+      "oneOf": [
+        { "type": "string", "pattern": "^-?\\d+(:\\d{1,2}){0,2}(\\.\\d+)?$" },
+        { "type": "number" }
+      ]
+    },
+    "interval": {
+      "description": "Intervalo [start, end). Sin end, llega hasta el final del archivo. null lo desactiva en este nivel.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["start"],
+          "properties": {
+            "start": { "$ref": "#/definitions/time" },
+            "end": { "$ref": "#/definitions/time" }
+          },
+          "additionalProperties": false
+        },
+        { "type": "null" }
+      ]
+    },
+    "markers": {
+      "type": "object",
+      "properties": {
+        "opening": { "$ref": "#/definitions/interval" },
+        "ending": { "$ref": "#/definitions/interval" },
+        "postCredits": {
+          "description": "Hay contenido después del ending (escena postcréditos, avance…). true: la tarjeta «Siguiente episodio» aparece sobre el ending, sin cuenta regresiva. Con tiempos { start, end } de la escena: el ending muestra «Saltar ending» (salta a start) y la tarjeta aparece en end, con cuenta regresiva.",
+          "oneOf": [{ "type": "boolean" }, { "$ref": "#/definitions/interval" }]
+        },
+        "autoplay": {
+          "type": "boolean",
+          "description": "Cuenta regresiva y avance automático al siguiente episodio (solo si no hay postCredits). Por defecto true."
+        },
+        "countdown": {
+          "description": "Duración de la cuenta regresiva: segundos (10) o \"MM:SS\". Por defecto 10.",
+          "oneOf": [
+            { "type": "number", "exclusiveMinimum": 0 },
+            { "type": "string", "pattern": "^\\d+(:\\d{1,2}){0,2}(\\.\\d+)?$" }
+          ]
+        },
+        "nextCardAt": {
+          "description": "Momento exacto en que aparece la tarjeta (por defecto, el inicio del ending). null = usar el inicio del ending.",
+          "oneOf": [{ "$ref": "#/definitions/time" }, { "type": "null" }]
+        }
+      }
+    },
+    "season": {
+      "allOf": [{ "$ref": "#/definitions/markers" }],
+      "properties": {
+        "opening": true,
+        "ending": true,
+        "episodes": {
+          "type": "object",
+          "description": "Clave = número de episodio dentro de la temporada (\"1\", \"2\"…).",
+          "patternProperties": { "^\\d+$": { "$ref": "#/definitions/markers" } },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "series": {
+      "allOf": [{ "$ref": "#/definitions/markers" }],
+      "required": ["title"],
+      "properties": {
+        "title": { "type": "string", "description": "Nombre de la serie (carpeta del disco o título de TMDB)." },
+        "aliases": { "type": "array", "items": { "type": "string" } },
+        "tmdbId": { "type": "integer" },
+        "opening": true,
+        "ending": true,
+        "seasons": {
+          "type": "object",
+          "description": "Clave = número de temporada (\"1\", \"2\"…).",
+          "patternProperties": { "^\\d+$": { "$ref": "#/definitions/season" } },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

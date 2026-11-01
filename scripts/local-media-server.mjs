@@ -75,8 +75,17 @@ const FONT_MIME_TYPES = {
   ".woff": "font/woff",
   ".woff2": "font/woff2",
 }
-// ASS/SSA carry their own full style block; everything else gets converted to plain WebVTT.
+// ASS/SSA carry their own full style block and are stream-copied as-is. Every other
+// text codec (SRT, mov_text, WebVTT) is converted to ASS by ffmpeg — the same
+// conversion mpv/VLC/MPC go through — so its inline markup survives ({an8}
+// top-of-frame lines, <i>/<b>, <font color/size/face>) and libass draws it with the
+// standard player look (white Arial, black outline, scaled to the video's height)
+// instead of our own restyled overlay.
 const STYLED_SUBTITLE_CODECS = new Set(["ass", "ssa"])
+
+function assCodecArgs(codec) {
+  return ["-c:s", STYLED_SUBTITLE_CODECS.has(codec) ? "copy" : "ass"]
+}
 
 function isVideoFile(name) {
   return VIDEO_EXTENSIONS.has(extname(name).toLowerCase())
@@ -97,11 +106,48 @@ function parseTitleYear(name) {
 // Also handles fractional "special" numbering ("E7.5 - ...") — common for
 // recap/OVA episodes — so E7 and E7.5 stay distinct instead of both collapsing
 // to episode 7 (which produced duplicate React keys downstream).
+//
+// Other common namings are recognised too, so the episode number can be matched
+// against TMDB for its real title instead of showing the raw filename:
+//   "Episodio 1 Líneas y muros", "Episode 01 - Title", "Ep. 3", "Capítulo 4"
+//   "S01E05 - Title", "Show S01E05", "1x05 - Title", "05 - Title"
+//   "[Group] Show - 05 [1080p]"
+// `season` is only set when the filename itself carries one (SxxEyy / NxNN).
+// The fractional part is a single digit ("7.5") so "S01E12.1080p" stays episode 12.
+const EP_NUM = String.raw`(\d{1,4}(?:\.\d(?!\d))?)`
+const EPISODE_PATTERNS = [
+  { re: new RegExp(String.raw`\bS(\d{1,2})\s*E${EP_NUM}(.*)$`, "i"), season: 1, episode: 2, title: 3 },
+  { re: new RegExp(String.raw`\b(\d{1,2})x(\d{1,3})\b(.*)$`, "i"), season: 1, episode: 2, title: 3 },
+  {
+    re: new RegExp(String.raw`^(?:Episodio|Episode|Cap[ií]tulo|Cap\.?|Ep\.?|E)\s*${EP_NUM}(?!\d)(.*)$`, "i"),
+    episode: 1,
+    title: 2,
+  },
+  { re: new RegExp(String.raw`^${EP_NUM}(?:\s*[-._]\s*|\s+)(.*)$`), episode: 1, title: 2 },
+  { re: new RegExp(String.raw`\s-\s${EP_NUM}(?:v\d)?(?=\s|\[|\(|$)`), episode: 1 },
+]
+
+function cleanEpisodeTitle(raw) {
+  return (raw || "")
+    .replace(/\[[^\]]*\]|\([^)]*\)/g, " ")
+    .replace(/\b(?:\d{3,4}p|[xh]\.?26[45]|HEVC|WEB-?DL|BluRay)\b/gi, " ")
+    .replace(/^[\s\-–—:._]+|[\s\-–—:._]+$/g, "")
+    .replace(/\s{2,}/g, " ")
+}
+
 function parseEpisode(name) {
   const base = stripExt(name)
-  const match = base.match(/^(?:S\d+)?E(\d+(?:\.\d+)?)\s*-?\s*(.*)$/i)
-  if (match) return { episode: Number(match[1]), title: match[2].trim() || base }
-  return { episode: 0, title: base }
+  for (const pattern of EPISODE_PATTERNS) {
+    const match = base.match(pattern.re)
+    if (!match) continue
+    const title = pattern.title ? cleanEpisodeTitle(match[pattern.title]) : ""
+    return {
+      season: pattern.season ? Number(match[pattern.season]) : null,
+      episode: Number(match[pattern.episode]),
+      title: title || base,
+    }
+  }
+  return { season: null, episode: 0, title: base }
 }
 
 function parseSeasonFolder(name) {
@@ -175,8 +221,8 @@ async function collectShow(baseDir, showDir, showName) {
     const full = join(showDir, entry.name)
     if (entry.isFile() && isVideoFile(entry.name)) {
       const relPath = relative(baseDir, full)
-      const { episode, title: episodeTitle } = parseEpisode(entry.name)
-      episodes.push({ id: slugId(relPath), relPath, season: 1, episode, title: episodeTitle })
+      const { season, episode, title: episodeTitle } = parseEpisode(entry.name)
+      episodes.push({ id: slugId(relPath), relPath, season: season || 1, episode, title: episodeTitle })
     } else if (entry.isDirectory()) {
       const season = parseSeasonFolder(entry.name) || 1
       const seasonEntries = await safeReaddir(full)
@@ -488,6 +534,9 @@ async function probeTracks(filePath) {
         // Untagged tracks (common in Blu-ray rips: the TS carries no language) still
         // need something recognisable in the menu — "DTS-HD MA 5.1", not just "Audio 2".
         detail: [profile || codecLabel, channelLabel(Number(stream.channels) || 0)].filter(Boolean).join(" "),
+        // The file's own "default" flag — what the player starts on when the viewer
+        // has no saved choice.
+        default: Boolean(stream.disposition?.default),
       })
       audioTypeIndex++
     } else if (stream.codec_type === "subtitle") {
@@ -501,7 +550,7 @@ async function probeTracks(filePath) {
         subtitleTracks.push({
           index: subtitleTypeIndex,
           codec: stream.codec_name,
-          format: isPgs ? "pgs" : STYLED_SUBTITLE_CODECS.has(stream.codec_name) ? "ass" : "vtt",
+          format: isPgs ? "pgs" : "ass",
           language: tags.language || "",
           title: tags.title || "",
           // So the client can tell two same-language tracks apart (e.g. a full
@@ -755,36 +804,89 @@ async function serveSubtitle(res, filePath, subtitleIndex) {
   }
 }
 
-// Raw ASS/SSA extraction (stream copy, no conversion) so the full [V4+ Styles] block
-// and override tags survive intact for the JASSUB/libass renderer on the client.
-async function serveSubtitleRaw(res, filePath, subtitleIndex) {
-  await mkdir(CACHE_DIR, { recursive: true }).catch(() => {})
-  const cacheKey = createHash("sha1").update(`${filePath}::${subtitleIndex}::raw`).digest("hex")
-  const cachePath = join(CACHE_DIR, `${cacheKey}.ass`)
-  let cached = await readCached(cachePath)
-  if (!cached) {
+// ASS extraction for the JASSUB/libass renderer on the client. ASS/SSA tracks are
+// stream-copied so the full [V4+ Styles] block and override tags survive intact;
+// other text tracks are converted to ASS (see assCodecArgs).
+//
+// Why there are two modes: subtitle packets are interleaved through the whole file,
+// so extracting a complete track means reading ALL of it — on an external drive
+// ~30 s for a 1.3 GB episode, which is what made a picked subtitle take that long to
+// appear (or never, when the client gave up waiting). A *window* (`start`/`end`, in
+// seconds) only reads that stretch of the file: ffmpeg seeks straight to `start`
+// and stops at `end`, ~2 s cold for a couple of minutes of video. The client asks
+// for a window around the playhead first, so lines show up almost at once, and for
+// the full track in parallel, which then replaces the windows once it lands.
+// Timestamps stay absolute (-copyts), so window lines slot into the same timeline.
+const fullSubtitleJobs = new Map()
+
+function sendAss(res, body, complete) {
+  res.statusCode = 200
+  res.setHeader("Content-Type", "text/x-ssa; charset=utf-8")
+  res.setHeader("Cache-Control", "no-store")
+  // Tells the client whether this is the whole track or just the requested stretch.
+  res.setHeader("X-Subtitle-Complete", complete ? "1" : "0")
+  res.end(body)
+}
+
+async function subtitleCodec(filePath, subtitleIndex) {
+  const info = await probeTracks(filePath).catch(() => null)
+  return info?.subtitleTracks.find((track) => track.index === subtitleIndex)?.codec || ""
+}
+
+async function extractFullSubtitle(filePath, subtitleIndex, cachePath) {
+  const key = cachePath
+  if (fullSubtitleJobs.has(key)) return fullSubtitleJobs.get(key)
+  const job = (async () => {
+    // A background prewarm pass for this file is already reading it end to end and
+    // writing every text track, this one included — wait for it rather than start a
+    // second full read of the same (slow) disk in parallel.
     await awaitPrewarm(filePath)
-    cached = await readCached(cachePath)
-  }
-  if (cached) {
-    res.statusCode = 200
-    res.setHeader("Content-Type", "text/x-ssa; charset=utf-8")
-    res.end(cached)
-    return
-  }
-  try {
+    const cached = await readCached(cachePath)
+    if (cached) return cached
+    const codec = await subtitleCodec(filePath, subtitleIndex)
     const ass = await runCapture("ffmpeg", [
       "-hide_banner", "-loglevel", "error",
       "-i", filePath,
       "-map", `0:s:${subtitleIndex}`,
-      "-c:s", "copy",
+      ...assCodecArgs(codec),
       "-f", "ass",
       "pipe:1",
     ])
-    await writeFile(cachePath, ass).catch(() => {})
-    res.statusCode = 200
-    res.setHeader("Content-Type", "text/x-ssa; charset=utf-8")
-    res.end(ass)
+    await writeFile(`${cachePath}.full.tmp`, ass).catch(() => {})
+    await rename(`${cachePath}.full.tmp`, cachePath).catch(() => {})
+    return ass
+  })()
+  fullSubtitleJobs.set(key, job)
+  job.finally(() => fullSubtitleJobs.delete(key)).catch(() => {})
+  return job
+}
+
+async function serveSubtitleRaw(res, filePath, subtitleIndex, window = null) {
+  await mkdir(CACHE_DIR, { recursive: true }).catch(() => {})
+  const cachePath = subtitleCachePath(filePath, subtitleIndex, true)
+  try {
+    const cached = await readCached(cachePath)
+    if (cached) {
+      sendAss(res, cached, true)
+      return
+    }
+    if (!window) {
+      sendAss(res, await extractFullSubtitle(filePath, subtitleIndex, cachePath), true)
+      return
+    }
+    const codec = await subtitleCodec(filePath, subtitleIndex)
+    const ass = await runCapture("ffmpeg", [
+      "-hide_banner", "-loglevel", "error",
+      "-ss", String(window.start),
+      "-copyts",
+      "-i", filePath,
+      "-map", `0:s:${subtitleIndex}`,
+      "-to", String(window.end),
+      ...assCodecArgs(codec),
+      "-f", "ass",
+      "pipe:1",
+    ])
+    sendAss(res, ass, false)
   } catch (err) {
     res.statusCode = 500
     res.end(String(err))
@@ -902,7 +1004,7 @@ async function prewarmSubtitles(filePath, subtitleTracks) {
     const pending = tracks
       .map((track) => {
         const raw = track.format === "ass"
-        return { index: track.index, raw, cachePath: subtitleCachePath(filePath, track.index, raw) }
+        return { index: track.index, codec: track.codec, raw, cachePath: subtitleCachePath(filePath, track.index, raw) }
       })
       .filter((entry) => !existsSync(entry.cachePath))
     if (pending.length === 0) return
@@ -911,7 +1013,7 @@ async function prewarmSubtitles(filePath, subtitleTracks) {
       const args = ["-hide_banner", "-loglevel", "error", "-y", "-i", filePath]
       for (const entry of entries) {
         args.push("-map", `0:s:${entry.index}`)
-        if (entry.raw) args.push("-c:s", "copy", "-f", "ass")
+        if (entry.raw) args.push(...assCodecArgs(entry.codec), "-f", "ass")
         else args.push("-f", "webvtt")
         args.push(`${entry.cachePath}.tmp`)
       }
@@ -990,6 +1092,43 @@ function fcMatchAvailable() {
   return fcMatchProbe
 }
 
+// Windows has no fontconfig, so without this every requested family (including the
+// "Arial" that SRT tracks converted to ASS ask for) fell back to the bundled
+// Liberation Sans. Look the font up directly in the system fonts folder instead —
+// common families by their known file name, anything else by its name squashed.
+const WINDOWS_FONT_FILES = {
+  "arial": "arial.ttf",
+  "arial black": "ariblk.ttf",
+  "trebuchet ms": "trebuc.ttf",
+  "times new roman": "times.ttf",
+  "verdana": "verdana.ttf",
+  "tahoma": "tahoma.ttf",
+  "georgia": "georgia.ttf",
+  "comic sans ms": "comic.ttf",
+  "calibri": "calibri.ttf",
+  "segoe ui": "segoeui.ttf",
+  "impact": "impact.ttf",
+  "courier new": "cour.ttf",
+}
+
+function findWindowsFont(family) {
+  if (process.platform !== "win32") return null
+  const dirs = [
+    join(process.env.WINDIR || "C:\\Windows", "Fonts"),
+    process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, "Microsoft", "Windows", "Fonts") : null,
+  ].filter(Boolean)
+  const lower = family.toLowerCase()
+  const squashed = lower.replace(/[^a-z0-9]/g, "")
+  const candidates = [WINDOWS_FONT_FILES[lower], `${squashed}.ttf`, `${squashed}.otf`, `${squashed}.ttc`].filter(Boolean)
+  for (const dir of dirs) {
+    for (const file of candidates) {
+      const full = join(dir, file)
+      if (existsSync(full)) return full
+    }
+  }
+  return null
+}
+
 async function serveSubtitleFont(res, family) {
   const name = (family || "").trim()
   if (!name) {
@@ -1008,13 +1147,15 @@ async function serveSubtitleFont(res, family) {
       return
     }
   }
-  if (!(await fcMatchAvailable())) {
+  const hasFontconfig = await fcMatchAvailable()
+  const windowsFont = hasFontconfig ? null : findWindowsFont(name)
+  if (!hasFontconfig && !windowsFont) {
     res.statusCode = 404
     res.end("no fontconfig")
     return
   }
   try {
-    const out = (await runCapture("fc-match", ["-f", "%{file}", name])).toString("utf8").trim()
+    const out = windowsFont || (await runCapture("fc-match", ["-f", "%{file}", name])).toString("utf8").trim()
     if (!out || !existsSync(out)) {
       res.statusCode = 404
       res.end("no match")
@@ -1504,7 +1645,12 @@ export function localMediaDevPlugin() {
           res.end("Invalid path")
           return
         }
-        await serveSubtitleRaw(res, filePath, Number(streamParam))
+        const start = Number(url.searchParams.get("start"))
+        const end = Number(url.searchParams.get("end"))
+        const window = url.searchParams.has("start") && Number.isFinite(start) && Number.isFinite(end) && end > start
+          ? { start: Math.max(0, start), end }
+          : null
+        await serveSubtitleRaw(res, filePath, Number(streamParam), window)
       })
 
       server.middlewares.use(async (req, res, next) => {

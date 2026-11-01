@@ -23,6 +23,7 @@
 // lock two elements together (useMediaSync, reloadAudio, the audio watchdog) are off.
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Spinner } from "@/components/ui/spinner"
 import {
   DropdownMenu,
@@ -36,11 +37,13 @@ import {
 import { useI18n } from "@/i18n/I18nProvider"
 import { useMediaSync } from "@/lib/media-sync"
 import { useAssSubtitle } from "@/lib/ass-renderer"
+import { resolveEpisodeMarkers, type MarkerInterval } from "@/lib/episode-markers"
 import { activeCueHtml, useParsedSubtitles, type SubtitleCue } from "@/lib/vtt-subtitles"
 import { backdropUrl, posterUrl, type Movie } from "@/lib/data"
 import { clearWatchProgress, getWatchProgress, saveWatchProgress } from "@/lib/watch-progress"
 import {
   fileKey,
+  GLOBAL_PREFS_KEY,
   getMediaPrefs,
   loadMediaPrefs,
   resolveAudioIndex,
@@ -66,6 +69,10 @@ import {
   RotateCcw,
   RotateCw,
   Star,
+  SkipForward,
+  SkipBack,
+  Rewind,
+  FastForward,
   X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -74,10 +81,32 @@ const VIDEO_API_PREFIX = "/api/local-video/"
 const THUMBNAIL_API_PREFIX = "/api/local-thumbnail/"
 const THUMBNAIL_PREGEN_API_PREFIX = "/api/local-thumbnail-pregenerate/"
 const OFF_VALUE = "off"
+
+// Shared look of the audio and subtitle menus. The content is a column so only the
+// track list scrolls, inside the app's ScrollArea (the "Audio" / "Subtítulos" header
+// stays put), also when the menu is squeezed by a short window (Radix's
+// available-height cap on the content). The list's cap comes in as
+// --track-list-max (see trackListStyle) and is applied to the ScrollArea viewport —
+// the Root has no height of its own to constrain.
+const TRACK_MENU_CLASS = "flex w-52 flex-col overflow-hidden border-neutral-800 bg-neutral-950 text-neutral-200"
+const TRACK_SCROLL_CLASS = "min-h-0"
+const TRACK_VIEWPORT_CLASS = "max-h-(--track-list-max) overscroll-contain"
+
+// On open, scroll the list to the track in use — with dozens of subtitle tracks it
+// can sit far below the fold.
+function revealCheckedTrack(viewport: HTMLDivElement | null) {
+  viewport?.querySelector<HTMLElement>("[data-state=checked]")?.scrollIntoView({ block: "nearest" })
+}
 // Containers no browser opens in a <video> element — always played through remux mode
 // (the server's own list, NON_NATIVE_CONTAINERS, has to match).
 const NON_NATIVE_FILE_RE = /\.(m2ts|mts|ts|mpe?g|avi|wmv|flv)$/i
 const SEEK_RELOAD_DEBOUNCE_MS = 250
+// Audio / subtitle menus: one height for both. A row is text-xs (16px) + py-1.5
+// (12px). The lists are capped at the audio menu's row count (at least
+// TRACK_MENU_MIN_ROWS), so a file with dozens of subtitle tracks gets a subtitle menu
+// exactly as tall as its audio one, scrolling inside, instead of a tower.
+const TRACK_MENU_ROW_PX = 28
+const TRACK_MENU_MIN_ROWS = 8
 // Below this, a video.currentTime jump isn't treated as a real seek — see onSeeking/onSeeked.
 const SEEK_RELOAD_MIN_JUMP_S = 1.5
 // Headroom to leave before the end of a buffered audio range when seeking inside it.
@@ -86,10 +115,43 @@ const SEEK_RELOAD_MIN_JUMP_S = 1.5
 const AUDIO_BUFFER_SEEK_MARGIN_S = 0.35
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
 const CONTROLS_IDLE_MS = 2800
+// Below this player size (either side) the overlays switch to a compact layout: a
+// phone in portrait (narrow) or in landscape (short — wider than the "sm" breakpoint,
+// so viewport breakpoints alone would give it the desktop sizes).
+const COMPACT_MAX_WIDTH = 640
+const COMPACT_MAX_HEIGHT = 420
+// Shorter still (a phone in portrait, player inline): the pause card drops its synopsis.
+const TINY_MAX_HEIGHT = 300
+// Narrower than this (a phone in portrait), buttons drop their labels.
+const NARROW_MAX_WIDTH = 520
+
+// The "picture" for taps: the video and the pause card. Anything else under the
+// pointer is a control.
+function isPlayerSurface(target: HTMLElement): boolean {
+  return Boolean(target.closest("[data-player-surface]"))
+}
 // How long the video has to sit paused before the streaming-style info card
 // (artwork + title + season/episode + synopsis + rating) fades in over it.
 const PAUSE_INFO_DELAY_MS = 5000
+// "You're watching" card shown as an episode starts (see nowPlayingPhase).
+const NOW_PLAYING_VISIBLE_MS = 5000
+const NOW_PLAYING_FADE_MS = 500
 const SKIP_SECONDS = 10
+// Touch: press and hold the left half of the picture to rewind, the right half to
+// fast-forward. The hold has to last HOLD_DELAY_MS without the finger wandering off
+// (a drag is a scroll, a short touch is a tap), and the speed steps up the longer it
+// lasts: [seconds held, speed].
+const HOLD_DELAY_MS = 450
+const HOLD_MOVE_TOLERANCE_PX = 12
+const SCRUB_SPEED_STEPS: ReadonlyArray<readonly [number, number]> = [[0, 1], [1.5, 2], [3, 4], [4.5, 8]]
+// Stops short of the very end, so fast-forwarding never fires "ended" by itself.
+const SCRUB_END_MARGIN_S = 0.25
+
+function scrubSpeedFor(heldSeconds: number): number {
+  let speed = SCRUB_SPEED_STEPS[0][1]
+  for (const [after, value] of SCRUB_SPEED_STEPS) if (heldSeconds >= after) speed = value
+  return speed
+}
 // How far the audio clock may stray from the video before subtitles stop trusting it.
 const SUBTITLE_CLOCK_TOLERANCE_S = 0.4
 // Fallback bucket size before video-info returns the server's real
@@ -108,14 +170,18 @@ const THUMBNAIL_PREVIEW_WIDTH = 160
 // enough that it's just an occasional localStorage write, not one per
 // timeupdate tick (which fire ~4x/second).
 const PROGRESS_SAVE_INTERVAL_MS = 5000
-// How long the "next episode" card stays up before auto-advancing, counted from
-// the moment credits are detected — not from the end of the file, since credits
-// sequences vary from a few seconds to several minutes.
-const AUTOPLAY_DELAY_S = 10
-// When no chapter data pins down where credits actually start, fall back to
+// Next-episode countdown length when the markers config doesn't set one, and how
+// often it ticks.
+const NEXT_COUNTDOWN_DEFAULT_S = 10
+const COUNTDOWN_TICK_S = 0.25
+// When neither the markers config nor chapter data pins down where credits actually start, fall back to
 // treating the last N seconds of the file as "credits" — a rough guess, but
 // better than nothing for files without chapter markers.
 const CREDITS_FALLBACK_LAST_S = 45
+
+// Prefixed Fullscreen API (Safari/iPadOS).
+type FullscreenCapable = HTMLDivElement & { webkitRequestFullscreen?: () => void }
+type FullscreenDocument = Document & { webkitFullscreenElement?: Element | null; webkitExitFullscreen?: () => void }
 
 interface Track {
   index: number
@@ -187,6 +253,8 @@ interface VideoInfo {
   // this file must go through the remux pipeline.
   startTime?: number
   remux?: boolean
+  // Set when the server couldn't probe the file (track lists are then empty).
+  error?: string
 }
 
 // Menu labels for audio tracks. Title and language name come first; the codec
@@ -295,6 +363,9 @@ interface LocalVideoPlayerProps {
   src: string
   title: string
   nextEpisode?: Movie | null
+  // The episode before this one — with nextEpisode, drives the fullscreen
+  // previous/next buttons in the control bar. Both play through onPlayNext.
+  previousEpisode?: Movie | null
   onPlayNext?: (movie: Movie) => void
   // The movie/episode currently playing — feeds the "paused for a while" info
   // card (title, season/episode, synopsis, rating…) shown over the frozen frame.
@@ -314,6 +385,7 @@ export default function LocalVideoPlayer({
   src,
   title,
   nextEpisode = null,
+  previousEpisode = null,
   onPlayNext,
   media = null,
   contentId,
@@ -342,7 +414,7 @@ export default function LocalVideoPlayer({
   // specific first: this exact file, the show it belongs to (episodes only), and the
   // old TMDB-id key that earlier versions used — read-only, so past choices survive.
   const prefsKeys = useMemo(
-    () => [relPath ? fileKey(relPath) : null, relPath && seriesId ? showKey(relPath) : null, prefsKey],
+    () => [relPath ? fileKey(relPath) : null, relPath && seriesId ? showKey(relPath) : null, prefsKey, GLOBAL_PREFS_KEY],
     [relPath, seriesId, prefsKey]
   )
 
@@ -365,12 +437,30 @@ export default function LocalVideoPlayer({
   const [volume, setVolume] = useState(1)
   const [muted, setMuted] = useState(false)
   const [rate, setRate] = useState(1)
-  const [fullscreen, setFullscreen] = useState(false)
+  // Starts from the document: the previous episode's player may have left the page in
+  // fullscreen (the host stays — see fullscreenTarget), and this one carries on in it.
+  const [nativeFullscreen, setNativeFullscreen] = useState(
+    () => typeof document !== "undefined" &&
+      Boolean(document.fullscreenElement || (document as FullscreenDocument).webkitFullscreenElement)
+  )
+  const [pseudoFullscreen, setPseudoFullscreen] = useState(false)
+  const fullscreen = nativeFullscreen || pseudoFullscreen
   const [showControls, setShowControls] = useState(true)
   const [hoverPreview, setHoverPreview] = useState<{ x: number; clampedX: number; time: number } | null>(null)
   const [hoverThumbSrc, setHoverThumbSrc] = useState<string | null>(null)
   const playingRef = useRef(false)
   const activityTimerRef = useRef<number | null>(null)
+  // How the player is being driven. Touch changes what a tap on the picture means: it
+  // shows/hides the controls instead of pausing (see handleSurfaceTap). Starts from
+  // the device's primary pointer, then follows whatever was actually used last.
+  const [touchUI, setTouchUI] = useState(
+    () => typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches === true
+  )
+  const touchUIRef = useRef(touchUI)
+  const [playerSize, setPlayerSize] = useState({ width: 0, height: 0 })
+  // Touch hold-to-scrub in progress (see startScrub): which way, and how fast.
+  const [scrub, setScrub] = useState<{ direction: 1 | -1; speed: number } | null>(null)
+  const scrubbing = scrub !== null
   const hoverThumbTimerRef = useRef<number | null>(null)
   const hoverThumbBucketRef = useRef<number | null>(null)
   const hoverThumbGenerationRef = useRef(0)
@@ -406,7 +496,11 @@ export default function LocalVideoPlayer({
           fetch(`${THUMBNAIL_PREGEN_API_PREFIX}${encodeURIComponent(relPath)}?duration=${data.duration}`).catch(() => {})
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        // No track list to apply prefs to — don't hold playback back waiting for
+        // one; it starts on the first audio track.
+        if (!cancelled) setPrefsResolved(true)
+      })
     return () => {
       cancelled = true
     }
@@ -418,6 +512,11 @@ export default function LocalVideoPlayer({
   const audioOffsetRef = useRef(0) // absolute movie time the *current* audio stream's t=0 maps to
   const audioGenerationRef = useRef(0) // race guard: only the latest reload may apply once ready
   const audioInitializedRef = useRef(false)
+  // True while a touch hold-to-scrub owns the playhead (and a moment after, until its
+  // last seek lands): the seek handling below leaves the audio alone meanwhile, since
+  // reloading the stream on each of those many small steps would be pointless — the
+  // scrub reloads it once, where it ends.
+  const scrubGuardRef = useRef(false)
   const selectedAudioRef = useRef(selectedAudio)
   useEffect(() => {
     selectedAudioRef.current = selectedAudio
@@ -431,15 +530,55 @@ export default function LocalVideoPlayer({
     audioOptionsRef.current = info?.audioTracks || []
   }, [info])
 
-  // Some source files fail to transcode on the first attempt (a transient ffmpeg
-  // hiccup, or a track/codec the server can't decode) and the <audio> element would
-  // otherwise just sit there forever with no sound and no indication anything went
-  // wrong. Retry once, and if that also fails, fall back to any other available
-  // track so the movie is never silently mute.
-  const reloadAudio = useCallback((absoluteSeconds: number, trackIndex: number, isRetry = false) => {
+  // ---- Why a track could look selected and play nothing ----
+  // Sound lives in its own <audio>, next to a MUTED <video> that is only the clock.
+  // Browsers let a muted video autoplay but refuse audible playback without a user
+  // gesture (a page reload, or a play() that runs after an async wait — the saved
+  // track being applied once the prefs had loaded). That refusal is a rejected
+  // play() promise, and every call used to swallow it: the picture rolled on, the
+  // menu showed the track as selected, and the audio element sat paused. Picking a
+  // track again "fixed" it only because that click is a user gesture.
+  // Now: playback waits for the saved track before starting (one load, the right
+  // track — no hop from a default track), every audio.play() goes through
+  // playAudio(), and a refusal pauses everything and asks for a click instead of
+  // letting the video run silently.
+  const [audioIssue, setAudioIssue] = useState<null | "blocked" | "failed">(null)
+
+  const handleAudioPlayRejected = useCallback((error: unknown) => {
+    // AbortError = the src was replaced mid-start (a track switch or seek reload):
+    // expected, the new load starts its own play.
+    if ((error as DOMException | null)?.name !== "NotAllowedError") return
+    intentPlayingRef.current = false
+    videoRef.current?.pause()
+    setPlaying(false)
+    setAudioIssue("blocked")
+  }, [])
+
+  const playAudio = useCallback(() => {
+    const audio = audioRef.current
+    if (!audio) return
+    audio
+      .play()
+      .then(() => setAudioIssue((issue) => (issue === "blocked" ? null : issue)))
+      .catch(handleAudioPlayRejected)
+  }, [handleAudioPlayRejected])
+
+  // Loads `trackIndex` from `absoluteSeconds`. A transcode can fail on the first
+  // attempt (a transient ffmpeg hiccup) or for good (a codec the server can't
+  // decode): retry the same track once, then try each OTHER track once — tracked
+  // in `tried`, so two broken tracks can't bounce between each other forever. The
+  // menu always shows the track actually loaded. If none works, say so.
+  const reloadAudio = useCallback((
+    absoluteSeconds: number,
+    trackIndex: number,
+    attempt: { retried: boolean; tried: Set<number> } = { retried: false, tried: new Set() }
+  ) => {
     const audio = audioRef.current
     if (!audio || !relPath) return
     const generation = ++audioGenerationRef.current
+    attempt.tried.add(trackIndex)
+    selectedAudioRef.current = trackIndex
+    setSelectedAudio(trackIndex)
     audio.pause()
     const start = Math.max(0, absoluteSeconds)
     audio.src = `/api/local-audio/${encodeURIComponent(relPath)}?track=${trackIndex}&start=${start.toFixed(3)}`
@@ -448,27 +587,34 @@ export default function LocalVideoPlayer({
       if (audioGenerationRef.current !== generation) return // a newer switch/seek already won
       audio.removeEventListener("error", onError)
       audioOffsetRef.current = start
+      setAudioIssue((issue) => (issue === "failed" ? null : issue))
       const video = videoRef.current
-      if (video && !video.paused) audio.play().catch(() => {})
+      // Mid-seek, this stream is about to be moved or replaced: playing it now would
+      // be heard from the wrong place. "seeked" starts it (see the seek handling below).
+      if (video && !video.paused && !video.seeking) playAudio()
     }
     const onError = () => {
       if (audioGenerationRef.current !== generation) return
       audio.removeEventListener("canplay", onReady)
-      if (!isRetry) {
+      if (!attempt.retried) {
         window.setTimeout(() => {
-          if (audioGenerationRef.current === generation) reloadAudio(absoluteSeconds, trackIndex, true)
+          if (audioGenerationRef.current === generation) {
+            reloadAudio(absoluteSeconds, trackIndex, { retried: true, tried: attempt.tried })
+          }
         }, 500)
         return
       }
-      const fallback = audioOptionsRef.current.find((track) => track.index !== trackIndex)
+      const fallback = audioOptionsRef.current.find((track) => !attempt.tried.has(track.index))
       if (fallback) {
-        setSelectedAudio(fallback.index)
-        reloadAudio(absoluteSeconds, fallback.index)
+        reloadAudio(absoluteSeconds, fallback.index, { retried: false, tried: attempt.tried })
+        return
       }
+      // A real decode/transcode failure on every track — not a selection problem.
+      setAudioIssue("failed")
     }
     audio.addEventListener("canplay", onReady, { once: true })
     audio.addEventListener("error", onError, { once: true })
-  }, [relPath])
+  }, [relPath, playAudio])
 
   // A seek only needs a brand-new transcode when it lands outside what the audio
   // element already holds. Inside it, the element seeks natively and instantly — and
@@ -504,7 +650,7 @@ export default function LocalVideoPlayer({
     return false
   }, [])
 
-  useMediaSync(videoRef, audioRef, audioOffsetRef, intentPlayingRef, !remuxMode, debugSync)
+  useMediaSync(videoRef, audioRef, audioOffsetRef, intentPlayingRef, !remuxMode, debugSync, handleAudioPlayRejected)
 
   // Any real seek — scrub bar, chapter jump, anything that moves video.currentTime —
   // has to move the audio with it. This is a native listener on the video element
@@ -541,10 +687,11 @@ export default function LocalVideoPlayer({
     // under the drift media-sync would even react to.
     const absorbSeek = () => {
       if (!seekAudioWithinBuffer(video.currentTime)) return false
-      if (!video.paused) audioRef.current?.play().catch(() => {})
+      if (!video.paused) playAudio()
       return true
     }
     const onSeeking = () => {
+      if (scrubGuardRef.current) return
       if (!isRealSeek()) return
       // Absorbed: the audio is already at the target, so isRealSeek() reads false in
       // `seeked` and no reload is scheduled. Only a jump out of the buffered stream
@@ -553,6 +700,7 @@ export default function LocalVideoPlayer({
       audioRef.current?.pause()
     }
     const onSeeked = () => {
+      if (scrubGuardRef.current) return
       if (!isRealSeek()) return
       // Retry here too: more of the stream may have arrived during the seek itself,
       // and a scrub that ends inside the buffer shouldn't pay for a refetch.
@@ -570,7 +718,7 @@ export default function LocalVideoPlayer({
       video.removeEventListener("seeked", onSeeked)
       if (debounceId !== null) window.clearTimeout(debounceId)
     }
-  }, [reloadAudio, seekAudioWithinBuffer, remuxMode])
+  }, [reloadAudio, seekAudioWithinBuffer, remuxMode, playAudio])
 
   // Watchdog for the audio stream itself: after a large seek, or if the ffmpeg
   // transcode falls behind / dies partway through (the file lives on an external
@@ -655,7 +803,11 @@ export default function LocalVideoPlayer({
     const subtitle = subtitleIdx === null
       ? null
       : info.subtitleTracks.find((track) => track.index === subtitleIdx) || null
-    saveMediaPrefs(prefsKeys.slice(0, 2), {
+    // File, show (episodes) and the global "last choice" that titles without one of
+    // their own start from. Only explicit picks get here — never an automatic
+    // fallback (see reloadAudio), so a track that failed once doesn't become the
+    // saved preference.
+    saveMediaPrefs([prefsKeys[0], prefsKeys[1], GLOBAL_PREFS_KEY], {
       audioLanguage: audio?.language || null,
       audioTitle: audio?.title || null,
       audioIndex: audio ? audioIdx : null,
@@ -784,35 +936,138 @@ export default function LocalVideoPlayer({
   )
   useAssSubtitle(videoRef, assContainerRef, assSubUrl, fontUrls)
 
-  // ---- Next episode: card appears once credits actually start, auto-advance
-  // AUTOPLAY_DELAY_S later (or sooner if the video ends first). LocalVideoPlayer
-  // is remounted (key={trailerUrl} in PlayerPage) on every episode switch, so
-  // nextDismissed starts fresh each time.
-  const [nextDismissed, setNextDismissed] = useState(false)
+  // ---- Opening / ending markers (series & anime only) ----
+  // Intervals come from src/config/episode-markers.json (see episode-markers.ts) —
+  // matched by TMDB id or by any name the show goes by here: its folder on disk, its
+  // TMDB title, its original title. Movies never get any.
+  const isEpisodeMedia = Boolean(media?.episodeNumber) && media?.type !== "movie"
+  const markers = useMemo(() => {
+    if (!isEpisodeMedia || !media) return { opening: null, ending: null }
+    const folders = relPath ? relPath.split(/[\\/]/).slice(0, -1) : []
+    return resolveEpisodeMarkers(
+      {
+        titles: [media.seriesTitle || "", media.originalTitle || "", ...folders],
+        tmdbId: media.tmdbId,
+        season: media.seasonNumber || 1,
+        episode: media.episodeNumber || 0,
+      },
+      duration
+    )
+  }, [isEpisodeMedia, media, relPath, duration])
 
-  // Where credits start: prefer a chapter actually named "Credits" (or the
-  // Spanish/French equivalent some rips use), then fall back to treating a short
-  // final chapter as credits, then to a flat last-N-seconds guess when the file
-  // has no chapter markers at all.
-  const creditsStartSeconds = useMemo(() => {
-    const chapters = info?.chapters || []
-    if (chapters.length > 0) {
-      const named = chapters.find((chapter) => /cr[ée]dit/i.test(chapter.title))
-      if (named) return named.start
-      if (chapters.length >= 2) {
-        const last = chapters[chapters.length - 1]
-        const lastLength = (last.end || duration) - last.start
-        if (lastLength > 0 && lastLength <= Math.min(300, duration * 0.2)) return last.start
+  // Inside [start, end). An interval reaching the end of the file stays "inside" at
+  // the very end too, so a card shown over the last seconds is still there once
+  // playback stops on the final frame.
+  const isWithin = (interval: MarkerInterval | null, time: number) =>
+    Boolean(interval) &&
+    time >= interval!.start &&
+    (time < interval!.end || (duration > 0 && interval!.end >= duration - 1 && time <= duration))
+
+  // "Skip intro": visible for exactly the configured opening, whether playback got
+  // there on its own or by a seek (both update currentTime). The last half second is
+  // left out — skipping then would be a no-op jump.
+  const showSkipIntro = Boolean(markers.opening) && isWithin(markers.opening, currentTime) &&
+    currentTime < markers.opening!.end - 0.5
+
+  // "Skip ending": only for episodes with a post-credits scene the config locates.
+  // Shown over the ending, before the scene starts; jumps straight to the scene (the
+  // next-episode card then waits for the scene to finish — see nextPlan).
+  const postCreditsScene = markers.postCreditsScene ?? null
+  const showSkipEnding = Boolean(postCreditsScene) && Boolean(markers.ending) &&
+    isWithin(markers.ending, currentTime) && currentTime < postCreditsScene!.start - 0.5
+
+  // One floating "skip" button; intro and ending never overlap.
+  const skipAction = showSkipIntro
+    ? { label: t("player.skipIntro"), to: markers.opening!.end }
+    : showSkipEnding
+      ? { label: t("player.skipEnding"), to: postCreditsScene!.start }
+      : null
+
+  // ---- Next episode card ----
+  // Where it shows and whether it counts down, from the most to the least reliable
+  // source:
+  //   1. The markers config: the ending's interval (or `nextCardAt`), and the
+  //      episode's `postCredits` / `autoplay` / `countdown` settings.
+  //   2. The file's own chapter for the ending ("Credits", "Ending", "ED"…). A
+  //      chapter AFTER it means there's more of the episode (post-credits scene,
+  //      preview) — treated as post-credits unless the config says otherwise.
+  //   3. A guess (a short last chapter, or the closing seconds): the card shows, but
+  //      only counts down if the config explicitly enables autoplay — a guess must
+  //      never cut a scene off.
+  // A countdown only ever runs when nothing worth watching is left: no post-credits
+  // content, or — when the config locates the scene — once that scene is over (the
+  // card then appears at its end, never over it). Otherwise the card is just a
+  // shortcut and the episode plays to its last frame.
+  const nextPlan = useMemo(() => {
+    if (duration <= 0) return null
+    const countdown = markers.countdown ?? NEXT_COUNTDOWN_DEFAULT_S
+    const plan = (interval: MarkerInterval, postCreditsDefault: boolean, autoplayDefault: boolean) => {
+      const start = markers.nextCardAt ?? interval.start
+      const postCredits = markers.postCredits ?? postCreditsDefault
+      return {
+        interval: { start, end: Math.max(interval.end, start + 1) },
+        postCredits,
+        autoplay: !postCredits && (markers.autoplay ?? autoplayDefault),
+        countdown,
       }
     }
-    return duration > 0 ? Math.max(0, duration - CREDITS_FALLBACK_LAST_S) : null
-  }, [info, duration])
+    if (postCreditsScene) {
+      const start = markers.nextCardAt ?? postCreditsScene.end
+      // Only the closing logos / dub credits after the scene: safe to count down —
+      // unless the scene runs to the end of the file, where there's nothing to count.
+      const tailLeft = duration - postCreditsScene.end >= 1
+      return {
+        interval: { start, end: Math.max(duration, start + 1) },
+        postCredits: true,
+        autoplay: tailLeft && (markers.autoplay ?? true),
+        countdown,
+      }
+    }
+    if (markers.ending) return plan(markers.ending, false, true)
+    const chapters = info?.chapters || []
+    const namedIndex = chapters.findIndex((chapter) => /cr[ée]dit|ending|^ed\b/i.test(chapter.title))
+    if (namedIndex !== -1) {
+      const named = chapters[namedIndex]
+      return plan({ start: named.start, end: named.end || duration }, namedIndex < chapters.length - 1, true)
+    }
+    if (chapters.length >= 2) {
+      const last = chapters[chapters.length - 1]
+      const lastLength = (last.end || duration) - last.start
+      if (lastLength > 0 && lastLength <= Math.min(300, duration * 0.2)) {
+        return plan({ start: last.start, end: duration }, false, false)
+      }
+    }
+    return plan({ start: Math.max(0, duration - CREDITS_FALLBACK_LAST_S), end: duration }, false, false)
+  }, [markers, postCreditsScene, info, duration])
 
-  const showNextCard =
-    Boolean(nextEpisode) && !nextDismissed && creditsStartSeconds !== null && currentTime >= creditsStartSeconds
-  const nextCountdown = creditsStartSeconds !== null
-    ? Math.max(0, Math.ceil(AUTOPLAY_DELAY_S - (currentTime - creditsStartSeconds)))
-    : AUTOPLAY_DELAY_S
+  // The last frame counts too: after a post-credits scene (outside the ending's
+  // interval) the episode stops with the card up, so the next one is a click away.
+  const atEnd = duration > 0 && currentTime >= duration - 0.5
+  const insideEnding = Boolean(nextPlan) && (isWithin(nextPlan!.interval, currentTime) || atEnd)
+
+  // Closing the card hides it (and cancels its countdown) for this pass through the
+  // ending only: leave the interval — seek back before it — and it comes back the next
+  // time playback enters it. Reset during render (React's pattern for state derived
+  // from a changing input) rather than in an effect.
+  const [nextDismissed, setNextDismissed] = useState(false)
+  if (nextDismissed && !insideEnding) setNextDismissed(false)
+
+  // Only when a real next episode exists (PlayerPage passes null after the last
+  // one) — never a card, or a countdown, that leads nowhere.
+  const showNextCard = Boolean(nextEpisode) && insideEnding && !nextDismissed
+  const countdownActive = showNextCard && Boolean(nextPlan?.autoplay)
+
+  // Countdown in seconds of PLAYBACK: it only advances while the episode plays, so
+  // pausing pauses it; leaving the ending (seeking back) or closing the card resets it.
+  const [countdownElapsed, setCountdownElapsed] = useState(0)
+  if (!countdownActive && countdownElapsed !== 0) setCountdownElapsed(0)
+  useEffect(() => {
+    if (!countdownActive || !playing) return
+    const id = window.setInterval(() => setCountdownElapsed((elapsed) => elapsed + COUNTDOWN_TICK_S), COUNTDOWN_TICK_S * 1000)
+    return () => window.clearInterval(id)
+  }, [countdownActive, playing])
+  const countdownTotal = nextPlan?.countdown ?? NEXT_COUNTDOWN_DEFAULT_S
+  const countdownRemaining = Math.max(0, countdownTotal - countdownElapsed)
 
   const dismissNextEpisode = useCallback((event: React.MouseEvent) => {
     event.stopPropagation()
@@ -823,31 +1078,41 @@ export default function LocalVideoPlayer({
     if (nextEpisode) onPlayNext?.(nextEpisode)
   }, [nextEpisode, onPlayNext])
 
+  // Countdown finished → load and play the next episode.
+  useEffect(() => {
+    if (countdownActive && countdownRemaining <= 0 && nextEpisode) onPlayNext?.(nextEpisode)
+  }, [countdownActive, countdownRemaining, nextEpisode, onPlayNext])
+
   const handleVideoEnded = useCallback(() => {
     intentPlayingRef.current = false
     if (contentId) clearWatchProgress(contentId)
-    if (nextEpisode && !nextDismissed) onPlayNext?.(nextEpisode)
-  }, [contentId, nextEpisode, nextDismissed, onPlayNext])
-
-  // The countdown can reach zero well before the file actually ends (credits can
-  // run for minutes) — advance right then instead of waiting for the native
-  // `ended` event, which stays as a safety net for the rest of the cases.
-  useEffect(() => {
-    if (showNextCard && nextCountdown === 0 && nextEpisode) onPlayNext?.(nextEpisode)
-  }, [showNextCard, nextCountdown, nextEpisode, onPlayNext])
+    // An ending shorter than the countdown: nothing is left to watch, so a running
+    // countdown finishes now. Post-credits / no-autoplay episodes just stop here,
+    // card up.
+    if (countdownActive && nextEpisode) onPlayNext?.(nextEpisode)
+  }, [contentId, countdownActive, nextEpisode, onPlayNext])
 
   const nextEpisodeImage = nextEpisode
     ? backdropUrl(nextEpisode.backdropPath) || posterUrl(nextEpisode.posterPath)
     : null
 
   // ---- Transport controls ----
+  // A probed file with no audio stream at all plays as picture only — that's the
+  // file, not a track that failed to load.
+  const fileHasNoAudio = Boolean(info && !info.error && info.audioTracks.length === 0)
+
   const startPlayback = useCallback(() => {
     const video = videoRef.current
-    const audio = audioRef.current
     if (!video) return
     intentPlayingRef.current = true
+    setAudioIssue((issue) => (issue === "blocked" ? null : issue))
     if (remuxMode) {
-      // The <video> carries its own audio here — nothing else to start or align.
+      // The <video> carries its own (unmuted) audio here — the same autoplay rule
+      // applies to it, so a refusal is handled the same way.
+      video.play().catch(handleAudioPlayRejected)
+      return
+    }
+    if (fileHasNoAudio) {
       video.play().catch(() => {})
       return
     }
@@ -856,8 +1121,11 @@ export default function LocalVideoPlayer({
       reloadAudio(video.currentTime, selectedAudioRef.current)
     }
     video.play().catch(() => {})
-    audio?.play().catch(() => {})
-  }, [reloadAudio, remuxMode])
+    // Called right here, inside the click that started playback, even when the
+    // stream is still loading: that's what lets the browser allow sound on this
+    // element (Safari in particular needs the gesture on the element itself).
+    playAudio()
+  }, [reloadAudio, remuxMode, fileHasNoAudio, playAudio, handleAudioPlayRejected])
 
   const togglePlay = useCallback(() => {
     const video = videoRef.current
@@ -876,10 +1144,18 @@ export default function LocalVideoPlayer({
   // saved "Continue Watching" position for this exact content, seek to it
   // first — setting currentTime before metadata has loaded is unreliable, so
   // this waits for loadedmetadata when the browser hasn't reached it yet.
+  //
+  // It also waits for `prefsResolved`: the audio track the viewer saved must be the
+  // one loaded when sound starts. Starting on a default track and hopping to the
+  // saved one once the prefs arrived meant a second play() long after the click —
+  // the one the browser refuses, leaving the saved track selected and silent.
+  const autoplayDoneRef = useRef(false)
   useEffect(() => {
     const video = videoRef.current
-    if (!video) return
+    if (!video || !prefsResolved || autoplayDoneRef.current) return
     const resumeAndPlay = () => {
+      if (autoplayDoneRef.current) return
+      autoplayDoneRef.current = true
       const saved = contentId ? getWatchProgress(contentId) : null
       if (saved && saved.currentTime > 0) {
         try {
@@ -888,6 +1164,14 @@ export default function LocalVideoPlayer({
         } catch {
           // Ignore — playback just starts from 0 instead.
         }
+      }
+      // Nobody has interacted with this page yet (a reload, a pasted link): the
+      // browser would refuse sound. Don't start a silent picture — show the play
+      // button and say why; that click starts picture and sound together.
+      const activation = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation
+      if (activation && !activation.hasBeenActive && !fileHasNoAudio) {
+        setAudioIssue("blocked")
+        return
       }
       startPlayback()
     }
@@ -898,7 +1182,7 @@ export default function LocalVideoPlayer({
     video.addEventListener("loadedmetadata", resumeAndPlay, { once: true })
     return () => video.removeEventListener("loadedmetadata", resumeAndPlay)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src])
+  }, [src, prefsResolved])
 
   // Stored with every resume point so a "Continue Watching" card can label which episode
   // it will resume, instead of decoding it back out of the content id. Not memoized: it
@@ -1031,14 +1315,16 @@ export default function LocalVideoPlayer({
     navigator.mediaSession.setActionHandler("seekbackward", () => skip(-SKIP_SECONDS))
     navigator.mediaSession.setActionHandler("seekforward", () => skip(SKIP_SECONDS))
     navigator.mediaSession.setActionHandler("nexttrack", nextEpisode ? () => onPlayNext?.(nextEpisode) : null)
+    navigator.mediaSession.setActionHandler("previoustrack", previousEpisode ? () => onPlayNext?.(previousEpisode) : null)
     return () => {
       navigator.mediaSession.setActionHandler("play", null)
       navigator.mediaSession.setActionHandler("pause", null)
       navigator.mediaSession.setActionHandler("seekbackward", null)
       navigator.mediaSession.setActionHandler("seekforward", null)
       navigator.mediaSession.setActionHandler("nexttrack", null)
+      navigator.mediaSession.setActionHandler("previoustrack", null)
     }
-  }, [title, startPlayback, skip, nextEpisode, onPlayNext])
+  }, [title, startPlayback, skip, nextEpisode, previousEpisode, onPlayNext])
 
   useEffect(() => {
     if (!("mediaSession" in navigator)) return
@@ -1077,17 +1363,93 @@ export default function LocalVideoPlayer({
     if (video) video.playbackRate = next // useMediaSync propagates this to the audio element
   }, [])
 
+  // Fullscreen is always the player CONTAINER, never the <video>: the subtitle canvas,
+  // the "Skip intro" button and the next-episode card are siblings of the video, and
+  // anything that fullscreens the bare video element (iOS's native player) leaves
+  // them all behind. Safari on iPad only has the prefixed API; iPhone has none for
+  // arbitrary elements — there the container is pinned over the whole viewport
+  // instead ("pseudo" fullscreen), which keeps every overlay visible.
+  // What goes fullscreen: the page's stable player slot (data-fullscreen-host), not
+  // this component's own element. This one is replaced on every episode, and removing
+  // the fullscreen element drops the browser out of fullscreen — so "next episode"
+  // would always leave it. The host survives the switch. Standalone (no host), the
+  // player's own element.
+  const fullscreenTarget = useCallback(
+    () => containerRef.current?.closest<HTMLElement>("[data-fullscreen-host]") ?? containerRef.current,
+    []
+  )
+
+  // The iPhone-style "pseudo" fullscreen is this component's own state, so it's
+  // mirrored on the host too: the next episode's player picks it up from there.
+  const pseudoWasOnRef = useRef(false)
+  useEffect(() => {
+    if (fullscreenTarget()?.dataset.pseudoFullscreen === "1") setPseudoFullscreen(true)
+  }, [fullscreenTarget])
+  useEffect(() => {
+    const host = fullscreenTarget()
+    if (!host) return
+    if (pseudoFullscreen) host.dataset.pseudoFullscreen = "1"
+    // Only an actual exit clears it — not this player's first render (still false
+    // while the effect above restores it).
+    else if (pseudoWasOnRef.current) delete host.dataset.pseudoFullscreen
+    pseudoWasOnRef.current = pseudoFullscreen
+  }, [pseudoFullscreen, fullscreenTarget])
+
   const toggleFullscreen = useCallback(() => {
-    if (!containerRef.current) return
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
-    else containerRef.current.requestFullscreen().catch(() => {})
-  }, [])
+    const container = fullscreenTarget() as FullscreenCapable | null
+    if (!container) return
+    const doc = document as FullscreenDocument
+    if (pseudoFullscreen) {
+      setPseudoFullscreen(false)
+      return
+    }
+    if (document.fullscreenElement || doc.webkitFullscreenElement) {
+      if (document.exitFullscreen) document.exitFullscreen().catch(() => {})
+      else doc.webkitExitFullscreen?.()
+      return
+    }
+    const request = container.requestFullscreen
+      ? () => container.requestFullscreen()
+      : container.webkitRequestFullscreen
+        ? () => Promise.resolve(container.webkitRequestFullscreen?.())
+        : null
+    if (!request) {
+      setPseudoFullscreen(true)
+      return
+    }
+    request()
+      .then(() => {
+        // Phones: turn to landscape while fullscreen, where the platform allows it.
+        const orientation = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }
+        orientation?.lock?.("landscape").catch(() => {})
+      })
+      .catch(() => setPseudoFullscreen(true))
+  }, [pseudoFullscreen, fullscreenTarget])
 
   useEffect(() => {
-    const onFsChange = () => setFullscreen(Boolean(document.fullscreenElement))
+    const doc = document as FullscreenDocument
+    const onFsChange = () => {
+      const active = Boolean(document.fullscreenElement || doc.webkitFullscreenElement)
+      setNativeFullscreen(active)
+      if (!active) screen.orientation?.unlock?.()
+    }
     document.addEventListener("fullscreenchange", onFsChange)
-    return () => document.removeEventListener("fullscreenchange", onFsChange)
+    document.addEventListener("webkitfullscreenchange", onFsChange)
+    return () => {
+      document.removeEventListener("fullscreenchange", onFsChange)
+      document.removeEventListener("webkitfullscreenchange", onFsChange)
+    }
   }, [])
+
+  // Escape leaves the pseudo fullscreen too, like it does the real one.
+  useEffect(() => {
+    if (!pseudoFullscreen) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPseudoFullscreen(false)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [pseudoFullscreen])
 
   // Keep a grace window open for ~1.5s after the tab becomes visible again, so
   // the trailing throttled `pause`/`waiting` events Chromium delivers right then
@@ -1121,8 +1483,168 @@ export default function LocalVideoPlayer({
 
   useEffect(() => {
     if (playing) registerActivity()
-    else setShowControls(true)
+    // A touch hold-to-scrub pauses playback too, but keeps the picture clear.
+    else if (!scrubRef.current) setShowControls(true)
   }, [playing, registerActivity])
+
+  const hideControls = useCallback(() => {
+    if (activityTimerRef.current !== null) window.clearTimeout(activityTimerRef.current)
+    activityTimerRef.current = null
+    setShowControls(false)
+  }, [])
+
+  const setInputMode = useCallback((touch: boolean) => {
+    touchUIRef.current = touch
+    setTouchUI(touch)
+  }, [])
+
+  // Pointer events, not mouse/touch ones: a tap also fires emulated mouse events
+  // (mousemove, click…) right after it, which used to bring the controls straight
+  // back after every tap. Only a real mouse moving counts as "mouse activity".
+  // ---- Touch: hold to rewind / fast-forward ----
+  // Browsers can't play backwards (a negative playbackRate isn't supported), so this
+  // doesn't touch the playback rate at all: playback pauses and the playhead is
+  // walked along at the current speed, one seek at a time — the next one only once
+  // the previous has landed, so a slow disk just means fewer, not queued, frames.
+  // Silent while it runs; on release the audio is reloaded once at the new spot and
+  // playback resumes if it was playing.
+  const holdRef = useRef<{ pointerId: number; x: number; y: number; timer: number } | null>(null)
+  const scrubRef = useRef<{
+    direction: 1 | -1
+    startedAt: number
+    last: number
+    position: number
+    speed: number
+    wasPlaying: boolean
+    frame: number
+  } | null>(null)
+  // The click that follows a hold must not also count as a tap on the picture.
+  const suppressTapRef = useRef(false)
+
+  const cancelHold = useCallback(() => {
+    if (holdRef.current) window.clearTimeout(holdRef.current.timer)
+    holdRef.current = null
+  }, [])
+
+  const startScrub = useCallback((direction: 1 | -1) => {
+    const video = videoRef.current
+    if (!video || !(duration > 0)) return
+    const wasPlaying = !video.paused
+    scrubGuardRef.current = true
+    intentPlayingRef.current = false
+    video.pause()
+    hideControls()
+    suppressTapRef.current = true
+    const now = performance.now()
+    const state = { direction, startedAt: now, last: now, position: video.currentTime, speed: scrubSpeedFor(0), wasPlaying, frame: 0 }
+    scrubRef.current = state
+    setScrub({ direction, speed: state.speed })
+    const end = Math.max(0, duration - SCRUB_END_MARGIN_S)
+    const step = (time: number) => {
+      if (scrubRef.current !== state) return
+      const speed = scrubSpeedFor((time - state.startedAt) / 1000)
+      if (speed !== state.speed) {
+        state.speed = speed
+        setScrub({ direction, speed })
+      }
+      state.position = Math.min(end, Math.max(0, state.position + direction * speed * ((time - state.last) / 1000)))
+      state.last = time
+      if (!video.seeking && Math.abs(video.currentTime - state.position) >= 0.04) video.currentTime = state.position
+      setCurrentTime(state.position)
+      state.frame = requestAnimationFrame(step)
+    }
+    state.frame = requestAnimationFrame(step)
+  }, [duration, hideControls])
+
+  const endScrub = useCallback(() => {
+    const state = scrubRef.current
+    if (!state) return
+    cancelAnimationFrame(state.frame)
+    scrubRef.current = null
+    setScrub(null)
+    const video = videoRef.current
+    if (!video) {
+      scrubGuardRef.current = false
+      return
+    }
+    if (Math.abs(video.currentTime - state.position) >= 0.04) video.currentTime = state.position
+    setCurrentTime(state.position)
+    // Keep the seek handling out of it until this last step has landed — it's the
+    // scrub's job to move the audio, below.
+    if (video.seeking) {
+      video.addEventListener("seeked", () => { scrubGuardRef.current = false }, { once: true })
+    } else {
+      scrubGuardRef.current = false
+    }
+    if (!remuxMode && audioInitializedRef.current) reloadAudio(state.position, selectedAudioRef.current)
+    if (state.wasPlaying) startPlayback()
+  }, [remuxMode, reloadAudio, startPlayback])
+
+  const handlePointerMove = useCallback((event: React.PointerEvent) => {
+    const hold = holdRef.current
+    if (hold && hold.pointerId === event.pointerId &&
+      Math.hypot(event.clientX - hold.x, event.clientY - hold.y) > HOLD_MOVE_TOLERANCE_PX) {
+      cancelHold()
+    }
+    if (event.pointerType !== "mouse") return
+    if (touchUIRef.current) setInputMode(false)
+    registerActivity()
+  }, [registerActivity, setInputMode, cancelHold])
+
+  const handlePointerDown = useCallback((event: React.PointerEvent) => {
+    const touch = event.pointerType !== "mouse"
+    if (touch !== touchUIRef.current) setInputMode(touch)
+    suppressTapRef.current = false
+    // A touch on an actual control keeps the controls up (and restarts their idle
+    // timer); a touch on the picture is handled by handleSurfaceTap on click — or,
+    // held long enough, becomes a rewind / fast-forward by side.
+    if (!touch) return
+    if (!isPlayerSurface(event.target as HTMLElement)) {
+      registerActivity()
+      return
+    }
+    const container = containerRef.current
+    if (!container || !event.isPrimary) return
+    const rect = container.getBoundingClientRect()
+    const direction: 1 | -1 = event.clientX < rect.left + rect.width / 2 ? -1 : 1
+    cancelHold()
+    holdRef.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      timer: window.setTimeout(() => {
+        holdRef.current = null
+        startScrub(direction)
+      }, HOLD_DELAY_MS),
+    }
+  }, [registerActivity, setInputMode, cancelHold, startScrub])
+
+  const handlePointerEnd = useCallback(() => {
+    cancelHold()
+    endScrub()
+  }, [cancelHold, endScrub])
+
+  // Never leave a scrub running (or the audio guard up) past the player's life.
+  useEffect(() => () => {
+    if (holdRef.current) window.clearTimeout(holdRef.current.timer)
+    if (scrubRef.current) cancelAnimationFrame(scrubRef.current.frame)
+  }, [])
+
+  // Player size, for the compact layout (see COMPACT_MAX_*).
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container || typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect
+      setPlayerSize((size) =>
+        Math.round(size.width) === Math.round(width) && Math.round(size.height) === Math.round(height)
+          ? size
+          : { width, height }
+      )
+    })
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => () => {
     if (activityTimerRef.current !== null) window.clearTimeout(activityTimerRef.current)
@@ -1133,22 +1655,76 @@ export default function LocalVideoPlayer({
   // PAUSE_INFO_DELAY_MS, fade in a card with the episode/movie details over the
   // frozen frame. Any resume hides it immediately.
   useEffect(() => {
-    if (playing || buffering) {
+    if (playing || buffering || scrubbing) {
       setShowPauseInfo(false)
       return
     }
-    const id = window.setTimeout(() => setShowPauseInfo(true), PAUSE_INFO_DELAY_MS)
+    const id = window.setTimeout(() => {
+      setShowPauseInfo(true)
+      // On touch, controls stay up while paused (nothing hides them but a tap), so the
+      // card would land on top of them: it takes their place instead, and a tap on it
+      // brings them back.
+      if (touchUIRef.current) hideControls()
+    }, PAUSE_INFO_DELAY_MS)
     return () => window.clearTimeout(id)
-  }, [playing, buffering])
+  }, [playing, buffering, scrubbing, hideControls])
+
+  // ---- "You're watching" card ----
+  // As an episode starts playing, a small card top-left says which one it is, then
+  // fades away — most useful right after the next episode loaded by itself (or in
+  // fullscreen, where nothing else on screen says so). Once per episode.
+  const [nowPlayingPhase, setNowPlayingPhase] = useState<"hidden" | "visible" | "fading">("hidden")
+  const nowPlayingShownRef = useRef(false)
+  useEffect(() => {
+    if (!playing || nowPlayingShownRef.current || !media?.episodeNumber) return
+    nowPlayingShownRef.current = true
+    setNowPlayingPhase("visible")
+    const fade = window.setTimeout(() => setNowPlayingPhase("fading"), NOW_PLAYING_VISIBLE_MS)
+    const hide = window.setTimeout(() => setNowPlayingPhase("hidden"), NOW_PLAYING_VISIBLE_MS + NOW_PLAYING_FADE_MS)
+    return () => {
+      window.clearTimeout(fade)
+      window.clearTimeout(hide)
+    }
+    // Only the first start counts; the timers must not restart on a pause.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing])
 
   const audioOptions = info?.audioTracks || []
+  const trackListStyle = {
+    "--track-list-max": `${Math.max(audioOptions.length, TRACK_MENU_MIN_ROWS) * TRACK_MENU_ROW_PX}px`,
+  } as React.CSSProperties
+
   const audioLabels = useMemo(
     () => buildAudioLabels(info?.audioTracks || [], (i) => `${t("player.audio")} ${i + 1}`),
     [info, t]
   )
   const portalContainer = fullscreen ? containerRef.current : undefined
   const progressPct = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0
-  const chromeVisible = showControls || !playing || buffering
+  // With a mouse, a paused player always shows its controls. On touch they follow
+  // taps instead, paused or not — tapping the picture hides them (handleSurfaceTap).
+  const chromeVisible = showControls || buffering || (!playing && !touchUI)
+  const showPauseCard = showPauseInfo && Boolean(media) && !(touchUI && chromeVisible)
+  const compact = playerSize.width > 0 &&
+    (playerSize.width < COMPACT_MAX_WIDTH || playerSize.height < COMPACT_MAX_HEIGHT)
+  const tiny = compact && playerSize.height < TINY_MAX_HEIGHT
+  const narrow = compact && playerSize.width < NARROW_MAX_WIDTH
+
+  // A click/tap on the picture itself (the video, the pause card). Mouse: play/pause,
+  // as on desktop players. Touch: show or hide the controls, never pause — pausing is
+  // the play button's job; a phone user taps the picture to get at the controls, or
+  // to get them out of the way.
+  const handleSurfaceTap = () => {
+    if (suppressTapRef.current) {
+      suppressTapRef.current = false
+      return
+    }
+    if (!touchUIRef.current) {
+      togglePlay()
+      return
+    }
+    if (chromeVisible) hideControls()
+    else registerActivity()
+  }
 
   const isEpisode = Boolean(media?.episodeNumber)
   const pauseSynopsis = media?.episodeSynopsis || media?.description || media?.longDescription || ""
@@ -1195,9 +1771,22 @@ export default function LocalVideoPlayer({
   return (
     <div
       ref={containerRef}
-      className={cn("group relative h-full w-full overflow-hidden bg-black", playing && !showControls && "cursor-none")}
-      onMouseMove={registerActivity}
-      onTouchStart={registerActivity}
+      className={cn(
+        "group relative h-full w-full overflow-hidden bg-black",
+        pseudoFullscreen && "!fixed inset-0 z-[100] h-[100dvh] w-screen",
+        playing && !showControls && "cursor-none",
+        // A long press is a scrub here, not the browser's own long-press (text
+        // selection, the iOS callout, the save-video menu).
+        "select-none [-webkit-touch-callout:none]"
+      )}
+      data-pseudo-fullscreen={pseudoFullscreen || undefined}
+      onPointerMove={handlePointerMove}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerEnd}
+      onPointerCancel={handlePointerEnd}
+      onContextMenu={(event) => {
+        if (touchUIRef.current) event.preventDefault()
+      }}
     >
       <video
         ref={videoRef}
@@ -1210,7 +1799,8 @@ export default function LocalVideoPlayer({
         // mode: this element plays the sound itself.
         muted={!remuxMode}
         playsInline
-        onClick={togglePlay}
+        data-player-surface
+        onClick={() => handleSurfaceTap()}
         onError={(event) => {
           // A native <video> that can't open/decode the file (codec or container the
           // browser lacks) falls back to the ffmpeg remux pipeline instead of just
@@ -1310,7 +1900,46 @@ export default function LocalVideoPlayer({
         </div>
       )}
 
-      {buffering && !streamError && (
+      {/* Audio state the viewer must know about. "blocked": the browser refused
+          sound without a click — playback is held (never a silent picture) until
+          they press play. "failed": every track failed to decode/transcode — a real
+          playback error, not a selection problem. Muted / volume 0 need no banner:
+          the volume button already shows them. */}
+      {audioIssue && !streamError && (
+        <div className="absolute inset-x-0 top-3 z-30 flex justify-center px-3 sm:top-5">
+          {audioIssue === "blocked" ? (
+            <button
+              onClick={(event) => {
+                event.stopPropagation()
+                startPlayback()
+              }}
+              className="flex cursor-pointer items-center gap-2 rounded-full bg-black/70 px-4 py-2 text-xs font-medium text-white shadow-lg ring-1 ring-white/15 backdrop-blur-md transition-colors animate-fade-in hover:bg-black/85 sm:text-sm"
+            >
+              <Volume2 className="size-4" />
+              {t("player.audioBlocked")}
+            </button>
+          ) : (
+            <div className="flex items-center gap-3 rounded-full bg-black/75 py-1.5 pl-4 pr-1.5 text-xs font-medium text-white shadow-lg ring-1 ring-white/15 backdrop-blur-md animate-fade-in sm:text-sm">
+              <VolumeX className="size-4 text-white/70" />
+              {t("player.audioFailed")}
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-7 rounded-full px-3 text-xs"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setAudioIssue(null)
+                  reloadAudio(videoRef.current?.currentTime ?? 0, selectedAudioRef.current)
+                }}
+              >
+                {t("common.retry")}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {buffering && !streamError && !scrubbing && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div className="flex size-16 items-center justify-center rounded-full bg-black/40 backdrop-blur-sm">
             <Spinner className="size-7 text-white" />
@@ -1328,60 +1957,200 @@ export default function LocalVideoPlayer({
           right, but it is clearly the background — the copy wins. Clicking anywhere on
           it resumes. Sits above the video but below the transport cluster and control
           bar (DOM order), so the play button and controls stay usable on top. */}
-      {showPauseInfo && media && (
+      {showPauseCard && media && (
         <div
           className="absolute inset-0 cursor-pointer animate-fade-in"
-          onClick={togglePlay}
+          data-player-surface
+          onClick={() => handleSurfaceTap()}
         >
-          <div className="absolute inset-0 bg-black/55" />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/65 to-transparent" />
+          {compact ? (
+            /* Phone layout — its own design, not the desktop card scaled down. On a
+               small screen the picture is the point, so the dim is light and the
+               copy sits along the bottom edge (thumb reach, clear of the back button),
+               on a ramp rising from it. One explicit "Resume" action, because on
+               touch a tap on the picture shows the controls instead of resuming, and
+               a progress line with the time left instead of a wall of metadata. */
+            <>
+              <div className="absolute inset-0 bg-black/35" />
+              <div className="absolute inset-x-0 bottom-0 h-[85%] bg-gradient-to-t from-black/95 via-black/70 to-transparent" />
 
-          {/* Spacing is per-element rather than one flat gap: the eyebrow belongs tight
-              to the title, the synopsis wants air from the metadata. That rhythm is
-              most of what separates this from a stack of evenly spaced lines. */}
-          <div className="relative flex h-full max-w-2xl flex-col justify-center px-6 sm:px-14">
-            <div className="animate-fade-up stagger-1 flex items-center gap-2.5 text-white/45">
-              <Pause className="size-3.5 fill-current sm:size-4" />
+              <div className="absolute inset-x-0 bottom-0 px-4 pb-4 sm:px-6 sm:pb-5">
+                <div className="flex items-end justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="animate-fade-up stagger-1 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/70 ring-1 ring-white/15 backdrop-blur-sm">
+                      <Pause className="size-2.5 fill-current" />
+                      {t("player.paused")}
+                    </span>
+                    <h2 className="animate-fade-up stagger-2 mt-2 line-clamp-1 text-lg font-bold leading-tight tracking-tight text-white">
+                      {title}
+                    </h2>
+                    {isEpisode && (
+                      <p className="animate-fade-up stagger-2 mt-0.5 line-clamp-1 text-xs text-white/70">
+                        {media.seasonNumber
+                          ? t("player.seasonEpisode", { season: media.seasonNumber, episode: media.episodeNumber || 0 })
+                          : t("player.episode", { episode: media.episodeNumber || 0 })}
+                        {media.episodeTitle && <span className="text-white/50"> · {media.episodeTitle}</span>}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      startPlayback()
+                    }}
+                    className="animate-fade-up stagger-2 flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-white pl-3 pr-4 text-sm font-semibold text-black shadow-[0_8px_24px_rgba(0,0,0,0.45)] transition-transform active:scale-95"
+                  >
+                    <Play className="size-4" fill="currentColor" />
+                    {t("player.resume")}
+                  </button>
+                </div>
+
+                {pauseSynopsis && !tiny && (
+                  <p className="animate-fade-up stagger-3 mt-2.5 line-clamp-2 max-w-lg text-xs leading-relaxed text-white/60">
+                    {pauseSynopsis}
+                  </p>
+                )}
+
+                {duration > 0 && (
+                  <div className="animate-fade-up stagger-3 mt-3 flex items-center gap-3">
+                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/15">
+                      <div className="h-full rounded-full bg-white/90" style={{ width: `${progressPct}%` }} />
+                    </div>
+                    <span className="shrink-0 text-[11px] tabular-nums text-white/60">
+                      {t("player.timeLeft", { minutes: Math.max(1, Math.ceil((duration - currentTime) / 60)) })}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="absolute inset-0 bg-black/55" />
+              <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/65 to-transparent" />
+
+              {/* Spacing is per-element rather than one flat gap: the eyebrow belongs tight
+                  to the title, the synopsis wants air from the metadata. That rhythm is
+                  most of what separates this from a stack of evenly spaced lines. */}
+              <div className="relative flex h-full max-w-2xl flex-col justify-center px-6 sm:px-14">
+                <div className="animate-fade-up stagger-1 flex items-center gap-2.5 text-white/45">
+                  <Pause className="size-3.5 fill-current sm:size-4" />
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.22em] sm:text-[11px]">
+                    {t("player.paused")}
+                  </span>
+                </div>
+
+                {/* font-bold, not font-black: at display sizes the heaviest weight closes up
+                    the counters and reads as shouting rather than as a title card. */}
+                <h2 className="animate-fade-up stagger-2 mt-3 text-balance text-3xl font-bold leading-[1.05] tracking-tight text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.55)] sm:mt-4 sm:text-5xl md:text-6xl">
+                  {title}
+                </h2>
+
+                {isEpisode && (
+                  <p className="animate-fade-up stagger-2 mt-2.5 text-sm font-medium text-white/85 sm:mt-3 sm:text-base">
+                    {media.seasonNumber
+                      ? t("player.seasonEpisode", { season: media.seasonNumber, episode: media.episodeNumber || 0 })
+                      : t("player.episode", { episode: media.episodeNumber || 0 })}
+                    {media.episodeTitle && <span className="text-white/55"> · {media.episodeTitle}</span>}
+                  </p>
+                )}
+
+                {/* One muted line with hairline dividers instead of a row of mismatched
+                    chips (a bordered box next to a filled pill next to bare text). Same
+                    construction as the hero's metadata row, so the two read as one app.
+                    Built as a list and joined so a missing field never strands a divider. */}
+                {pauseMeta.length > 0 && (
+                  <div className="animate-fade-up stagger-3 mt-3.5 flex flex-wrap items-center gap-x-2.5 gap-y-2 text-xs text-white/60 sm:mt-4 sm:gap-x-3 sm:text-sm">
+                    {pauseMeta.map((item, index) => (
+                      <Fragment key={item.key}>
+                        {index > 0 && <span aria-hidden className="h-3.5 w-px bg-white/25" />}
+                        {item.node}
+                      </Fragment>
+                    ))}
+                  </div>
+                )}
+
+                {pauseSynopsis && (
+                  <p className="animate-fade-up stagger-4 mt-4 line-clamp-3 max-w-xl text-sm leading-relaxed text-white/65 sm:mt-5 sm:line-clamp-4 sm:text-base">
+                    {pauseSynopsis}
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* "You're watching" — top-left, next to the page's back button (or in the
+          corner in fullscreen, where that button is hidden). Same language as the
+          pause card: no box, just type on a soft shade rising from the corner, the
+          lines staggering in with fade-up. On the way out the whole group fades and
+          drifts up over NOW_PLAYING_FADE_MS (the transition below), then unmounts. */}
+      {nowPlayingPhase !== "hidden" && media && !showPauseCard && (
+        <div
+          className={cn(
+            "pointer-events-none absolute inset-x-0 top-0 z-30 transition-[opacity,transform] duration-500 ease-(--ease-accel)",
+            nowPlayingPhase === "visible" ? "translate-y-0 opacity-100" : "-translate-y-1.5 opacity-0"
+          )}
+        >
+          <div
+            aria-hidden
+            className="absolute left-0 top-0 h-36 w-[min(36rem,95%)] animate-fade-in bg-[radial-gradient(ellipse_at_top_left,rgba(0,0,0,0.72),rgba(0,0,0,0.35)_45%,transparent_72%)] sm:h-44"
+          />
+          <div
+            className={cn(
+              "relative max-w-[min(28rem,calc(100%-6rem))]",
+              fullscreen ? "pl-5 pt-5 sm:pl-8 sm:pt-7" : "pl-14 pt-3.5 sm:pl-16 sm:pt-4"
+            )}
+          >
+            <div className="animate-fade-up stagger-1 flex items-center gap-2 text-white/55">
+              <Play className="size-2.5 fill-current sm:size-3" />
               <span className="text-[10px] font-semibold uppercase tracking-[0.22em] sm:text-[11px]">
-                {t("player.paused")}
+                {t("player.youAreWatching")}
               </span>
             </div>
-
-            {/* font-bold, not font-black: at display sizes the heaviest weight closes up
-                the counters and reads as shouting rather than as a title card. */}
-            <h2 className="animate-fade-up stagger-2 mt-3 text-balance text-3xl font-bold leading-[1.05] tracking-tight text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.55)] sm:mt-4 sm:text-5xl md:text-6xl">
+            <h2
+              className={cn(
+                "animate-fade-up stagger-2 mt-1.5 line-clamp-1 font-bold leading-tight tracking-tight text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)]",
+                compact ? "text-base" : "text-lg sm:text-xl"
+              )}
+            >
               {title}
             </h2>
+            <p className="animate-fade-up stagger-3 mt-0.5 line-clamp-1 text-xs text-white/75 sm:text-sm">
+              {media.seasonNumber
+                ? t("player.seasonEpisode", { season: media.seasonNumber, episode: media.episodeNumber || 0 })
+                : t("player.episode", { episode: media.episodeNumber || 0 })}
+              {media.episodeTitle && <span className="text-white/50"> · {media.episodeTitle}</span>}
+            </p>
+          </div>
+        </div>
+      )}
 
-            {isEpisode && (
-              <p className="animate-fade-up stagger-2 mt-2.5 text-sm font-medium text-white/85 sm:mt-3 sm:text-base">
-                {media.seasonNumber
-                  ? t("player.seasonEpisode", { season: media.seasonNumber, episode: media.episodeNumber || 0 })
-                  : t("player.episode", { episode: media.episodeNumber || 0 })}
-                {media.episodeTitle && <span className="text-white/55"> · {media.episodeTitle}</span>}
-              </p>
-            )}
-
-            {/* One muted line with hairline dividers instead of a row of mismatched
-                chips (a bordered box next to a filled pill next to bare text). Same
-                construction as the hero's metadata row, so the two read as one app.
-                Built as a list and joined so a missing field never strands a divider. */}
-            {pauseMeta.length > 0 && (
-              <div className="animate-fade-up stagger-3 mt-3.5 flex flex-wrap items-center gap-x-2.5 gap-y-2 text-xs text-white/60 sm:mt-4 sm:gap-x-3 sm:text-sm">
-                {pauseMeta.map((item, index) => (
-                  <Fragment key={item.key}>
-                    {index > 0 && <span aria-hidden className="h-3.5 w-px bg-white/25" />}
-                    {item.node}
-                  </Fragment>
-                ))}
-              </div>
-            )}
-
-            {pauseSynopsis && (
-              <p className="animate-fade-up stagger-4 mt-4 line-clamp-3 max-w-xl text-sm leading-relaxed text-white/65 sm:mt-5 sm:line-clamp-4 sm:text-base">
-                {pauseSynopsis}
-              </p>
-            )}
+      {/* Hold-to-scrub indicator — the half being held lights up, with the speed and
+          the time it has reached. The pill re-mounts on each speed step, so every
+          step-up visibly pops. */}
+      {scrub && (
+        <div
+          className={cn(
+            "pointer-events-none absolute inset-y-0 z-30 flex w-1/2 items-center from-black/45 to-transparent animate-fade-in",
+            scrub.direction < 0 ? "left-0 justify-start bg-gradient-to-r" : "right-0 justify-end bg-gradient-to-l"
+          )}
+        >
+          <div className="mx-[10%] flex flex-col items-center gap-1.5">
+            <div
+              key={scrub.speed}
+              className="flex items-center gap-2 rounded-full bg-black/55 px-3.5 py-1.5 text-white ring-1 ring-white/15 backdrop-blur-md animate-scale-in"
+            >
+              {scrub.direction < 0 ? (
+                <Rewind className="size-4" fill="currentColor" />
+              ) : (
+                <FastForward className="size-4" fill="currentColor" />
+              )}
+              <span className="text-sm font-bold tabular-nums">x{scrub.speed}</span>
+            </div>
+            <span className="text-xs font-medium tabular-nums text-white/85 [text-shadow:0_1px_4px_rgba(0,0,0,0.8)]">
+              {formatTime(currentTime)}
+            </span>
           </div>
         </div>
       )}
@@ -1390,14 +2159,18 @@ export default function LocalVideoPlayer({
       {!buffering && chromeVisible && (
         <div
           className={cn(
-            "pointer-events-none absolute inset-0 flex items-center justify-center gap-6 transition-opacity duration-300 sm:gap-10",
+            "pointer-events-none absolute inset-0 flex items-center justify-center transition-opacity duration-300",
+            compact ? "gap-7" : "gap-6 sm:gap-10",
             !playing && "bg-black/10"
           )}
         >
           <button
             onClick={() => skip(-SKIP_SECONDS)}
             aria-label={`-${SKIP_SECONDS}s`}
-            className="group/skip pointer-events-auto flex size-11 cursor-pointer items-center justify-center rounded-full bg-white/10 text-white/90 shadow-[0_8px_24px_rgba(0,0,0,0.4)] ring-1 ring-white/15 backdrop-blur-md transition-all hover:scale-105 hover:bg-white/20 hover:text-white active:scale-95 sm:size-12"
+            className={cn(
+              "group/skip pointer-events-auto flex cursor-pointer items-center justify-center rounded-full bg-white/10 text-white/90 shadow-[0_8px_24px_rgba(0,0,0,0.4)] ring-1 ring-white/15 backdrop-blur-md transition-all hover:scale-105 hover:bg-white/20 hover:text-white active:scale-95",
+              compact ? "size-10" : "size-11 sm:size-12"
+            )}
           >
             <SkipIcon direction="back" seconds={SKIP_SECONDS} className="size-5" />
           </button>
@@ -1405,19 +2178,25 @@ export default function LocalVideoPlayer({
           <button
             onClick={togglePlay}
             aria-label="Play/Pause"
-            className="pointer-events-auto flex size-16 cursor-pointer items-center justify-center rounded-full bg-white/10 text-white shadow-[0_12px_36px_rgba(0,0,0,0.45)] ring-1 ring-white/15 backdrop-blur-md transition-all hover:scale-105 hover:bg-white/20 active:scale-95 sm:size-20"
+            className={cn(
+              "pointer-events-auto flex cursor-pointer items-center justify-center rounded-full bg-white/10 text-white shadow-[0_12px_36px_rgba(0,0,0,0.45)] ring-1 ring-white/15 backdrop-blur-md transition-all hover:scale-105 hover:bg-white/20 active:scale-95",
+              compact ? "size-14" : "size-16 sm:size-20"
+            )}
           >
             {playing ? (
-              <Pause className="size-7 sm:size-8" fill="currentColor" />
+              <Pause className={compact ? "size-6" : "size-7 sm:size-8"} fill="currentColor" />
             ) : (
-              <Play className="ml-1 size-7 sm:size-8" fill="currentColor" />
+              <Play className={cn("ml-1", compact ? "size-6" : "size-7 sm:size-8")} fill="currentColor" />
             )}
           </button>
 
           <button
             onClick={() => skip(SKIP_SECONDS)}
             aria-label={`+${SKIP_SECONDS}s`}
-            className="group/skip pointer-events-auto flex size-11 cursor-pointer items-center justify-center rounded-full bg-white/10 text-white/90 shadow-[0_8px_24px_rgba(0,0,0,0.4)] ring-1 ring-white/15 backdrop-blur-md transition-all hover:scale-105 hover:bg-white/20 hover:text-white active:scale-95 sm:size-12"
+            className={cn(
+              "group/skip pointer-events-auto flex cursor-pointer items-center justify-center rounded-full bg-white/10 text-white/90 shadow-[0_8px_24px_rgba(0,0,0,0.4)] ring-1 ring-white/15 backdrop-blur-md transition-all hover:scale-105 hover:bg-white/20 hover:text-white active:scale-95",
+              compact ? "size-10" : "size-11 sm:size-12"
+            )}
           >
             <SkipIcon direction="forward" seconds={SKIP_SECONDS} className="size-5" />
           </button>
@@ -1428,7 +2207,11 @@ export default function LocalVideoPlayer({
       <div
         className={cn(
           "absolute inset-x-0 bottom-0 flex flex-col gap-1.5 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-3 pb-3 pt-12 transition-opacity duration-300 sm:px-5 sm:pb-4",
-          chromeVisible ? "opacity-100" : "pointer-events-none opacity-0"
+          // The gradient itself never takes a tap or click — on a short player it
+          // reaches up over the center play button. Only the bar's rows do; anything
+          // else falls through to the picture below.
+          "pointer-events-none",
+          chromeVisible ? "opacity-100 [&>*]:pointer-events-auto" : "opacity-0"
         )}
       >
         {/* Seek bar — thin track that grows on hover, with a fill, a draggable thumb, and a hover thumbnail+time preview */}
@@ -1502,6 +2285,38 @@ export default function LocalVideoPlayer({
             <RotateCw className="size-4" />
           </Button>
 
+          {/* Previous / next episode — fullscreen only: outside it the page's own
+              episode list sits right below the player. Both go through onPlayNext,
+              the same path as the next-episode card, so fullscreen carries over (see
+              fullscreenTarget). A missing neighbour shows its button disabled, so the
+              pair never shifts the rest of the bar around. */}
+          {fullscreen && (previousEpisode || nextEpisode) && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-md text-white hover:bg-white/10 hover:text-white disabled:opacity-30"
+                disabled={!previousEpisode}
+                aria-label={t("player.previous")}
+                title={t("player.previous")}
+                onClick={() => previousEpisode && onPlayNext?.(previousEpisode)}
+              >
+                <SkipBack className="size-4" fill="currentColor" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-md text-white hover:bg-white/10 hover:text-white disabled:opacity-30"
+                disabled={!nextEpisode}
+                aria-label={t("player.next")}
+                title={t("player.next")}
+                onClick={playNextNow}
+              >
+                <SkipForward className="size-4" fill="currentColor" />
+              </Button>
+            </>
+          )}
+
           <div className="group/volume flex items-center">
             <Button variant="ghost" size="icon" className="rounded-md text-white hover:bg-white/10 hover:text-white" onClick={toggleMute}>
               <VolumeIcon muted={muted} volume={volume} className="size-4" />
@@ -1541,16 +2356,18 @@ export default function LocalVideoPlayer({
                     <Languages className="size-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent container={portalContainer} align="end" side="top" className="w-52 border-neutral-800 bg-neutral-950 text-neutral-200">
+                <DropdownMenuContent container={portalContainer} align="end" side="top" className={TRACK_MENU_CLASS}>
                   <DropdownMenuLabel className="text-xs text-neutral-400">{t("player.audio")}</DropdownMenuLabel>
                   <DropdownMenuSeparator className="bg-neutral-800" />
-                  <DropdownMenuRadioGroup value={String(selectedAudio)} onValueChange={handleAudioChange}>
-                    {audioOptions.map((track, idx) => (
-                      <DropdownMenuRadioItem key={track.index} value={String(track.index)} className="text-xs focus:bg-neutral-800 focus:text-white">
-                        {audioLabels[idx]}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
+                  <ScrollArea className={TRACK_SCROLL_CLASS} style={trackListStyle} viewportClassName={TRACK_VIEWPORT_CLASS} viewportRef={revealCheckedTrack}>
+                    <DropdownMenuRadioGroup value={String(selectedAudio)} onValueChange={handleAudioChange}>
+                      {audioOptions.map((track, idx) => (
+                        <DropdownMenuRadioItem indicator="start" key={track.index} value={String(track.index)} className="text-xs focus:bg-neutral-800 focus:text-white">
+                          {audioLabels[idx]}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </ScrollArea>
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
@@ -1562,19 +2379,21 @@ export default function LocalVideoPlayer({
                     <SubtitlesIcon className="size-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent container={portalContainer} align="end" side="top" className="w-52 border-neutral-800 bg-neutral-950 text-neutral-200">
+                <DropdownMenuContent container={portalContainer} align="end" side="top" className={TRACK_MENU_CLASS}>
                   <DropdownMenuLabel className="text-xs text-neutral-400">{t("player.subtitles")}</DropdownMenuLabel>
                   <DropdownMenuSeparator className="bg-neutral-800" />
-                  <DropdownMenuRadioGroup value={selectedSubtitle === null ? OFF_VALUE : String(selectedSubtitle)} onValueChange={handleSubtitleChange}>
-                    <DropdownMenuRadioItem value={OFF_VALUE} className="text-xs focus:bg-neutral-800 focus:text-white">
-                      {t("player.off")}
-                    </DropdownMenuRadioItem>
-                    {subtitleOptions.map((track, idx) => (
-                      <DropdownMenuRadioItem key={track.index} value={String(track.index)} className="text-xs focus:bg-neutral-800 focus:text-white">
-                        {subtitleLabels[idx]}
+                  <ScrollArea className={TRACK_SCROLL_CLASS} style={trackListStyle} viewportClassName={TRACK_VIEWPORT_CLASS} viewportRef={revealCheckedTrack}>
+                    <DropdownMenuRadioGroup value={selectedSubtitle === null ? OFF_VALUE : String(selectedSubtitle)} onValueChange={handleSubtitleChange}>
+                      <DropdownMenuRadioItem indicator="start" value={OFF_VALUE} className="text-xs focus:bg-neutral-800 focus:text-white">
+                        {t("player.off")}
                       </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
+                      {subtitleOptions.map((track, idx) => (
+                        <DropdownMenuRadioItem indicator="start" key={track.index} value={String(track.index)} className="text-xs focus:bg-neutral-800 focus:text-white">
+                          {subtitleLabels[idx]}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </ScrollArea>
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
@@ -1590,7 +2409,7 @@ export default function LocalVideoPlayer({
                 <DropdownMenuSeparator className="bg-neutral-800" />
                 <DropdownMenuRadioGroup value={String(rate)} onValueChange={handleRateChange}>
                   {PLAYBACK_RATES.map((r) => (
-                    <DropdownMenuRadioItem key={r} value={String(r)} className="text-xs focus:bg-neutral-800 focus:text-white">
+                    <DropdownMenuRadioItem indicator="start" key={r} value={String(r)} className="text-xs focus:bg-neutral-800 focus:text-white">
                       {r}x
                     </DropdownMenuRadioItem>
                   ))}
@@ -1605,12 +2424,125 @@ export default function LocalVideoPlayer({
         </div>
       </div>
 
-      {/* Next episode — countdown card in the closing seconds, auto-advance on end */}
-      {showNextCard && nextEpisode && (
-        <div className="absolute bottom-24 right-3 z-30 h-[127px] w-[min(412px,calc(100vw-24px))] overflow-hidden rounded-lg bg-neutral-950/95 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl animate-scale-in sm:bottom-28 sm:right-6">
+      {/* "Skip intro" / "Skip ending" — floating over the picture for the configured
+          opening, or the ending of an episode with a post-credits scene. Seeking keeps
+          the current play/pause state, so playback just carries on from the target.
+          z-30: above the subtitle layer (z-10) and the control bar; inside the
+          container, so it's there in fullscreen too. */}
+      {skipAction && (
+        <button
+          key={skipAction.label}
+          onClick={(event) => {
+            event.stopPropagation()
+            seekTo(skipAction.to)
+          }}
+          className="absolute bottom-16 right-3 z-30 flex cursor-pointer items-center gap-2 rounded-md bg-black/55 px-3.5 py-2 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.4)] ring-1 ring-white/30 backdrop-blur-md transition-all animate-scale-in hover:bg-white hover:text-black active:scale-95 sm:bottom-28 sm:right-6 sm:px-5 sm:py-2.5 sm:text-base"
+        >
+          {skipAction.label}
+          <SkipForward className="size-4" fill="currentColor" />
+        </button>
+      )}
+
+      {/* Next episode — shown over the ending (see nextPlan). Counts down and then
+          advances only for episodes without post-credits content; a click always
+          advances. */}
+      {/* Phone layout of the same card — its own design, like the pause card's: a strip
+          along the bottom edge instead of a floating box, on a ramp rising from it, so
+          the credits still playing above stay in view. The play button doubles as the
+          countdown, filling up as it runs (the text inverts over the fill). It moves
+          up over the control bar while that is showing. */}
+      {showNextCard && nextEpisode && compact && (
+        <div
+          className={cn(
+            "absolute inset-x-0 z-30 animate-fade-in transition-[bottom] duration-300",
+            chromeVisible ? "bottom-20" : "bottom-0"
+          )}
+        >
+          <div
+            className={cn(
+              "pointer-events-none absolute inset-x-0 bottom-0 h-[190%] bg-gradient-to-t from-black/95 via-black/75 to-transparent transition-opacity duration-300",
+              chromeVisible && "opacity-0"
+            )}
+          />
+          <div className="relative flex items-center gap-3 px-4 pb-4 pt-2 sm:px-6 sm:pb-5">
+            <button
+              onClick={playNextNow}
+              className="relative aspect-video h-12 shrink-0 cursor-pointer overflow-hidden rounded-md bg-neutral-900 ring-1 ring-white/15 sm:h-14"
+              aria-label={t("player.nextEpisode")}
+            >
+              {nextEpisodeImage ? (
+                <img src={nextEpisodeImage} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <div className="h-full w-full bg-neutral-800" />
+              )}
+            </button>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-white/70">
+                {/* Narrow: the play button already shows the seconds left. */}
+                {countdownActive && !narrow
+                  ? t("player.nextEpisodeIn", { seconds: Math.ceil(countdownRemaining) })
+                  : t("player.nextEpisode")}
+              </p>
+              <p className="mt-0.5 line-clamp-1 text-sm font-semibold text-white">
+                {nextEpisode.episodeTitle || nextEpisode.title}
+              </p>
+              {Boolean(nextEpisode.seasonNumber || nextEpisode.episodeNumber) && (
+                <p className="line-clamp-1 text-[11px] text-white/55">
+                  {t("player.seasonEpisode", {
+                    season: nextEpisode.seasonNumber || 1,
+                    episode: nextEpisode.episodeNumber || 0,
+                  })}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={dismissNextEpisode}
+              aria-label={countdownActive ? t("player.cancelAutoplay") : t("player.closeCard")}
+              className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white/10 text-white/85 ring-1 ring-white/15 backdrop-blur-md transition-transform active:scale-95"
+            >
+              <X className="size-4" />
+            </button>
+            <button
+              onClick={playNextNow}
+              className={cn(
+                "relative flex h-9 shrink-0 cursor-pointer items-center justify-center gap-1.5 overflow-hidden rounded-full text-sm font-semibold",
+                narrow ? "min-w-9 px-2.5" : "pl-3 pr-4",
+                "shadow-[0_8px_24px_rgba(0,0,0,0.45)] transition-transform active:scale-95",
+                countdownActive ? "bg-white/20 text-white ring-1 ring-white/25 backdrop-blur-md" : "bg-white text-black"
+              )}
+            >
+              {countdownActive && (
+                <span
+                  aria-hidden
+                  className="absolute inset-y-0 left-0 bg-white transition-[width] duration-300 ease-linear"
+                  style={{ width: `${Math.min(100, (countdownElapsed / countdownTotal) * 100)}%` }}
+                />
+              )}
+              <span className={cn("relative flex items-center gap-1.5", countdownActive && "text-white mix-blend-difference")}>
+                <Play className="size-4" fill="currentColor" />
+                {/* Narrow: the seconds left (or nothing) instead of the label. */}
+                {narrow
+                  ? countdownActive && <span className="tabular-nums">{Math.ceil(countdownRemaining)}</span>
+                  : t("common.play")}
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showNextCard && nextEpisode && !compact && (
+        <div className="absolute bottom-16 right-3 z-30 h-[88px] w-[min(412px,calc(100%-24px))] overflow-hidden rounded-lg bg-neutral-950/95 shadow-2xl ring-1 ring-white/10 backdrop-blur-xl animate-scale-in sm:bottom-28 sm:right-6 sm:h-[127px]">
+          {countdownActive && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-0.5 bg-white/10">
+              <div
+                className="h-full bg-white transition-[width] duration-300 ease-linear"
+                style={{ width: `${Math.min(100, (countdownElapsed / countdownTotal) * 100)}%` }}
+              />
+            </div>
+          )}
           <button
             onClick={dismissNextEpisode}
-            aria-label={t("player.cancelAutoplay")}
+            aria-label={countdownActive ? t("player.cancelAutoplay") : t("player.closeCard")}
             className="absolute right-1.5 top-1.5 z-10 flex size-5 cursor-pointer items-center justify-center rounded-full bg-black/50 text-white/80 transition-colors hover:bg-black/70 hover:text-white"
           >
             <X className="size-3" />
@@ -1635,7 +2567,9 @@ export default function LocalVideoPlayer({
             </div>
             <div className="flex min-w-0 flex-1 flex-col justify-center px-3 py-2.5">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
-                {t("player.nextEpisodeIn", { seconds: nextCountdown })}
+                {countdownActive
+                  ? t("player.nextEpisodeIn", { seconds: Math.ceil(countdownRemaining) })
+                  : t("player.nextEpisode")}
               </p>
               <p className="mt-0.5 line-clamp-1 text-[13px] font-semibold text-white">
                 {nextEpisode.episodeTitle || nextEpisode.title}
@@ -1649,7 +2583,7 @@ export default function LocalVideoPlayer({
                 </p>
               )}
               {(nextEpisode.episodeSynopsis || nextEpisode.description) && (
-                <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-neutral-400">
+                <p className="mt-1 hidden text-[11px] leading-snug text-neutral-400 sm:line-clamp-2">
                   {nextEpisode.episodeSynopsis || nextEpisode.description}
                 </p>
               )}

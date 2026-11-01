@@ -204,6 +204,7 @@ Only titles that actually exist in the folder are shown — the catalog is not p
 | Command | Description |
 |---|---|
 | `pnpm dev` | Start Astro; the local media library, if enabled, is scanned live on request |
+| `pnpm dev:host` | Same as `dev`, also reachable from other devices on your network (phone, tablet, TV) at the `Network` URL it prints |
 | `pnpm build` | Create the production build in `dist` (local-mode code is excluded) |
 | `pnpm preview` | Preview the production build locally |
 | `pnpm typecheck` | Run Astro and TypeScript diagnostics |

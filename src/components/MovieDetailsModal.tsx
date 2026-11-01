@@ -36,12 +36,12 @@ export default function MovieDetailsModal({
   onPlay,
 }: MovieDetailsModalProps) {
   const { lang, t } = useI18n()
+  const watchState = useWatchState(movie?.id)
   if (!movie) return null
 
   const bgSrc = backdropUrl(movie.backdropPath, "w1280")
   const posterSrc = posterUrl(movie.posterPath, "w342")
   const canPlay = isPlayableMovie(movie)
-  const watchState = useWatchState(movie.id)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

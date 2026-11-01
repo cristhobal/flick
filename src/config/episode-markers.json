@@ -1,0 +1,53 @@
+{
+  "$schema": "./episode-markers.schema.json",
+  "$comment": [
+    "Openings y endings por serie, temporada y episodio (solo series y anime; las películas lo ignoran).",
+    "Tiempos: \"MM:SS\" o \"HH:MM:SS\" (admite decimales: \"01:09.5\"). Con \"-\" delante se cuentan desde el final del archivo: \"-01:30\".",
+    "Se busca de lo más concreto a lo general: episodio → temporada → serie. Un opening/ending puesto en la serie o en la temporada vale para todos sus episodios;",
+    "uno puesto en el episodio lo reemplaza. null lo desactiva en ese nivel. Sin tiempos no se muestra nada.",
+    "La serie se reconoce por tmdbId o por title/aliases (nombre de la carpeta, título de TMDB… sin importar mayúsculas, tildes ni el año).",
+    "El ending sin \"end\" dura hasta el final del archivo.",
+    "Tarjeta «Siguiente episodio» (mismos niveles serie → temporada → episodio): postCredits (true = hay escena tras el ending: tarjeta sin cuenta regresiva;",
+    "o mejor, la escena con tiempos { \"start\", \"end\" }: el ending muestra «Saltar ending», que salta al inicio de la escena, y la tarjeta aparece al terminar la escena, con cuenta regresiva),",
+    "autoplay (false = sin cuenta regresiva ni avance automático), countdown (segundos, por defecto 10) y nextCardAt (cuándo aparece; por defecto, el inicio del ending)."
+  ],
+  "series": [
+    {
+      "title": "The Ramparts of Ice",
+      "aliases": ["Rompiendo el hielo"],
+      "tmdbId": 283428,
+      "postCredits": false,
+      "autoplay": true,
+      "countdown": 10,
+      "seasons": {
+        "1": {
+          "episodes": {
+            "1": { "opening": null, "ending": { "start": "20:23", "end": "21:52" }, "postCredits": { "start": "21:52", "end": "23:56" } },
+            "2": { "opening": { "start": "01:09", "end": "02:37" }, "ending": { "start": "22:27", "end": "25:36" } },
+            "3": { "opening": { "start": "01:35", "end": "03:03" }, "ending": { "start": "22:27", "end": "25:36" } },
+            "4": { "opening": null, "ending": { "start": "22:27", "end": "25:24" } },
+            "5": { "opening": { "start": "02:07", "end": "03:35" }, "ending": { "start": "20:10", "end": "21:39" }, "postCredits": { "start": "21:39", "end": "23:56" } },
+            "6": { "opening": { "start": "02:33", "end": "04:01" }, "ending": { "start": "22:27", "end": "25:30" } },
+            "7": { "opening": { "start": "02:50", "end": "04:18" }, "ending": { "start": "22:27", "end": "25:24" } },
+            "8": { "opening": { "start": "02:30", "end": "03:58" }, "ending": { "start": "21:04", "end": "22:33" }, "postCredits": { "start": "22:33", "end": "23:55" } },
+            "9": { "opening": { "start": "03:32", "end": "05:00" }, "ending": { "start": "22:27", "end": "25:22" } },
+            "10": { "opening": { "start": "01:07", "end": "02:35" }, "ending": { "start": "22:27", "end": "25:32" } },
+            "11": { "opening": { "start": "00:28", "end": "01:56" }, "ending": { "start": "22:05", "end": "23:34" }, "postCredits": { "start": "23:34", "end": "23:56" } },
+            "12": { "opening": { "start": "03:38", "end": "05:06" }, "ending": { "start": "20:53", "end": "22:22" }, "postCredits": { "start": "22:22", "end": "23:54" } },
+            "13": { "opening": { "start": "01:30", "end": "02:58" }, "ending": { "start": "22:27", "end": "25:28" } },
+            "14": { "opening": null, "ending": { "start": "23:46", "end": "25:14" } }
+          }
+        },
+        "2": {
+          "episodes": {
+            "1": { "opening": null, "ending": { "start": "21:56", "end": "23:26" }, "postCredits": { "start": "23:26", "end": "23:56" } },
+            "2": { "opening": { "start": "01:52", "end": "03:20" }, "ending": { "start": "22:29", "end": "24:48" } },
+            "3": { "opening": { "start": "01:26", "end": "02:54" }, "ending": { "start": "22:04", "end": "23:34" }, "postCredits": { "start": "23:34", "end": "23:56" } },
+            "4": { "opening": { "start": "03:26", "end": "04:54" }, "ending": { "start": "21:54.25", "end": "23:24.25" }, "postCredits": { "start": "23:24.25", "end": "23:55" } },
+            "5": { "opening": { "start": "00:00", "end": "01:35" }, "ending": { "start": "22:26", "end": "25:56" } }
+          }
+        }
+      }
+    }
+  ]
+}

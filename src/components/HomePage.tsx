@@ -14,6 +14,7 @@ import { useI18n } from "@/i18n/I18nProvider"
 import { translateGenre } from "@/i18n/translations"
 import { useScrollViewport } from "@/lib/scroll-container"
 import { lazyWithReload } from "@/lib/lazy-with-reload"
+import { collectCatalogImageUrls, preloadImages } from "@/lib/image-preload"
 
 const SearchPage = lazyWithReload(() => import("@/components/SearchPage"))
 const LibraryPage = lazyWithReload(() => import("@/components/LibraryPage"))
@@ -146,6 +147,17 @@ export default function HomePage() {
   const tmdb = useCatalog()
   const { allMovies, loading, error, hero: tmdbHero, categories, trendingTmdbIds } = tmdb
   const scrollViewport = useScrollViewport()
+
+  const [imagesReady, setImagesReady] = useState(false)
+  useEffect(() => {
+    if (loading || error || imagesReady) return
+    const controller = new AbortController()
+    collectCatalogImageUrls([tmdbHero, ...allMovies], lang, controller.signal)
+      .then((urls) => preloadImages(urls, undefined, controller.signal))
+      .catch(() => {})
+      .then(() => { if (!controller.signal.aborted) setImagesReady(true) })
+    return () => controller.abort()
+  }, [loading, error, imagesReady, allMovies, tmdbHero, lang])
 
   const [currentPage, setCurrentPage] = useState("home")
   const [view, setView] = useState<PageView>("home")
@@ -621,7 +633,10 @@ export default function HomePage() {
       <PageTransition key="detail">
         <Suspense fallback={<PageFallback />}>
           <MovieDetailPage
-            movie={selectedMovie}
+            // An episode (opened from "Continue Watching", or on the way back from the
+            // player) carries no episode list of its own, so the page fell back to
+            // TMDB's — listing episodes that aren't on disk. Show its parent series.
+            movie={selectedSeries || selectedMovie}
             related={relatedMovies}
             onBack={() => goHome()}
             onPlay={handlePlay}
@@ -749,7 +764,7 @@ export default function HomePage() {
     )
   }
 
-  if (loading) return <LoadingScreen />
+  if (loading || (!imagesReady && !error)) return <LoadingScreen />
   if (error) return <ErrorScreen message={error} />
 
   return (

@@ -49,6 +49,7 @@ interface TrackLike {
   title: string
   codec?: string
   forced?: boolean
+  default?: boolean
 }
 
 type PrefsMap = Record<string, MediaTrackPrefs>
@@ -58,6 +59,12 @@ type PrefsMap = Record<string, MediaTrackPrefs>
 export function fileKey(relPath: string): string {
   return `file:${relPath}`
 }
+
+// The viewer's last explicit choice, anywhere. Read LAST (after file and show), so a
+// title or show with its own choice keeps it, while one never configured starts the
+// way the viewer last left things: same audio language when the file has it, and
+// subtitles only if they last turned them on. Never written by automatic picks.
+export const GLOBAL_PREFS_KEY = "global"
 
 // "Series/Show/Temporada 2/E01.mkv" -> "Series/Show". Episodes of one show share it.
 export function showKey(relPath: string): string {
@@ -190,8 +197,9 @@ function pickTrack(
   return candidates.find(codecOk) || candidates[0]
 }
 
-// Which audio track to start on. A saved choice wins; otherwise always the first
-// track (never leaves playback silent / on an unexpected dub).
+// Which audio track to start on — always a real track of THIS file. A saved choice
+// wins when the file has that language; otherwise the track the file itself marks
+// as default, otherwise the first one (never an index that doesn't exist here).
 export function resolveAudioIndex(tracks: TrackLike[], prefs: MediaTrackPrefs | null): number {
   if (tracks.length === 0) return 0
   if (prefs && (prefs.audioIndex != null || prefs.audioLanguage)) {
@@ -203,7 +211,7 @@ export function resolveAudioIndex(tracks: TrackLike[], prefs: MediaTrackPrefs | 
     })
     if (match) return match.index
   }
-  return tracks[0].index
+  return (tracks.find((track) => track.default) || tracks[0]).index
 }
 
 // Which subtitle track to start on, or null for none. No saved choice, an explicit

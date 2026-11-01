@@ -7,7 +7,7 @@
 // import.meta.env.DEV is true — see use-catalog.ts.
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { Movie, Category } from "@/lib/data"
-import { searchMulti, fetchDetail, fetchTvSeasonEpisodes, mapGenres, type TMDbMovie, type TMDbMovieDetail, type TMDbEpisode } from "@/lib/tmdb"
+import { searchMulti, fetchDetail, fetchTvSeasonEpisodes, fetchTvEpisodeGroupSeasons, mapGenres, type TMDbMovie, type TMDbMovieDetail, type TMDbEpisode } from "@/lib/tmdb"
 import { toMovie, type TMDbState } from "@/lib/use-tmdb"
 import { useI18n } from "@/i18n/I18nProvider"
 import type { Lang } from "@/i18n/translations"
@@ -143,6 +143,61 @@ async function fetchEpisodesBySeason(
   return bySeasonNumber
 }
 
+// Many anime are listed on TMDB as ONE long season (e.g. 28 episodes) while the
+// files on disk are split into "Temporada 1" / "Temporada 2". Those local seasons
+// don't exist on TMDB, so their episodes never matched and kept the filename as
+// their title. Resolve them, in order of preference:
+//   1. A TMDB episode group that splits the show into seasons ("Seasons",
+//      "TV"…): local SxEy → that group's season x, y-th episode.
+//   2. Absolute numbering, when TMDB has a single regular season: local SxEy →
+//      TMDB S1E(y + episodes of the local seasons before x).
+// Results are written into `bySeason` under the LOCAL season number.
+async function fillMissingSeasons(
+  tmdbId: number,
+  local: LocalShowEntry,
+  missing: number[],
+  tmdbSeasonNumbers: Set<number>,
+  bySeason: Map<number, Map<number, TMDbEpisode>>,
+  lang: Lang
+): Promise<void> {
+  const regularSeasons = [...tmdbSeasonNumbers].filter((s) => s > 0)
+  const groupSeasons = await fetchTvEpisodeGroupSeasons(tmdbId, 0, regularSeasons.length, lang).catch(() => [])
+  const unresolved: number[] = []
+  for (const season of missing) {
+    const group = groupSeasons.find((g) => g.season === season)
+    if (!group) {
+      unresolved.push(season)
+      continue
+    }
+    bySeason.set(season, new Map(group.episodes.map((episode, index) => [index + 1, episode])))
+  }
+
+  if (unresolved.length === 0 || regularSeasons.length !== 1) return
+  const tmdbSeason = regularSeasons[0]
+  let absolute = bySeason.get(tmdbSeason)
+  if (!absolute) {
+    const episodes = await fetchTvSeasonEpisodes(tmdbId, tmdbSeason, lang)
+    absolute = new Map(episodes.map((episode) => [episode.episode_number, episode]))
+  }
+  if (absolute.size === 0) return
+  // Highest whole episode number of each local season, to know how many come before.
+  const lastEpisodeOf = new Map<number, number>()
+  for (const ep of local.episodes) {
+    lastEpisodeOf.set(ep.season, Math.max(lastEpisodeOf.get(ep.season) ?? 0, Math.floor(ep.episode)))
+  }
+  for (const season of unresolved) {
+    let offset = 0
+    for (const [s, last] of lastEpisodeOf) if (s < season) offset += last
+    const mapped = new Map<number, TMDbEpisode>()
+    for (const ep of local.episodes) {
+      if (ep.season !== season) continue
+      const tmdbEpisode = absolute.get(ep.episode + offset)
+      if (tmdbEpisode) mapped.set(ep.episode, tmdbEpisode)
+    }
+    if (mapped.size > 0) bySeason.set(season, mapped)
+  }
+}
+
 function buildEpisodeMovie(
   parent: Movie,
   ep: LocalEpisodeEntry,
@@ -167,6 +222,7 @@ function buildEpisodeMovie(
     // the show's title wherever it is drawn, so a per-episode score made the same title
     // read as two different ones — 8.1 in "Continue Watching", 8.7 in its own row.
     posterPath: parent.posterPath || stillPath,
+    stillPath,
     backdropPath: stillPath || parent.backdropPath,
     trailerUrl: localVideoUrl(ep.relPath),
     seriesEpisodes: undefined,
@@ -218,6 +274,12 @@ async function buildShow(
   const tmdbEpisodesBySeason = match
     ? await fetchEpisodesBySeason(match.id, seasonsToFetch, lang).catch(() => new Map<number, Map<number, TMDbEpisode>>())
     : new Map<number, Map<number, TMDbEpisode>>()
+  if (match && tmdbSeasonNumbers.size > 0) {
+    const missing = seasons.filter((s) => !tmdbSeasonNumbers.has(s))
+    if (missing.length > 0) {
+      await fillMissingSeasons(match.id, local, missing, tmdbSeasonNumbers, tmdbEpisodesBySeason, lang)
+    }
+  }
   const episodeNumberSeen = new Map<string, number>()
   const seriesEpisodes = local.episodes.map((ep) => {
     const key = `${ep.season}-${ep.episode}`

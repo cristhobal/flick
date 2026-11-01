@@ -132,22 +132,30 @@ function DropdownMenuRadioItem({
   className,
   children,
   inset,
+  indicator = "end",
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.RadioItem> & {
   inset?: boolean
+  /** Side of the check mark. "start" keeps it clear of a scrollbar on the right. */
+  indicator?: "start" | "end"
 }) {
   return (
     <DropdownMenuPrimitive.RadioItem
       data-slot="dropdown-menu-radio-item"
       data-inset={inset}
       className={cn(
-        "relative flex cursor-pointer items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-8 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex cursor-pointer items-center gap-2 rounded-sm py-1.5 text-sm",
+        indicator === "start" ? "pr-2 pl-8" : "pr-8 pl-2",
+        "outline-hidden select-none focus:bg-accent focus:text-accent-foreground focus:**:text-accent-foreground data-inset:pl-8 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
     >
       <span
-        className="pointer-events-none absolute right-2 flex items-center justify-center"
+        className={cn(
+          "pointer-events-none absolute flex items-center justify-center",
+          indicator === "start" ? "left-2" : "right-2"
+        )}
         data-slot="dropdown-menu-radio-item-indicator"
       >
         <DropdownMenuPrimitive.ItemIndicator>

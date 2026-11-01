@@ -94,6 +94,8 @@ export default function PlayerPage({
   // Next episode in the closing seconds / on end — only meaningful for a real local
   // playthrough of a series/anime, never for the TMDB trailer iframe path.
   const nextEpisode = isLocalVideo && featuredNextEpisode?.trailerUrl ? featuredNextEpisode : null
+  // Same rule for the one before — the player's fullscreen previous button.
+  const playablePreviousEpisode = isLocalVideo && previousEpisode?.trailerUrl ? previousEpisode : null
 
   // Every season present across this playthrough's episodes — drives the season
   // picker in the expanded episode list, and whether the next/previous rows need
@@ -144,7 +146,14 @@ export default function PlayerPage({
       )}
 
       {/* Video player — 16:9 ratio with safe bounds */}
-      <div className="relative z-10 h-[clamp(220px,56.25vw,80svh)] w-full">
+      {/* Lifted above the navbar while the player is in its viewport-filling
+          "pseudo" fullscreen (phones without the Fullscreen API) — its z-10 would
+          otherwise trap the fixed player under page chrome.
+          data-fullscreen-host: what the player puts in fullscreen. Not the player's
+          own element — that one is replaced on every episode (key={trailerUrl}), and
+          removing the fullscreen element drops the browser out of fullscreen. This
+          one stays mounted, so moving to the next episode stays in fullscreen. */}
+      <div data-fullscreen-host className="relative z-10 h-[clamp(220px,56.25vw,80svh)] w-full bg-black has-[[data-pseudo-fullscreen]]:z-[200]">
         <div className="absolute inset-0">
           {trailerUrl && isLocalVideo ? (
             <LocalVideoPlayer
@@ -153,6 +162,7 @@ export default function PlayerPage({
               title={title}
               media={movie}
               nextEpisode={nextEpisode}
+              previousEpisode={playablePreviousEpisode}
               onPlayNext={onPlayMovie}
               contentId={movie.id}
               seriesId={movie.episodeNumber ? seriesId : undefined}
@@ -188,7 +198,7 @@ export default function PlayerPage({
         <Button
           variant="ghost"
           size="sm"
-          className="absolute left-3 top-3 z-20 bg-black/45 text-white hover:bg-black/70 hover:text-white sm:left-4 sm:top-4"
+          className="absolute left-3 top-3 z-20 bg-black/45 text-white hover:bg-black/70 hover:text-white sm:left-4 sm:top-4 in-[:fullscreen]:hidden"
           onClick={onBack}
         >
           <ChevronLeft className="size-4" />

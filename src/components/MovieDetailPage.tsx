@@ -235,12 +235,16 @@ export default function MovieDetailPage({
     return cleaned || name
   }, [t])
 
+  // Episode-group seasons keep TMDB's absolute episode numbers (a 28-episode
+  // "season 1" split in two makes season 2 start at E15), so number them by their
+  // position inside the season instead: season 2 starts at E01.
   const mapTmdbEpisodes = useCallback((episodes: TMDbEpisodeGroupSeason["episodes"], seasonNumber: number): Movie[] =>
-    episodes.map((episode) => {
-      const cleanName = cleanEpisodeName(episode.name, episode.episode_number)
+    episodes.map((episode, index) => {
+      const episodeNumber = index + 1
+      const cleanName = cleanEpisodeName(cleanEpisodeName(episode.name, episode.episode_number), episodeNumber)
       return {
         ...movie,
-        id: `${movie.id}-season-${seasonNumber}-episode-${episode.episode_number}`,
+        id: `${movie.id}-season-${seasonNumber}-episode-${episodeNumber}`,
         title: cleanName,
         description: episode.overview || "",
         longDescription: episode.overview || "",
@@ -249,13 +253,14 @@ export default function MovieDetailPage({
         rating: Math.round((episode.vote_average || 0) * 10) / 10,
         posterPath: episode.still_path || movie.posterPath,
         backdropPath: episode.still_path || movie.backdropPath,
-        episodeNumber: episode.episode_number,
+        episodeNumber,
         seasonNumber,
+        stillPath: episode.still_path,
         episodeTitle: cleanName,
         episodeSynopsis: episode.overview || "",
         seriesTitle: movie.title,
       }
-    }), [movie, t, cleanEpisodeName])
+    }), [movie, cleanEpisodeName])
 
   useEffect(() => {
     if ((movie.type !== "series" && movie.type !== "anime") || movie.seriesEpisodes?.length || movie.tmdbId <= 0) return
