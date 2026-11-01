@@ -142,15 +142,19 @@ function buildViewAll(
   return undefined
 }
 
+const PRELOAD_CATALOG_IMAGES = import.meta.env.DEV
+
 export default function HomePage() {
   const { lang, t } = useI18n()
   const tmdb = useCatalog()
   const { allMovies, loading, error, hero: tmdbHero, categories, trendingTmdbIds } = tmdb
   const scrollViewport = useScrollViewport()
 
-  const [imagesReady, setImagesReady] = useState(false)
+  const [imagesReady, setImagesReady] = useState(
+    () => !PRELOAD_CATALOG_IMAGES || window.location.pathname !== "/"
+  )
   useEffect(() => {
-    if (loading || error || imagesReady) return
+    if (!PRELOAD_CATALOG_IMAGES || loading || error || imagesReady) return
     const controller = new AbortController()
     collectCatalogImageUrls([tmdbHero, ...allMovies], lang, controller.signal)
       .then((urls) => preloadImages(urls, undefined, controller.signal))
