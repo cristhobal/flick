@@ -166,6 +166,8 @@ const THUMBNAIL_BUCKET_FALLBACK_S = 5
 // cache hit — the debounce just guards the rare cold-cache case.
 const THUMBNAIL_DEBOUNCE_MS = 60
 const THUMBNAIL_PREVIEW_WIDTH = 160
+// Parallel requests of the background preload of every scrub-bar frame (see thumbCacheRef).
+const THUMBNAIL_PRELOAD_CONCURRENCY = 3
 // How often "Continue Watching" progress gets persisted while playing —
 // frequent enough that a crash/force-quit doesn't lose much, infrequent
 // enough that it's just an occasional localStorage write, not one per
@@ -1257,6 +1259,110 @@ export default function LocalVideoPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remuxMode, relPath, info, prefsResolved])
 
+  // ---- Scrub-bar thumbnails, preloaded into memory once playback starts ----
+  // bucket second -> object URL of an already decoded frame. Filled in the
+  // background so hovering the seek bar shows a frame at once, with no request
+  // and no empty box. Coarse to fine: first a frame every few minutes across the
+  // whole movie, then halving the gap, so a hover anywhere soon has a frame close
+  // by. The server's own pregeneration pass decodes the file start to end and
+  // would leave the far end empty for minutes; missing frames are instead
+  // extracted live (one keyframe seek each, at low priority).
+  const thumbCacheRef = useRef<Map<number, string>>(new Map())
+  const thumbPreloadRef = useRef<{ relPath: string; controller: AbortController } | null>(null)
+  useEffect(() => {
+    if (!playing || !relPath || !info?.duration || thumbPreloadRef.current?.relPath === relPath) return
+    const controller = new AbortController()
+    thumbPreloadRef.current = { relPath, controller }
+    const { signal } = controller
+    const interval = info.thumbnailInterval || THUMBNAIL_BUCKET_FALLBACK_S
+    const cache = thumbCacheRef.current
+    const encodedPath = encodeURIComponent(relPath)
+
+    // Resolves true once the frame is in memory; false on a miss/failure.
+    const loadFrame = async (bucket: number, cachedOnly: boolean) => {
+      try {
+        const res = await fetch(
+          `${THUMBNAIL_API_PREFIX}${encodedPath}?t=${bucket}${cachedOnly ? "&cached=1" : "&low=1"}`,
+          { signal }
+        )
+        if (res.status !== 200) return false
+        const url = URL.createObjectURL(await res.blob())
+        const img = new Image()
+        img.src = url
+        await img.decode().catch(() => {})
+        if (signal.aborted) {
+          URL.revokeObjectURL(url)
+          return false
+        }
+        cache.set(bucket, url)
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    const runPool = async (buckets: number[], visit: (bucket: number) => Promise<void>) => {
+      let next = 0
+      await Promise.all(
+        Array.from({ length: THUMBNAIL_PRELOAD_CONCURRENCY }, async () => {
+          while (next < buckets.length && !signal.aborted) await visit(buckets[next++])
+        })
+      )
+    }
+
+    void (async () => {
+      const count = Math.ceil(info.duration / interval)
+      // Coarse-to-fine order: every 64th bucket, then the 32nd ones not yet listed, ...
+      const order: number[] = []
+      const listed = new Set<number>()
+      for (let stride = 64; stride >= 1; stride /= 2) {
+        for (let index = 0; index < count; index += stride) {
+          if (listed.has(index)) continue
+          listed.add(index)
+          order.push(index * interval)
+        }
+      }
+      // 1) Whatever is already on disk (earlier sessions, the pregeneration pass): instant.
+      const missing: number[] = []
+      await runPool(order, async (bucket) => {
+        if (!(await loadFrame(bucket, true))) missing.push(bucket)
+      })
+      // 2) The rest, extracted live — still coarse to fine, skipping frames the
+      //    pregeneration pass has written meanwhile.
+      const rank = new Map(order.map((bucket, index) => [bucket, index]))
+      missing.sort((a, b) => (rank.get(a) ?? 0) - (rank.get(b) ?? 0))
+      await runPool(missing, async (bucket) => {
+        if (!(await loadFrame(bucket, true))) await loadFrame(bucket, false)
+      })
+    })()
+  }, [playing, relPath, info])
+
+  // A different file (or unmount): stop the preload and free its frames.
+  useEffect(() => {
+    const cache = thumbCacheRef.current
+    return () => {
+      thumbPreloadRef.current?.controller.abort()
+      thumbPreloadRef.current = null
+      for (const url of cache.values()) URL.revokeObjectURL(url)
+      cache.clear()
+    }
+  }, [relPath])
+
+  // The preloaded frame for `bucket`, or failing that the closest one around it,
+  // so the preview never shows an empty box while the exact frame is still coming.
+  const preloadedThumbnail = useCallback((bucket: number, bucketSize: number) => {
+    const cache = thumbCacheRef.current
+    const exact = cache.get(bucket)
+    if (exact) return { url: exact, exact: true }
+    if (cache.size === 0) return null
+    const maxSteps = Math.ceil((info?.duration || 0) / bucketSize) + 1
+    for (let step = 1; step <= maxSteps; step++) {
+      const near = cache.get(bucket - step * bucketSize) ?? cache.get(bucket + step * bucketSize)
+      if (near) return { url: near, exact: false }
+    }
+    return null
+  }, [info?.duration])
+
   // Scrub-bar hover preview: debounced so we don't hit the server for every
   // pixel the pointer crosses, and bucketed so nearby positions reuse the same
   // cached frame. A generation guard drops a stale response that resolves after
@@ -1268,6 +1374,18 @@ export default function LocalVideoPlayer({
     const bucketSize = info?.thumbnailInterval || THUMBNAIL_BUCKET_FALLBACK_S
     const bucket = Math.max(0, Math.round(hoverSeconds / bucketSize) * bucketSize)
     if (hoverThumbBucketRef.current === bucket) return
+    const preloaded = preloadedThumbnail(bucket, bucketSize)
+    if (preloaded) {
+      // Shown straight from memory; only a stand-in (nearest frame) still asks
+      // the server for the exact one below.
+      setHoverThumbSrc(preloaded.url)
+      if (preloaded.exact) {
+        hoverThumbBucketRef.current = bucket
+        hoverThumbGenerationRef.current++
+        if (hoverThumbTimerRef.current !== null) window.clearTimeout(hoverThumbTimerRef.current)
+        return
+      }
+    }
     // The very first position of a hover session fetches immediately (no
     // debounce) so the preview feels instant on a quick tap-and-look; only
     // continued movement across buckets — actual scrubbing — gets debounced,
@@ -1288,7 +1406,7 @@ export default function LocalVideoPlayer({
     } else {
       hoverThumbTimerRef.current = window.setTimeout(fetchThumbnail, THUMBNAIL_DEBOUNCE_MS)
     }
-  }, [relPath, info?.thumbnailInterval])
+  }, [relPath, info?.thumbnailInterval, preloadedThumbnail])
 
   const clearThumbnailPreview = useCallback(() => {
     if (hoverThumbTimerRef.current !== null) window.clearTimeout(hoverThumbTimerRef.current)

@@ -1198,7 +1198,11 @@ async function extractThumbnail(filePath, seconds, options) {
   return jpeg
 }
 
-async function serveThumbnail(res, filePath, seconds) {
+// Options used by the player's background preload of the whole scrub track:
+// `cachedOnly` answers 204 straight away on a cache miss instead of running ffmpeg
+// (a quick first sweep for what's already on disk), and `lowPriority` runs the live
+// extraction at low priority so it never competes with the movie being watched.
+async function serveThumbnail(res, filePath, seconds, { cachedOnly = false, lowPriority = false } = {}) {
   await mkdir(THUMB_CACHE_DIR, { recursive: true }).catch(() => {})
   const cachePath = thumbnailCachePathAt(filePath, seconds)
   const cached = await readCached(cachePath)
@@ -1209,8 +1213,14 @@ async function serveThumbnail(res, filePath, seconds) {
     res.end(cached)
     return
   }
+  if (cachedOnly) {
+    res.statusCode = 204
+    res.setHeader("Cache-Control", "no-store")
+    res.end()
+    return
+  }
   try {
-    const jpeg = await extractThumbnail(filePath, seconds)
+    const jpeg = await extractThumbnail(filePath, seconds, lowPriority ? { lowPriority: true } : undefined)
     await writeFile(cachePath, jpeg).catch(() => {})
     res.statusCode = 200
     res.setHeader("Content-Type", "image/jpeg")
@@ -1699,7 +1709,10 @@ export function localMediaDevPlugin() {
           res.end("Invalid path")
           return
         }
-        await serveThumbnail(res, filePath, Math.round(rawSeconds))
+        await serveThumbnail(res, filePath, Math.round(rawSeconds), {
+          cachedOnly: url.searchParams.get("cached") === "1",
+          lowPriority: url.searchParams.get("low") === "1",
+        })
       })
 
       server.middlewares.use((req, res, next) => {
