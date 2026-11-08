@@ -115,6 +115,7 @@ const SEEK_RELOAD_MIN_JUMP_S = 1.5
 const AUDIO_BUFFER_SEEK_MARGIN_S = 0.35
 const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
 const CONTROLS_IDLE_MS = 2800
+const BUFFERING_INDICATOR_DELAY_MS = 250
 // Below this player size (either side) the overlays switch to a compact layout: a
 // phone in portrait (narrow) or in landscape (short — wider than the "sm" breakpoint,
 // so viewport breakpoints alone would give it the desktop sizes).
@@ -470,10 +471,28 @@ export default function LocalVideoPlayer({
   // flip the UI into "paused" or show the buffering spinner: nothing is actually
   // loading, playback continues. `null` = not in a background lull.
   const bgGraceUntilRef = useRef<number | null>(null)
+  const bufferingTimerRef = useRef<number | null>(null)
   const isBackgroundStall = useCallback(
     () => document.hidden || (bgGraceUntilRef.current !== null && Date.now() < bgGraceUntilRef.current),
     []
   )
+  const clearBuffering = useCallback(() => {
+    if (bufferingTimerRef.current !== null) {
+      window.clearTimeout(bufferingTimerRef.current)
+      bufferingTimerRef.current = null
+    }
+    setBuffering(false)
+  }, [])
+  const handleVideoWaiting = useCallback(() => {
+    if (isBackgroundStall() || bufferingTimerRef.current !== null) return
+    bufferingTimerRef.current = window.setTimeout(() => {
+      bufferingTimerRef.current = null
+      if (!isBackgroundStall()) setBuffering(true)
+    }, BUFFERING_INDICATOR_DELAY_MS)
+  }, [isBackgroundStall])
+  useEffect(() => () => {
+    if (bufferingTimerRef.current !== null) window.clearTimeout(bufferingTimerRef.current)
+  }, [])
 
   const [debugSync] = useState(
     () => typeof window !== "undefined" && window.localStorage.getItem("flick:debug-sync") === "1"
@@ -1461,12 +1480,12 @@ export default function LocalVideoPlayer({
         bgGraceUntilRef.current = Number.POSITIVE_INFINITY
       } else {
         bgGraceUntilRef.current = Date.now() + 1500
-        setBuffering(false)
+        clearBuffering()
       }
     }
     document.addEventListener("visibilitychange", onVisibility)
     return () => document.removeEventListener("visibilitychange", onVisibility)
-  }, [])
+  }, [clearBuffering])
 
   // ---- Auto-hide controls (Netflix/YouTube-style) while playing and idle ----
   useEffect(() => {
@@ -1826,14 +1845,9 @@ export default function LocalVideoPlayer({
             saveWatchProgress(contentId, video.currentTime, video.duration || duration, seriesId, episodeRef)
           }
         }}
-        onWaiting={() => {
-          // Ignore the "waiting" storm a throttled hidden tab fires on the muted
-          // video — nothing is actually loading, the audio never stopped.
-          if (isBackgroundStall()) return
-          setBuffering(true)
-        }}
-        onPlaying={() => setBuffering(false)}
-        onCanPlay={() => setBuffering(false)}
+        onWaiting={handleVideoWaiting}
+        onPlaying={clearBuffering}
+        onCanPlay={clearBuffering}
         onEnded={handleVideoEnded}
         onTimeUpdate={(event) => {
           if (scrubbingRef.current) return
