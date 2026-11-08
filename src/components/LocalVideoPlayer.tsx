@@ -166,6 +166,11 @@ const THUMBNAIL_BUCKET_FALLBACK_S = 5
 // cache hit — the debounce just guards the rare cold-cache case.
 const THUMBNAIL_DEBOUNCE_MS = 60
 const THUMBNAIL_PREVIEW_WIDTH = 160
+// Starting playback waits for picture and sound to be ready together (see
+// startPlayback): how far apart they may be and still count as "the same instant",
+// and the longest it waits before starting anyway.
+const START_SYNC_TOLERANCE_S = 0.25
+const START_SYNC_MAX_WAIT_MS = 10000
 // Parallel requests of the background preload of every scrub-bar frame (see thumbCacheRef).
 const THUMBNAIL_PRELOAD_CONCURRENCY = 3
 // How often "Continue Watching" progress gets persisted while playing —
@@ -474,11 +479,15 @@ export default function LocalVideoPlayer({
   // loading, playback continues. `null` = not in a background lull.
   const bgGraceUntilRef = useRef<number | null>(null)
   const bufferingTimerRef = useRef<number | null>(null)
+  // Set while playback waits for picture AND sound to be ready (see startPlayback):
+  // the spinner stays up meanwhile, even when one of the two is already ready.
+  const startGateRef = useRef<{ cancel: () => void } | null>(null)
   const isBackgroundStall = useCallback(
     () => document.hidden || (bgGraceUntilRef.current !== null && Date.now() < bgGraceUntilRef.current),
     []
   )
   const clearBuffering = useCallback(() => {
+    if (startGateRef.current) return
     if (bufferingTimerRef.current !== null) {
       window.clearTimeout(bufferingTimerRef.current)
       bufferingTimerRef.current = null
@@ -532,6 +541,7 @@ export default function LocalVideoPlayer({
   // ---- Audio track: separate element kept in lockstep with the video (master clock) ----
   const audioOffsetRef = useRef(0) // absolute movie time the *current* audio stream's t=0 maps to
   const audioGenerationRef = useRef(0) // race guard: only the latest reload may apply once ready
+  const audioReadyGenerationRef = useRef(-1) // the last reload whose stream is ready (audioOffsetRef valid)
   const audioInitializedRef = useRef(false)
   // True while a touch hold-to-scrub owns the playhead (and a moment after, until its
   // last seek lands): the seek handling below leaves the audio alone meanwhile, since
@@ -608,6 +618,7 @@ export default function LocalVideoPlayer({
       if (audioGenerationRef.current !== generation) return // a newer switch/seek already won
       audio.removeEventListener("error", onError)
       audioOffsetRef.current = start
+      audioReadyGenerationRef.current = generation
       setAudioIssue((issue) => (issue === "failed" ? null : issue))
       const video = videoRef.current
       // Mid-seek, this stream is about to be moved or replaced: playing it now would
@@ -1122,6 +1133,22 @@ export default function LocalVideoPlayer({
   // file, not a track that failed to load.
   const fileHasNoAudio = Boolean(info && !info.error && info.audioTracks.length === 0)
 
+  // Whether picture and sound can both start right now from the same instant: the
+  // video has data past the playhead and isn't mid-seek, and the current audio
+  // stream is loaded and positioned at the video's time (moved within its buffer if
+  // it's off; otherwise a reload is under way and its readiness re-runs this).
+  const bothReadyToStart = useCallback(() => {
+    const video = videoRef.current
+    const audio = audioRef.current
+    if (!video || !audio) return true
+    if (video.seeking || video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return false
+    if (audioReadyGenerationRef.current !== audioGenerationRef.current) return false
+    if (audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) return false
+    const drift = audioOffsetRef.current + audio.currentTime - video.currentTime
+    if (Math.abs(drift) <= START_SYNC_TOLERANCE_S) return true
+    return seekAudioWithinBuffer(video.currentTime)
+  }, [seekAudioWithinBuffer])
+
   const startPlayback = useCallback(() => {
     const video = videoRef.current
     if (!video) return
@@ -1141,16 +1168,71 @@ export default function LocalVideoPlayer({
       audioInitializedRef.current = true
       reloadAudio(video.currentTime, selectedAudioRef.current)
     }
-    video.play().catch(() => {})
-    // Called right here, inside the click that started playback, even when the
-    // stream is still loading: that's what lets the browser allow sound on this
-    // element (Safari in particular needs the gesture on the element itself).
+    const go = () => {
+      video.play().catch(() => {})
+      playAudio()
+    }
+    if (bothReadyToStart()) {
+      go()
+      return
+    }
+
+    // Picture and sound come from two separate loads (the file off the disk, and an
+    // ffmpeg transcode of its audio), and either can be ready well before the other —
+    // typically the sound, while the video still seeks to a resume point. Starting
+    // the video right away meant hearing the movie over a frozen or black frame, then
+    // the picture jumping ahead to catch up. Instead both stay paused (spinner up)
+    // until both can play from the same instant, then start together.
+    //
+    // The audio element still gets its play() inside this click, paused again at
+    // once so nothing is heard: that's what lets the browser allow its sound later
+    // (Safari in particular needs the gesture on the element itself).
+    const audio = audioRef.current
     playAudio()
-  }, [reloadAudio, remuxMode, fileHasNoAudio, playAudio, handleAudioPlayRejected])
+    audio?.pause()
+
+    startGateRef.current?.cancel()
+    setPlaying(true)
+    setBuffering(true)
+    const events = ["canplay", "canplaythrough", "loadeddata", "seeked", "progress"] as const
+    let timeoutId = 0
+    const finish = (start: boolean) => {
+      for (const name of events) {
+        video.removeEventListener(name, check)
+        audio?.removeEventListener(name, check)
+      }
+      window.clearTimeout(timeoutId)
+      if (startGateRef.current !== gate) return
+      startGateRef.current = null
+      clearBuffering()
+      if (start && intentPlayingRef.current) go()
+    }
+    function check() {
+      if (!intentPlayingRef.current) finish(false)
+      else if (bothReadyToStart()) finish(true)
+    }
+    const gate = { cancel: () => finish(false) }
+    startGateRef.current = gate
+    for (const name of events) {
+      video.addEventListener(name, check)
+      audio?.addEventListener(name, check)
+    }
+    // Never hold playback forever on a stream that won't report ready: start anyway.
+    timeoutId = window.setTimeout(() => finish(true), START_SYNC_MAX_WAIT_MS)
+  }, [reloadAudio, remuxMode, fileHasNoAudio, playAudio, handleAudioPlayRejected, bothReadyToStart, clearBuffering])
+
+  useEffect(() => () => startGateRef.current?.cancel(), [])
 
   const togglePlay = useCallback(() => {
     const video = videoRef.current
     if (!video) return
+    if (startGateRef.current) {
+      // Still waiting to start: a click means "never mind".
+      intentPlayingRef.current = false
+      startGateRef.current.cancel()
+      setPlaying(false)
+      return
+    }
     if (video.paused) startPlayback()
     else {
       intentPlayingRef.current = false
@@ -1935,6 +2017,9 @@ export default function LocalVideoPlayer({
         // Native mode: silent clock, sound comes from the separate <audio>. Remux
         // mode: this element plays the sound itself.
         muted={!remuxMode}
+        // Buffer ahead even while paused, so playback can start (picture and sound
+        // together, see startPlayback) as soon as the audio is ready too.
+        preload="auto"
         playsInline
         data-player-surface
         onClick={() => handleSurfaceTap()}
