@@ -11,10 +11,10 @@ import { getPlayableMovie, type Movie } from "@/lib/data"
 import { listWatchProgress } from "@/lib/watch-progress"
 import { actorPath, categoryPath, contentPath, creditContentPath, parseActorRoute, parseBrowseRoute, parseContentRoute, samePath, sectionPath, slugifyTitle, watchPath, type ParsedContentRoute } from "@/lib/routes"
 import { useI18n } from "@/i18n/I18nProvider"
-import { translateGenre } from "@/i18n/translations"
+import { buildHomeGenreCategories } from "@/lib/home-rows"
 import { useScrollViewport } from "@/lib/scroll-container"
 import { lazyWithReload } from "@/lib/lazy-with-reload"
-import { collectCatalogImageUrls, preloadImages } from "@/lib/image-preload"
+import { collectHomeImageUrls, preloadImages } from "@/lib/image-preload"
 
 const SearchPage = lazyWithReload(() => import("@/components/SearchPage"))
 const LibraryPage = lazyWithReload(() => import("@/components/LibraryPage"))
@@ -142,7 +142,9 @@ function buildViewAll(
   return undefined
 }
 
-const PRELOAD_CATALOG_IMAGES = import.meta.env.DEV
+// Production (TMDB) holds the loading screen until the home page's artwork is in;
+// local dev shows the page as soon as the local catalog is ready.
+const PRELOAD_HOME_IMAGES = !import.meta.env.DEV
 
 export default function HomePage() {
   const { lang, t } = useI18n()
@@ -151,17 +153,8 @@ export default function HomePage() {
   const scrollViewport = useScrollViewport()
 
   const [imagesReady, setImagesReady] = useState(
-    () => !PRELOAD_CATALOG_IMAGES || window.location.pathname !== "/"
+    () => !PRELOAD_HOME_IMAGES || window.location.pathname !== "/"
   )
-  useEffect(() => {
-    if (!PRELOAD_CATALOG_IMAGES || loading || error || imagesReady) return
-    const controller = new AbortController()
-    collectCatalogImageUrls([tmdbHero, ...allMovies], lang, controller.signal)
-      .then((urls) => preloadImages(urls, undefined, controller.signal))
-      .catch(() => {})
-      .then(() => { if (!controller.signal.aborted) setImagesReady(true) })
-    return () => controller.abort()
-  }, [loading, error, imagesReady, allMovies, tmdbHero, lang])
 
   const [currentPage, setCurrentPage] = useState("home")
   const [view, setView] = useState<PageView>("home")
@@ -569,27 +562,23 @@ export default function HomePage() {
   const series = tmdb.series
   const anime = tmdb.anime
   const moviesByType = useMemo(() => ({ movies, series, anime }), [movies, series, anime])
-  const movieGenreCategories = useMemo(() => {
-    const desiredGenres = ["Horror", "Action", "Family", "Comedy", "Adventure", "Science Fiction"]
-    return desiredGenres
-      .map((genre) => {
-        const title = translateGenre(genre, lang)
-        const items = movies.filter((movie) =>
-          movie.genre
-            .split(",")
-            .map((item) => item.trim().toLowerCase())
-            .includes(title.toLowerCase())
-        )
-        return { title, items: items.slice(0, 20) }
-      })
-      .filter((category) => category.items.length > 0)
-  }, [lang, movies])
+  const movieGenreCategories = useMemo(() => buildHomeGenreCategories(movies, lang), [lang, movies])
   // A row with no cards is just a title floating over blank space (the local library
   // usually has no Series or Anime, for one) — only rows with something in them show.
   const homeCategories = useMemo(
     () => [...categories, ...movieGenreCategories].filter((category) => category.items.length > 0),
     [categories, movieGenreCategories]
   )
+
+  useEffect(() => {
+    if (!PRELOAD_HOME_IMAGES || loading || error || imagesReady) return
+    const controller = new AbortController()
+    const heroes = [tmdbHero, ...scoredHeroCandidates.map(({ item }) => item)]
+    preloadImages(collectHomeImageUrls(heroes, homeCategories), undefined, controller.signal)
+      .catch(() => {})
+      .then(() => { if (!controller.signal.aborted) setImagesReady(true) })
+    return () => controller.abort()
+  }, [loading, error, imagesReady, tmdbHero, scoredHeroCandidates, homeCategories])
 
   const selectedSeries = useMemo(() => {
     if (!selectedMovie) return undefined

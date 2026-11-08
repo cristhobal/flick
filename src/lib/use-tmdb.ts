@@ -24,11 +24,15 @@ import {
 } from "@/lib/tmdb"
 import { useI18n } from "@/i18n/I18nProvider"
 import { displayLanguage, translateGenre, type Lang } from "@/i18n/translations"
+import { buildHomeGenreCategories } from "@/lib/home-rows"
 
 const QUALITIES = ["4K", "1080p", "4K HDR", "1080p HDR", "720p"]
 const SECTION_ITEM_TARGET = 500
 const MAX_PAGES = Math.ceil(SECTION_ITEM_TARGET / 20)
 const DETAIL_CONCURRENCY = 4
+// Details fetched before the home page first appears: higher, since the user is
+// waiting on them (tmdb.ts backs off and retries on a 429).
+const DISPLAY_DETAIL_CONCURRENCY = 8
 const FETCH_CONCURRENCY = 4  // max parallel endpoint fetches to avoid rate limiting
 const PAGES_PER_ENDPOINT = 2
 const INITIAL_PAGES = 1
@@ -40,7 +44,7 @@ type CachedCatalog = Pick<TMDbState, "hero" | "categories" | "allMovies" | "movi
 }
 
 function catalogCacheKey(lang: Lang): string {
-  return `flick:tmdb-catalog:v3:${lang}`
+  return `flick:tmdb-catalog:v4:${lang}`
 }
 
 function readCatalogCache(lang: Lang): CachedCatalog | null {
@@ -252,11 +256,6 @@ function hasMoviePoster(item: Movie): boolean {
 
 function capSectionItems(items: Movie[]): Movie[] {
   return dedupe(items).filter(hasMoviePoster).slice(0, SECTION_ITEM_TARGET)
-}
-
-function mergeEnrichedItems(base: Movie[], enriched: Movie[]): Movie[] {
-  const byId = new Map(enriched.map((movie) => [`${movie.type}-${movie.tmdbId}`, movie]))
-  return base.map((movie) => byId.get(`${movie.type}-${movie.tmdbId}`) || movie)
 }
 
 function dedupeRaw(items: TMDbMovie[]): TMDbMovie[] {
@@ -478,6 +477,73 @@ export function useTMDB(): TMDbState {
         }
       }
 
+      // Every item whose details have been fetched (or are being fetched), so each
+      // title is resolved once and every list it appears in gets the same object.
+      const enrichedCache = new Map<string, Promise<Movie>>()
+      const enrichedKey = (movie: Movie) => `${movie.type}-${movie.tmdbId}`
+      const rememberEnriched = (items: Movie[]) => {
+        for (const movie of items) enrichedCache.set(enrichedKey(movie), Promise.resolve(movie))
+      }
+      // Fetches the details (runtime, seasons, ...) of every item in `groups` and
+      // resolves once all are in. Items already fetched are not asked for again.
+      const enrichForDisplay = async (
+        groups: { items: Movie[]; type: Movie["type"] }[],
+        concurrency = DISPLAY_DETAIL_CONCURRENCY
+      ) => {
+        const pending: { movie: Movie; type: Movie["type"]; index: number }[] = []
+        const seen = new Set<string>()
+        for (const { items, type } of groups) {
+          items.forEach((movie, index) => {
+            const key = enrichedKey(movie)
+            if (seen.has(key) || enrichedCache.has(key)) return
+            seen.add(key)
+            pending.push({ movie, type, index })
+          })
+        }
+        await mapWithConcurrency(pending, concurrency, ({ movie, type, index }) => {
+          const task = (
+            type === "movie"
+              ? getCachedDetail(movie.tmdbId, type).then((detail) =>
+                  detail ? rebuildMovie(movie, detail, type, index, movie.trailerUrl) : movie
+                )
+              : enrichMovie(movie, type, index)
+          ).catch(() => movie)
+          enrichedCache.set(enrichedKey(movie), task)
+          return task
+        })
+      }
+      const applyEnriched = (items: Movie[]) =>
+        Promise.all(items.map((movie) => enrichedCache.get(enrichedKey(movie)) ?? movie))
+
+      const buildHeroMovie = async (heroItem: TMDbMovie): Promise<Movie> => {
+        let heroDetail: TMDbMovieDetail | null = null
+        let heroTrailer: string | undefined
+        const mediaType = (heroItem.media_type || "movie") as "movie" | "tv"
+        try {
+          const result = await fetchDetailWithVideos(heroItem.id, mediaType, lang)
+          heroDetail = result.detail
+          heroTrailer = result.trailerUrl || undefined
+        } catch {
+          try {
+            heroDetail = await fetchDetail(heroItem.id, mediaType, lang)
+          } catch {
+            // Keep the basic TMDB item when localized details are unavailable.
+          }
+        }
+        return toMovie(
+          heroItem,
+          heroDetail,
+          resolveGenre(heroItem.genre_ids || []),
+          (heroItem.media_type === "tv" ? "series" : "movie") as Movie["type"],
+          0,
+          heroTrailer,
+          translate("movie.unknown"),
+          translate("movie.fallback"),
+          translate("common.general"),
+          lang
+        )
+      }
+
       const publishInitialContent = async () => {
         const initialTasks = [
           () => fetchPages((p) => fetchPopular("movie", p, lang), INITIAL_PAGES),
@@ -583,45 +649,47 @@ export function useTMDB(): TMDbState {
             (item.media_type === "movie" || item.media_type === "tv")
         )
         const heroItem = pickHeroItem(heroCandidates.length > 0 ? heroCandidates : heroRaw)
-        const heroMovie = heroItem
-          ? toMovie(
-              heroItem,
-              null,
-              resolveGenre(heroItem.genre_ids || []),
-              (heroItem.media_type === "tv" ? "series" : "movie") as Movie["type"],
-              0,
-              undefined,
-              translate("movie.unknown"),
-              translate("movie.fallback"),
-              translate("common.general"),
-              lang
-            )
-          : null
+
+        // Fetch the details of everything the home page shows (its rows and the
+        // hero) before it appears, so no card is drawn without its runtime/seasons.
+        const [heroMovie] = await Promise.all([
+          heroItem ? buildHeroMovie(heroItem) : Promise.resolve(null),
+          enrichForDisplay([
+            { items: featuredMovies.slice(0, 20), type: "movie" },
+            { items: recentMovies.slice(0, 20), type: "movie" },
+            { items: masterAnime.slice(0, 20), type: "anime" },
+            { items: masterSeries.slice(0, 20), type: "series" },
+            { items: buildHomeGenreCategories(masterMovie, lang).flatMap((row) => row.items), type: "movie" },
+          ]),
+        ])
+        const [initialMovies, initialSeries, initialAnime, initialFeatured, initialRecent] = await Promise.all([
+          applyEnriched(masterMovie),
+          applyEnriched(masterSeries),
+          applyEnriched(masterAnime),
+          applyEnriched(featuredMovies.slice(0, 20)),
+          applyEnriched(recentMovies.slice(0, 20)),
+        ])
+        const initialCategories: Category[] = [
+          { title: translate("home.featuredMovies"), items: initialFeatured },
+          { title: translate("home.recent"), items: initialRecent },
+          { title: translate("common.anime"), items: initialAnime.slice(0, 20) },
+          { title: translate("common.series"), items: initialSeries.slice(0, 20) },
+        ]
 
         if (generation !== fetchGeneration.current) return false
         setHero(heroMovie)
-        setCategories([
-          { title: translate("home.featuredMovies"), items: featuredMovies.slice(0, 20) },
-          { title: translate("home.recent"), items: recentMovies.slice(0, 20) },
-          { title: translate("common.anime"), items: masterAnime.slice(0, 20) },
-          { title: translate("common.series"), items: masterSeries.slice(0, 20) },
-        ])
-        setMovies(masterMovie)
-        setSeries(masterSeries)
-        setAnimeList(masterAnime)
-        const initialAllMovies = dedupe([...masterMovie, ...masterSeries, ...masterAnime])
+        setCategories(initialCategories)
+        setMovies(initialMovies)
+        setSeries(initialSeries)
+        setAnimeList(initialAnime)
+        const initialAllMovies = dedupe([...initialMovies, ...initialSeries, ...initialAnime])
         setAllMovies(initialAllMovies)
         writeCatalogCache(lang, {
           hero: heroMovie,
-          categories: [
-            { title: translate("home.featuredMovies"), items: featuredMovies.slice(0, 20) },
-            { title: translate("home.recent"), items: recentMovies.slice(0, 20) },
-            { title: translate("common.anime"), items: masterAnime.slice(0, 20) },
-            { title: translate("common.series"), items: masterSeries.slice(0, 20) },
-          ],
-          movies: masterMovie,
-          series: masterSeries,
-          anime: masterAnime,
+          categories: initialCategories,
+          movies: initialMovies,
+          series: initialSeries,
+          anime: initialAnime,
           allMovies: initialAllMovies,
         })
         setLoading(false)
@@ -791,38 +859,8 @@ export function useTMDB(): TMDbState {
       const heroCandidates = heroPool.length > 0 ? heroPool : fallbackHeroPool
       const heroItem = pickHeroItem(heroCandidates)
 
-      let heroMovie: Movie | null = null
-      if (heroItem) {
-        let heroDetail: TMDbMovieDetail | null = null
-        let heroTrailer: string | undefined
-        try {
-          const mt = heroItem.media_type || "movie"
-          const result = await fetchDetailWithVideos(heroItem.id, mt as "movie" | "tv", lang)
-          heroDetail = result.detail
-          heroTrailer = result.trailerUrl || undefined
-        } catch {
-          try {
-            const mt = heroItem.media_type || "movie"
-            heroDetail = await fetchDetail(heroItem.id, mt as "movie" | "tv", lang)
-          } catch {
-            // Keep the basic TMDB item when localized details are unavailable.
-          }
-        }
-        heroMovie = toMovie(
-          heroItem,
-          heroDetail,
-          resolveGenre(heroItem.genre_ids || []),
-          (heroItem.media_type === "tv" ? "series" : "movie") as Movie["type"],
-          0,
-          heroTrailer,
-          translate("movie.unknown"),
-          translate("movie.fallback"),
-          translate("common.general"),
-          lang
-        )
-      }
+      const heroMovie: Movie | null = heroItem ? await buildHeroMovie(heroItem) : null
       if (generation !== fetchGeneration.current) return
-      setHero(heroMovie)
 
       // ---- Enrich only items that go into carousels ----
       const enrichBatch = async (
@@ -850,13 +888,6 @@ export function useTMDB(): TMDbState {
         }
         return results
       }
-
-      const enrichVisibleItems = (items: Movie[], type: Movie["type"]) =>
-        mapWithConcurrency(items.slice(0, BACKGROUND_DETAIL_LIMIT), DETAIL_CONCURRENCY, (movie, index) =>
-          type === "movie"
-            ? getCachedDetail(movie.tmdbId, type).then((detail) => detail ? rebuildMovie(movie, detail, type, index, movie.trailerUrl) : movie)
-            : enrichMovie(movie, type, index)
-        )
 
       // Use full master lists for carousels — no artificial caps
       const featuredMovieRaw = buildFeaturedRaw({
@@ -893,42 +924,59 @@ export function useTMDB(): TMDbState {
         enrichBatch(masterSeries.slice(0, 20), "series"),
       ])
 
+      rememberEnriched([...destacadas, ...recientes, ...animeCat, ...seriesCat])
       const cats: Category[] = [
         { title: translate("home.featuredMovies"), items: destacadas },
         { title: translate("home.recent"), items: recientes },
         { title: translate("common.anime"), items: animeCat },
         { title: translate("common.series"), items: seriesCat },
       ]
-      const fullAllMovies = dedupe([...masterMovie, ...masterSeries, ...masterAnime])
+      // The full catalog reshuffles the genre rows: fetch the details of the cards
+      // that are new there before swapping them in.
+      await enrichForDisplay([
+        { items: buildHomeGenreCategories(masterMovie, lang).flatMap((row) => row.items), type: "movie" },
+      ])
+      const [fullMovies, fullSeries, fullAnime] = await Promise.all([
+        applyEnriched(masterMovie),
+        applyEnriched(masterSeries),
+        applyEnriched(masterAnime),
+      ])
+      const fullAllMovies = dedupe([...fullMovies, ...fullSeries, ...fullAnime])
 
       if (generation !== fetchGeneration.current) return
+      setHero(heroMovie)
       setCategories(cats)
       stableCategoriesPublished.current = true
       setAllMovies(fullAllMovies)
-      setMovies(masterMovie)
-      setSeries(masterSeries)
-      setAnimeList(masterAnime)
+      setMovies(fullMovies)
+      setSeries(fullSeries)
+      setAnimeList(fullAnime)
       writeCatalogCache(lang, {
         hero: heroMovie,
         categories: cats,
-        movies: masterMovie,
-        series: masterSeries,
-        anime: masterAnime,
+        movies: fullMovies,
+        series: fullSeries,
+        anime: fullAnime,
         allMovies: fullAllMovies,
       })
       setLoading(false)
 
       void (async () => {
-        const [visibleMovies, visibleSeries, visibleAnime] = await Promise.all([
-          enrichVisibleItems(masterMovie, "movie"),
-          enrichVisibleItems(masterSeries, "series"),
-          enrichVisibleItems(masterAnime, "anime"),
+        await enrichForDisplay(
+          [
+            { items: masterMovie.slice(0, BACKGROUND_DETAIL_LIMIT), type: "movie" },
+            { items: masterSeries.slice(0, BACKGROUND_DETAIL_LIMIT), type: "series" },
+            { items: masterAnime.slice(0, BACKGROUND_DETAIL_LIMIT), type: "anime" },
+          ],
+          DETAIL_CONCURRENCY
+        )
+        const [enrichedMovies, enrichedSeries, enrichedAnime] = await Promise.all([
+          applyEnriched(masterMovie),
+          applyEnriched(masterSeries),
+          applyEnriched(masterAnime),
         ])
         if (generation !== fetchGeneration.current) return
 
-        const enrichedMovies = mergeEnrichedItems(masterMovie, visibleMovies)
-        const enrichedSeries = mergeEnrichedItems(masterSeries, visibleSeries)
-        const enrichedAnime = mergeEnrichedItems(masterAnime, visibleAnime)
         const enrichedAll = dedupe([...enrichedMovies, ...enrichedSeries, ...enrichedAnime])
         const enrichedById = new Map(
           enrichedAll.map((movie) => [`${movie.type}-${movie.tmdbId}`, movie])

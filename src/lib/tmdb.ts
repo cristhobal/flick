@@ -29,19 +29,77 @@ interface Genre { id: number; name: string }
 interface TMDbGenreResponse { genres: Genre[] }
 const GENRE_CACHE = new Map<Lang, Genre[]>()
 
-async function apiFetch<T>(endpoint: string, retries = 3): Promise<T> {
+// ---- Global throttle for every TMDB API call ----
+// TMDB rate-limits per IP (~40-50 requests/s, ~20 connections). Callers each run their
+// own concurrency (catalog load, detail enrichment, the dev image warm-up crawling
+// every cast member...), and together they used to burst far past that: TMDB answered
+// 429, sometimes on the CORS preflight itself, which the browser then reports as a
+// CORS error and fetch() rejects with a bare TypeError. Every request goes through
+// here, so the total stays under the limit whoever is asking.
+const MAX_IN_FLIGHT = 8
+const MIN_START_GAP_MS = 30 // ≈33 requests/s at most
+let inFlight = 0
+let nextStartAt = 0
+let pausedUntil = 0
+const slotQueue: (() => void)[] = []
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+async function acquireSlot(): Promise<void> {
+  if (inFlight < MAX_IN_FLIGHT) {
+    inFlight++
+  } else {
+    // released slots are handed straight to the next waiter (inFlight unchanged)
+    await new Promise<void>((resolve) => slotQueue.push(resolve))
+  }
+  // Space out request starts: each caller reserves its own start time synchronously,
+  // so waiters never wake together. If a 429 paused everyone meanwhile, reserve again.
+  for (;;) {
+    const now = Date.now()
+    const startAt = Math.max(now, nextStartAt, pausedUntil)
+    nextStartAt = startAt + MIN_START_GAP_MS
+    if (startAt > now) await sleep(startAt - now)
+    if (Date.now() >= pausedUntil) return
+  }
+}
+
+function releaseSlot(): void {
+  const next = slotQueue.shift()
+  if (next) next()
+  else inFlight--
+}
+
+async function apiFetch<T>(endpoint: string, retries = 4): Promise<T> {
   const token = ACCESS_TOKEN?.trim()
   if (!token || token === "undefined" || token === "null") {
     throw new Error("TMDB token missing: PUBLIC_TMDB_TOKEN is not available in this build.")
   }
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const res = await fetch(`${BASE_URL}${endpoint}`, {
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    })
+    await acquireSlot()
+    let res: Response
+    try {
+      res = await fetch(`${BASE_URL}${endpoint}`, {
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      })
+    } catch (error) {
+      // Network failure — including a 429 on the CORS preflight, which surfaces as
+      // a TypeError rather than a response. Back off and retry like a 429.
+      releaseSlot()
+      if (attempt === retries) throw error
+      const wait = Math.pow(2, attempt) * 500 + Math.random() * 250
+      pausedUntil = Math.max(pausedUntil, Date.now() + wait)
+      await sleep(wait)
+      continue
+    }
+    releaseSlot()
     if (res.status === 429) {
-      // Rate limited — wait and retry with exponential backoff
-      const wait = Math.pow(2, attempt) * 500
-      await new Promise((r) => setTimeout(r, wait))
+      // Rate limited: pause every caller, not just this one, then retry.
+      const retryAfterS = Number(res.headers.get("Retry-After"))
+      const wait = Number.isFinite(retryAfterS) && retryAfterS > 0
+        ? retryAfterS * 1000
+        : Math.pow(2, attempt) * 500 + Math.random() * 250
+      pausedUntil = Math.max(pausedUntil, Date.now() + wait)
+      await sleep(wait)
       continue
     }
     if (!res.ok) {

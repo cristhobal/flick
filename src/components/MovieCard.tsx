@@ -376,7 +376,9 @@ export default function MovieCard({
       ? `${seasonCount} ${seasonCount === 1 ? t("common.season") : t("common.seasons")}`
       : ""
   const hasRuntime = Boolean(movie.duration && movie.duration !== "-")
-  const runtimeLabel = seasonInfo || (hasRuntime ? movie.duration : episodeInfo || "...")
+  // Empty when the details aren't known: the label (and its separator) is left out
+  // rather than drawn as a "..." placeholder.
+  const runtimeLabel = seasonInfo || (hasRuntime ? movie.duration : episodeInfo)
 
   return (
     <>
@@ -450,8 +452,12 @@ export default function MovieCard({
             </p>
             <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-[rgba(255,255,255,0.75)]">
               <span className="shrink-0">{movie.year}</span>
-              <span className="shrink-0 text-[rgba(255,255,255,0.4)]">•</span>
-              <span className="truncate">{runtimeLabel}</span>
+              {runtimeLabel && (
+                <>
+                  <span className="shrink-0 text-[rgba(255,255,255,0.4)]">•</span>
+                  <span className="truncate">{runtimeLabel}</span>
+                </>
+              )}
               <span className="ml-auto flex shrink-0 items-center gap-0.5 font-medium text-amber-400">
                 <Star className="size-3 fill-amber-400" />
                 {movie.rating}
@@ -505,8 +511,12 @@ export default function MovieCard({
               </h3>
               <div className="mt-2 flex items-center gap-2 text-[11px] text-[rgba(255,255,255,0.75)]">
                 <span>{movie.year}</span>
-                <span className="size-1 rounded-full bg-[rgba(255,255,255,0.4)]" />
-                <span>{runtimeLabel}</span>
+                {runtimeLabel && (
+                  <>
+                    <span className="size-1 rounded-full bg-[rgba(255,255,255,0.4)]" />
+                    <span>{runtimeLabel}</span>
+                  </>
+                )}
                 <span className="ml-auto flex items-center gap-1 font-medium text-[#fff]">
                   <Star className="size-3 fill-amber-400 text-amber-400" />
                   {movie.rating}
@@ -561,9 +571,11 @@ export default function MovieCard({
                   {movie.contentRating}
                 </span>
               )}
-              <span className="rounded-md border border-white/10 px-2 py-1">
-                {runtimeLabel}
-              </span>
+              {runtimeLabel && (
+                <span className="rounded-md border border-white/10 px-2 py-1">
+                  {runtimeLabel}
+                </span>
+              )}
               <span className="rounded-md border border-white/10 px-2 py-1">
                 {movie.type === "movie" ? t("common.movies") : movie.type === "series" ? t("common.series") : t("common.anime")}
               </span>
